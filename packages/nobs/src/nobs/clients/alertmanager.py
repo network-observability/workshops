@@ -8,7 +8,7 @@ import requests
 
 
 def _now_utc() -> dt.datetime:
-    return dt.datetime.now(dt.timezone.utc)
+    return dt.datetime.now(dt.UTC)
 
 
 def _rfc3339(ts: dt.datetime) -> str:

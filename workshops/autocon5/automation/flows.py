@@ -29,9 +29,7 @@ from typing import Any
 
 from prefect import flow, tags, task
 from prefect.logging import get_run_logger
-
 from workshop_sdk import Decision, DecisionPolicy, EvidenceBundle, WorkshopSDK
-
 
 # ---------------------------------------------------------------------------
 # Tasks
@@ -90,7 +88,7 @@ def annotate_decision_task(workflow: str, device: str, peer_address: str, decisi
 @task(log_prints=True, task_run_name="ai_rca[{device}:{peer_address}]")
 def ai_rca_task(workflow: str, device: str, peer_address: str, ev: EvidenceBundle) -> str:
     """Opt-in LLM RCA. Always returns SOMETHING — disabled-fallback or model output."""
-    print(f"🤖 [ai_rca] running (gated by ENABLE_AI_RCA)")
+    print("🤖 [ai_rca] running (gated by ENABLE_AI_RCA)")
     sdk = WorkshopSDK()
     rca_text = sdk.rca(device=device, peer_address=peer_address, evidence=ev)
     sdk.annotate(

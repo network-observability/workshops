@@ -24,7 +24,7 @@ def _parse_iso(s: str) -> dt.datetime | None:
 def _humanize_age(start: dt.datetime | None) -> str:
     if start is None:
         return "—"
-    now = dt.datetime.now(dt.timezone.utc)
+    now = dt.datetime.now(dt.UTC)
     delta = now - start
     seconds = int(delta.total_seconds())
     if seconds < 60:

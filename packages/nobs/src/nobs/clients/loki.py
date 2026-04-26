@@ -13,7 +13,7 @@ class LokiClient:
         self.timeout = timeout
 
     def query_range(self, query: str, minutes: int = 10, limit: int = 200) -> list[str]:
-        end = dt.datetime.now(dt.timezone.utc)
+        end = dt.datetime.now(dt.UTC)
         start = end - dt.timedelta(minutes=minutes)
         r = requests.get(
             f"{self.base_url}/loki/api/v1/query_range",

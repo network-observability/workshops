@@ -4,8 +4,7 @@ from __future__ import annotations
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings
 
-
-SETTINGS: "Settings | None" = None
+SETTINGS: Settings | None = None
 
 
 class LogConfig(BaseModel):

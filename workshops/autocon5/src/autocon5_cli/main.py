@@ -17,7 +17,6 @@ want to drive arbitrary stacks not tied to AutoCon5.
 from __future__ import annotations
 
 import typer
-
 from nobs.commands import alerts as nobs_alerts
 from nobs.commands import maintenance as nobs_maintenance
 from nobs.commands import schema as nobs_schema

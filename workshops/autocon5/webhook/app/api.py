@@ -8,7 +8,6 @@ import fastapi
 from prefect.deployments import run_deployment
 from pydantic import BaseModel
 
-
 router = fastapi.APIRouter()
 log = logging.getLogger("webhook")
 

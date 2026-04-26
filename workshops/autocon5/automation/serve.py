@@ -11,6 +11,5 @@ from __future__ import annotations
 
 from flows import alert_receiver
 
-
 if __name__ == "__main__":
     alert_receiver.serve(name="alert-receiver")

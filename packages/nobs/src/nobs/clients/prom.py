@@ -26,7 +26,7 @@ class PromClient:
         return r.json().get("data", {}).get("alerts", [])
 
     def range(self, query: str, minutes: int = 10, step_seconds: int = 30) -> list[dict]:
-        end = dt.datetime.now(dt.timezone.utc)
+        end = dt.datetime.now(dt.UTC)
         start = end - dt.timedelta(minutes=minutes)
         r = requests.get(
             f"{self.base_url}/api/v1/query_range",

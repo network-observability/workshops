@@ -10,16 +10,14 @@ human reader. Useful for:
 """
 from __future__ import annotations
 
-import json
 from typing import Annotated, Any
 
 import typer
-from nobs._console import console, fail, warn
+from nobs._console import console, fail
 from nobs.clients import InfrahubClient, LokiClient, PromClient
 from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.table import Table
-
 
 # Mirror of the Telegraf enum mapping used elsewhere.
 _ADMIN_MAP = {1: "enable", 2: "disable"}

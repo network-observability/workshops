@@ -21,10 +21,9 @@ import json
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 import requests
-
 
 # ---------------------------------------------------------------------------
 # Telegraf enum decode helpers — keep symbol/numeric mappings together so
@@ -55,7 +54,7 @@ def decode_bgp_states(metrics: dict[str, float]) -> dict[str, str]:
 
 
 def now_utc() -> dt.datetime:
-    return dt.datetime.now(dt.timezone.utc)
+    return dt.datetime.now(dt.UTC)
 
 
 def to_rfc3339(ts: dt.datetime) -> str:
@@ -177,7 +176,7 @@ class DecisionPolicy:
         except Exception:
             return default
 
-    def evaluate(self, sot_gate: dict[str, Any], metrics: Optional[dict[str, float]] = None) -> Decision:
+    def evaluate(self, sot_gate: dict[str, Any], metrics: dict[str, float] | None = None) -> Decision:
         if not sot_gate.get("found", True):
             return Decision(False, "stop", sot_gate.get("reason", "device not found in SoT"))
 

@@ -11,7 +11,6 @@ import uvicorn
 
 from app import api, config
 
-
 PREFECT_API_URL = os.getenv("PREFECT_API_URL") or os.getenv("PREFECT_URL", "")
 if not PREFECT_API_URL:
     raise RuntimeError("Missing PREFECT_API_URL (or PREFECT_URL).")

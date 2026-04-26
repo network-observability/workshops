@@ -59,7 +59,7 @@ def maintenance(
         raise typer.Exit(code=1)
 
     node = matches[0]
-    previous = bool(getattr(node, "maintenance").value)
+    previous = bool(node.maintenance.value)
     node.maintenance.value = state
     node.save()
 

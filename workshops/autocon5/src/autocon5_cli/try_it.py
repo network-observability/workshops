@@ -185,7 +185,7 @@ def _set_maintenance(device: str, state: bool, infrahub_url: str, token: str) ->
 
 
 def _post_alert(webhook_url: str, status: str, device: str, peer: str, fingerprint: str) -> None:
-    now = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    now = dt.datetime.now(dt.UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
     payload = {
         "version": "4", "groupKey": f"try-it-{fingerprint}", "truncatedAlerts": 0,
         "status": status, "receiver": "webhook-receiver",
