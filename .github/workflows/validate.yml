@@ -35,6 +35,12 @@ jobs:
         uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
+          # Cache key tracks every pyproject.toml + uv.lock when present.
+          # Listing pyproject.toml first means the action doesn't error on a
+          # fresh clone where uv.lock hasn't been committed yet.
+          cache-dependency-glob: |
+            **/pyproject.toml
+            uv.lock
 
       - name: Install Python deps via uv
         run: uv sync
@@ -150,6 +156,12 @@ jobs:
         uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
+          # Cache key tracks every pyproject.toml + uv.lock when present.
+          # Listing pyproject.toml first means the action doesn't error on a
+          # fresh clone where uv.lock hasn't been committed yet.
+          cache-dependency-glob: |
+            **/pyproject.toml
+            uv.lock
 
       - name: uv sync
         run: uv sync
