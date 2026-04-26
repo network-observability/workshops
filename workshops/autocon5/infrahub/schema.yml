@@ -1,0 +1,138 @@
+# Infrahub schema for the AutoCon5 workshop.
+#
+# This is the minimum source-of-truth model the workshop's alerts +
+# automation depend on. It mirrors the entities the webinar-completed
+# scenario stored in Nautobot (devices, interfaces, BGP peers, plus a
+# `maintenance` flag and the BGP intent), in a flat, easy-to-grok shape.
+#
+# Apply with:  task load-infrahub
+# (which runs `infrahubctl schema load infrahub/schema.yml` followed by
+#  `python scripts/load_infrahub.py lab_vars.yml`).
+---
+version: '1.0'
+
+nodes:
+  - name: Device
+    namespace: Workshop
+    description: A network device modelled by the workshop.
+    label: Network Device
+    icon: mdi:router
+    default_filter: name__value
+    display_labels:
+      - name__value
+    order_by:
+      - name__value
+    attributes:
+      - name: name
+        kind: Text
+        unique: true
+      - name: asn
+        kind: Number
+        description: BGP autonomous system number.
+      - name: maintenance
+        kind: Boolean
+        default_value: false
+        description: |
+          When true, the alert/automation pipeline will skip taking action
+          on this device (one of the four canonical Part 3 paths).
+      - name: site_name
+        kind: Text
+        optional: true
+        description: Cosmetic site label, surfaced in evidence bundles.
+      - name: role
+        kind: Text
+        optional: true
+        description: Cosmetic role label (e.g. "edge", "spine"), surfaced in evidence bundles.
+    relationships:
+      - name: interfaces
+        peer: WorkshopInterface
+        kind: Component
+        cardinality: many
+      - name: bgp_sessions
+        peer: WorkshopBgpSession
+        kind: Component
+        cardinality: many
+
+  - name: Interface
+    namespace: Workshop
+    description: A device interface.
+    label: Interface
+    icon: mdi:ethernet
+    display_labels:
+      - name__value
+    order_by:
+      - name__value
+    attributes:
+      - name: name
+        kind: Text
+      - name: role
+        kind: Dropdown
+        choices:
+          - name: peer
+            label: Peer (data-plane)
+          - name: mgmt
+            label: Management
+          - name: loopback
+            label: Loopback
+        default_value: peer
+      - name: ip_address
+        kind: Text
+        optional: true
+      - name: expected_state
+        kind: Dropdown
+        choices:
+          - name: up
+            label: Up
+          - name: down
+            label: Intentionally down
+        default_value: up
+    relationships:
+      - name: device
+        peer: WorkshopDevice
+        kind: Parent
+        cardinality: one
+        optional: false
+
+  - name: BgpSession
+    namespace: Workshop
+    description: A BGP peer the device is configured to maintain (intent).
+    label: BGP Session
+    icon: mdi:lan
+    display_labels:
+      - peer_address__value
+    order_by:
+      - peer_address__value
+    attributes:
+      - name: peer_address
+        kind: Text
+        description: The peer IP this device is configured to peer with.
+      - name: remote_as
+        kind: Number
+      - name: afi_safi
+        kind: Text
+        default_value: ipv4-unicast
+      - name: expected_state
+        kind: Dropdown
+        choices:
+          - name: established
+            label: Established
+          - name: down
+            label: Intentionally down
+          - name: disabled
+            label: Disabled
+        default_value: established
+      - name: expected_prefixes_received
+        kind: Number
+        optional: true
+      - name: reason
+        kind: Text
+        optional: true
+        description: |
+          Free-text rationale, surfaced into evidence bundles when an alert
+          fires. Used by the workshop to encode "ip-mismatch-demo" etc.
+    relationships:
+      - name: device
+        peer: WorkshopDevice
+        kind: Parent
+        cardinality: one
+        optional: false

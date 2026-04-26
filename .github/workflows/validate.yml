@@ -1,0 +1,221 @@
+name: validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # Daily at 06:30 UTC — catch regressions in upstream images.
+    - cron: "30 6 * * *"
+  workflow_dispatch:
+    inputs:
+      run_smoke:
+        description: "Run the slow end-to-end smoke job"
+        required: false
+        default: "true"
+
+# Don't queue redundant runs.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # =========================================================================
+  # Fast lint — runs on every PR. ~2 minutes.
+  # Validates YAML / TOML / Python ast / shell -n / docker compose config.
+  # =========================================================================
+  lint:
+    name: lint (yaml, toml, python, shell, compose)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Install Python deps via uv
+        run: uv sync
+
+      - name: Validate YAML
+        run: |
+          python3 - <<'PY'
+          import yaml, os, sys
+          ok = fail = 0
+          for root, _, files in os.walk('.'):
+              if '.git' in root or '.venv' in root: continue
+              for f in files:
+                  if f.endswith(('.yml', '.yaml')):
+                      p = os.path.join(root, f)
+                      try:
+                          with open(p) as fh: list(yaml.safe_load_all(fh))
+                          ok += 1
+                      except Exception as e:
+                          print(f"FAIL: {p} -> {e}"); fail += 1
+              print(f"YAML: {ok} ok, {fail} fail")
+          sys.exit(1 if fail else 0)
+          PY
+
+      - name: Validate TOML
+        run: |
+          python3 - <<'PY'
+          import sys, os
+          try:
+              import tomllib
+          except ImportError:
+              import tomli as tomllib
+          ok = fail = 0
+          for root, _, files in os.walk('.'):
+              if '.git' in root or '.venv' in root: continue
+              for f in files:
+                  if f.endswith('.toml'):
+                      p = os.path.join(root, f)
+                      try:
+                          with open(p, 'rb') as fh: tomllib.load(fh)
+                          ok += 1
+                      except Exception as e:
+                          print(f"FAIL: {p} -> {e}"); fail += 1
+          print(f"TOML: {ok} ok, {fail} fail")
+          sys.exit(1 if fail else 0)
+          PY
+
+      - name: Validate Python (ast.parse)
+        run: |
+          fail=0
+          while IFS= read -r f; do
+            python3 -c "import ast,sys; ast.parse(open('$f').read())" \
+              || { echo "FAIL: $f"; fail=$((fail+1)); }
+          done < <(find . -name "*.py" -not -path "./.git/*" -not -path "./.venv/*")
+          [ "$fail" -eq 0 ]
+
+      - name: Validate shell (bash -n)
+        run: |
+          fail=0
+          while IFS= read -r f; do
+            bash -n "$f" || { echo "FAIL: $f"; fail=$((fail+1)); }
+          done < <(find . -name "*.sh" -not -path "./.git/*" -not -path "./.venv/*")
+          [ "$fail" -eq 0 ]
+
+      - name: Validate docker compose
+        working-directory: workshops/autocon5
+        run: |
+          cp .env.example .env
+          docker compose --env-file .env config --quiet
+
+      - name: Ruff (Python style)
+        run: uv run ruff check .
+
+      - name: Verify compose bind-mount sources resolve
+        working-directory: workshops/autocon5
+        run: |
+          python3 - <<'PY'
+          import os, sys, yaml
+          fail = 0
+          with open("docker-compose.yml") as fh: cfg = yaml.safe_load(fh)
+          for name, svc in (cfg.get("services") or {}).items():
+              for vol in svc.get("volumes") or []:
+                  if isinstance(vol, str) and vol.startswith("./"):
+                      src = vol.split(":", 1)[0]
+                      if not os.path.exists(src):
+                          print(f"MISSING bind-mount source for {name}: {src}"); fail += 1
+              build = svc.get("build")
+              if isinstance(build, dict):
+                  ctx = build.get("context", ".")
+                  df = build.get("dockerfile", "Dockerfile")
+                  full = os.path.join(ctx, df)
+                  if not os.path.exists(full):
+                      print(f"MISSING build dockerfile for {name}: {full}"); fail += 1
+          sys.exit(1 if fail else 0)
+          PY
+
+  # =========================================================================
+  # Slow smoke — full stack up, walk the four Part 3 paths, then tear down.
+  # Gated on schedule + workflow_dispatch so PRs aren't slow.
+  # ~10 minutes (image pulls dominate).
+  # =========================================================================
+  smoke:
+    name: smoke (full stack + try-it)
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    if: |
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.run_smoke == 'true')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: uv sync
+        run: uv sync
+
+      - name: Install go-task
+        run: |
+          sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
+
+      - name: Bring stack up
+        working-directory: workshops/autocon5
+        run: |
+          cp .env.example .env
+          task up
+
+      - name: Wait for stack readiness
+        run: |
+          for url in \
+            http://localhost:9090/-/ready \
+            http://localhost:3001/ready \
+            http://localhost:9093/-/ready; do
+            for _ in $(seq 1 60); do
+              curl -sfo /dev/null --max-time 3 "$url" && break
+              sleep 5
+            done
+            curl -sfo /dev/null --max-time 3 "$url" \
+              || { echo "$url never ready"; exit 1; }
+            echo "$url is ready"
+          done
+          # Infrahub is the slow one; give it longer.
+          for _ in $(seq 1 60); do
+            curl -sfo /dev/null --max-time 3 http://localhost:8000/health \
+              || curl -sfo /dev/null --max-time 3 http://localhost:8000/api/healthcheck \
+              && break
+            sleep 5
+          done
+
+      - name: Seed Infrahub
+        working-directory: workshops/autocon5
+        run: task load-infrahub
+
+      - name: Wait for first BgpSessionNotUp alert (up to 2m)
+        run: |
+          for _ in $(seq 1 24); do
+            count=$(curl -sf http://localhost:9090/api/v1/alerts \
+              | python3 -c "import sys,json; d=json.load(sys.stdin); print(sum(1 for a in d.get('data',{}).get('alerts',[]) if a.get('labels',{}).get('alertname')=='BgpSessionNotUp' and a.get('state')=='firing'))" 2>/dev/null || echo 0)
+            if [ "${count:-0}" -gt 0 ]; then
+              echo "BgpSessionNotUp is firing ($count alert(s))"
+              break
+            fi
+            sleep 5
+          done
+
+      - name: Walk the four Part 3 paths (autocon5 try-it --auto)
+        working-directory: workshops/autocon5
+        run: task try-it AUTO=1
+
+      - name: Dump container logs on failure
+        if: failure()
+        working-directory: workshops/autocon5
+        run: |
+          for svc in prefect-flows webhook alertmanager prometheus loki infrahub-server; do
+            echo "===== $svc ====="
+            docker compose logs --tail=100 "$svc" || true
+          done
+
+      - name: Tear stack down
+        if: always()
+        working-directory: workshops/autocon5
+        run: task destroy

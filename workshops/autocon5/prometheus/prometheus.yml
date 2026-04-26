@@ -1,0 +1,27 @@
+---
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "prometheus"
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # srl2 metrics flow through telegraf-02 (which scrapes sonda-server).
+  # srl1 metrics arrive via remote_write so no scrape target is needed.
+  - job_name: "telegraf"
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["telegraf-02:9005"]
+
+rule_files:
+  - rules/*.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+      timeout: 5s

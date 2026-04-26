@@ -1,0 +1,417 @@
+# AutoCon5 — Modern Network Observability workshop stack
+#
+# Inspiration: chapters/sonda-integration in network-observability-lab.
+# Differences:
+#   - Internal/auto-created network instead of an externally pre-created one.
+#   - Infrahub replaces Nautobot as the source of truth.
+#   - Grafana provisions an Infrahub GraphQL datasource (token-authenticated).
+#   - Webhook/Prefect flows query Infrahub via GraphQL instead of Nautobot REST.
+#   - AI-assisted RCA is wired into the Prefect quarantine flow behind a flag
+#     (ENABLE_AI_RCA=true). When disabled, the flow still runs and annotates a
+#     clear "AI RCA disabled" message back to Loki.
+
+networks:
+  default:
+    name: workshop-autocon5
+    driver: bridge
+
+volumes:
+  loki_data:
+  prometheus_data:
+  grafana_data:
+  alertmanager_data:
+  prefect_data:
+  prefect_redis_data:
+  infrahub_data:
+  infrahub_db_data:
+  infrahub_cache_data:
+  infrahub_storage_data:
+  sonda_shared:
+
+services:
+  # =========================================================================
+  # Sonda — synthetic telemetry generation
+  # =========================================================================
+
+  # srl1 pipeline: sonda CLI -> remote_write directly into Prometheus.
+  sonda-srl1:
+    container_name: sonda-srl1
+    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:latest}
+    entrypoint: ["/sonda"]
+    command: ["run", "--scenario", "/scenarios/srl1-metrics.yaml"]
+    volumes:
+      - ./sonda/scenarios:/scenarios:ro
+    depends_on:
+      prometheus:
+        condition: service_started
+    restart: unless-stopped
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://127.0.0.1:12201"
+
+  # srl2 pipeline: sonda-server holds the scenarios and exposes per-scenario
+  # /metrics endpoints; telegraf-02 scrapes them.
+  sonda-server:
+    container_name: sonda-server
+    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:latest}
+    command: ["--port", "8080", "--bind", "0.0.0.0"]
+    ports:
+      - "8085:8080"
+    restart: unless-stopped
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://127.0.0.1:12201"
+
+  # Init container: posts srl2 scenarios into sonda-server and writes the
+  # discovered IDs to a shared volume for telegraf to pick up.
+  sonda-setup:
+    container_name: sonda-setup
+    image: python:3.12-slim
+    entrypoint: ["/bin/bash", "/scripts/sonda-setup.sh"]
+    environment:
+      SONDA_SERVER_URL: "http://sonda-server:8080"
+      SCENARIOS_DIR: "/scenarios"
+    volumes:
+      - ./sonda/scripts/sonda-setup.sh:/scripts/sonda-setup.sh:ro
+      - ./sonda/scenarios/srl2-metrics.yaml:/scenarios/srl2-metrics.yaml:ro
+      - sonda_shared:/shared
+    depends_on:
+      sonda-server:
+        condition: service_started
+
+  # Logs for both devices — direct push to Loki.
+  sonda-logs:
+    container_name: sonda-logs
+    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:latest}
+    entrypoint: ["/sonda"]
+    command: ["run", "--scenario", "/scenarios/all-logs.yaml"]
+    volumes:
+      - ./sonda/scenarios:/scenarios:ro
+    depends_on:
+      loki:
+        condition: service_started
+    restart: unless-stopped
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://127.0.0.1:12201"
+
+  # =========================================================================
+  # Telegraf — collection (srl2 only)
+  # =========================================================================
+
+  telegraf-02:
+    container_name: telegraf-02
+    build:
+      context: .
+      dockerfile: ./telegraf/telegraf.Dockerfile
+      args:
+        TELEGRAF_IMAGE: ${TELEGRAF_IMAGE:-docker.io/telegraf:1.31}
+    command: telegraf --config /etc/telegraf/telegraf.conf
+    tty: true
+    volumes:
+      - ./telegraf/telegraf-02.conf.toml:/etc/telegraf/telegraf.conf
+      - ./sonda/scripts/scrape-sonda-metrics.sh:/scripts/scrape-sonda-metrics.sh:ro
+      - sonda_shared:/shared:ro
+    ports:
+      - "9005:9005"
+    environment:
+      SONDA_SERVER_URL: "http://sonda-server:8080"
+    depends_on:
+      sonda-setup:
+        condition: service_completed_successfully
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://127.0.0.1:12201"
+
+  # =========================================================================
+  # Logstash — GELF -> Loki ingest
+  # =========================================================================
+
+  logstash:
+    container_name: logstash
+    image: ${LOGSTASH_LOKI_IMAGE:-docker.io/grafana/logstash-output-loki:3.1.1}
+    command: -f /home/logstash/logstash.cfg
+    volumes:
+      - ./logstash/logstash.cfg:/home/logstash/logstash.cfg
+    ports:
+      - "1515:1515"
+      - "1515:1515/udp"
+      - "9600:9600"
+      - "12201:12201/udp"
+    environment:
+      XPACK_MONITORING_ENABLED: "false"
+
+  # =========================================================================
+  # Storage / querying
+  # =========================================================================
+
+  loki:
+    container_name: loki
+    image: ${LOKI_IMAGE:-docker.io/grafana/loki:3.1.1}
+    ports:
+      - "3001:3001"
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - ./loki/loki-config.yml:/etc/loki/loki-config.yml
+      - ./loki/rules/:/rules/fake/
+      - loki_data:/loki:rw
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://127.0.0.1:12201"
+
+  prometheus:
+    container_name: prometheus
+    image: ${PROMETHEUS_IMAGE:-docker.io/prom/prometheus:v2.52.0}
+    ports:
+      - "9090:9090"
+    command:
+      - --storage.tsdb.retention.size=512MB
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.enable-remote-write-receiver
+    tty: true
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus/rules/:/etc/prometheus/rules/
+      - prometheus_data:/prometheus
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://127.0.0.1:12201"
+
+  # =========================================================================
+  # Visualization & alerting
+  # =========================================================================
+
+  alertmanager:
+    container_name: alertmanager
+    image: ${ALERTMANAGER_IMAGE:-docker.io/prom/alertmanager:v0.26.0}
+    ports:
+      - "9093:9093"
+    command: --config.file=/etc/alertmanager/alertmanager.yml --cluster.advertise-address=0.0.0.0:9093
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+      - alertmanager_data:/data
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://127.0.0.1:12201"
+
+  grafana:
+    container_name: grafana
+    image: ${GRAFANA_IMAGE:-docker.io/grafana/grafana:10.4.4}
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/datasources.yml:/etc/grafana/provisioning/datasources/all.yml
+      - ./grafana/dashboards.yml:/etc/grafana/provisioning/dashboards/all.yml
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+      - ./grafana/grafana.ini:/etc/grafana/grafana.ini
+      - grafana_data:/grafana
+    environment:
+      GF_INSTALL_PLUGINS: natel-discrete-panel,fifemon-graphql-datasource,yesoreyeram-infinity-datasource,volkovlabs-echarts-panel
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      INFRAHUB_API_TOKEN: ${INFRAHUB_API_TOKEN}
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://127.0.0.1:12201"
+
+  # =========================================================================
+  # Source of truth — Infrahub
+  # The compose layout is the standard OpsMill demo: server + database +
+  # cache + task-worker. Token-seeded admin so the loader script can apply
+  # the schema and create nodes immediately on first boot.
+  # =========================================================================
+
+  infrahub-db:
+    container_name: infrahub-db
+    image: memgraph/memgraph-mage:1.22-memgraph-2.22
+    command: ["--storage-snapshot-interval-sec=300", "--storage-wal-enabled=true",
+              "--storage-recover-on-startup=true", "--storage-snapshot-on-exit=true",
+              "--telemetry-enabled=false", "--bolt-server-name-for-init=Neo4j/v5.11.0"]
+    volumes:
+      - infrahub_db_data:/var/lib/memgraph
+
+  infrahub-cache:
+    container_name: infrahub-cache
+    image: redis:7.2
+    volumes:
+      - infrahub_cache_data:/data
+
+  infrahub-server:
+    container_name: infrahub-server
+    image: ${INFRAHUB_IMAGE:-registry.opsmill.io/opsmill/infrahub:1.1}
+    command: gunicorn --config backend/infrahub/api/gunicorn_config.py --logger-class infrahub.serve.log.GunicornLogger -w 2 infrahub.server:app
+    ports:
+      - "8000:8000"
+    environment:
+      INFRAHUB_PRODUCTION: "true"
+      INFRAHUB_INITIAL_ADMIN_TOKEN: ${INFRAHUB_API_TOKEN}
+      INFRAHUB_SECURITY_SECRET_KEY: 327f747f-efac-42be-9e73-999f08f86b92
+      INFRAHUB_DB_TYPE: memgraph
+      INFRAHUB_DB_ADDRESS: infrahub-db
+      INFRAHUB_DB_PORT: 7687
+      INFRAHUB_BROKER_ADDRESS: infrahub-cache
+      INFRAHUB_CACHE_ADDRESS: infrahub-cache
+      INFRAHUB_INITIAL_AGENT_TOKEN: ${INFRAHUB_API_TOKEN}
+      INFRAHUB_LOG_LEVEL: INFO
+    volumes:
+      - infrahub_storage_data:/opt/infrahub/storage
+      - infrahub_data:/opt/infrahub
+    depends_on:
+      - infrahub-db
+      - infrahub-cache
+
+  infrahub-task-worker:
+    container_name: infrahub-task-worker
+    image: ${INFRAHUB_IMAGE:-registry.opsmill.io/opsmill/infrahub:1.1}
+    command: infrahub task-worker
+    environment:
+      INFRAHUB_PRODUCTION: "true"
+      INFRAHUB_DB_TYPE: memgraph
+      INFRAHUB_DB_ADDRESS: infrahub-db
+      INFRAHUB_DB_PORT: 7687
+      INFRAHUB_BROKER_ADDRESS: infrahub-cache
+      INFRAHUB_CACHE_ADDRESS: infrahub-cache
+      INFRAHUB_INTERNAL_ADDRESS: http://infrahub-server:8000
+      INFRAHUB_API_TOKEN: ${INFRAHUB_API_TOKEN}
+    depends_on:
+      - infrahub-server
+
+  # =========================================================================
+  # Webhook receiver for Alertmanager
+  # =========================================================================
+
+  webhook:
+    container_name: webhook
+    build:
+      context: .
+      dockerfile: ./webhook/webhook.Dockerfile
+      args:
+        PYTHON_VER: ${PYTHON_VER:-3.10}
+    command: "python -m app.main"
+    ports:
+      - "9997:9997"
+    tty: true
+    environment:
+      PREFECT_API_URL: "http://prefect-server:4200/api"
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://127.0.0.1:12201"
+
+  # =========================================================================
+  # Prefect 3 — workflow orchestration for Part 3
+  # postgres + redis + server + services + worker + a flow-server container
+  # that registers and serves the alert-receiver deployment.
+  # =========================================================================
+
+  prefect-postgres:
+    container_name: prefect-postgres
+    image: postgres:14
+    environment:
+      POSTGRES_USER: prefect
+      POSTGRES_PASSWORD: prefect
+      POSTGRES_DB: prefect
+    volumes:
+      - prefect_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prefect"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  prefect-redis:
+    container_name: prefect-redis
+    image: redis:7
+    volumes:
+      - prefect_redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  prefect-server:
+    container_name: prefect-server
+    image: prefecthq/prefect:3-latest
+    depends_on:
+      prefect-postgres:
+        condition: service_healthy
+      prefect-redis:
+        condition: service_healthy
+    environment:
+      PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://prefect:prefect@prefect-postgres:5432/prefect
+      PREFECT_SERVER_API_HOST: 0.0.0.0
+      PREFECT_MESSAGING_BROKER: prefect_redis.messaging
+      PREFECT_MESSAGING_CACHE: prefect_redis.messaging
+      PREFECT_REDIS_MESSAGING_HOST: prefect-redis
+      PREFECT_REDIS_MESSAGING_PORT: 6379
+      PREFECT_REDIS_MESSAGING_DB: 0
+    command: prefect server start --no-services
+    ports:
+      - "4200:4200"
+
+  prefect-services:
+    container_name: prefect-services
+    image: prefecthq/prefect:3-latest
+    depends_on:
+      prefect-postgres:
+        condition: service_healthy
+      prefect-redis:
+        condition: service_healthy
+    environment:
+      PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://prefect:prefect@prefect-postgres:5432/prefect
+      PREFECT_MESSAGING_BROKER: prefect_redis.messaging
+      PREFECT_MESSAGING_CACHE: prefect_redis.messaging
+      PREFECT_REDIS_MESSAGING_HOST: prefect-redis
+      PREFECT_REDIS_MESSAGING_PORT: 6379
+      PREFECT_REDIS_MESSAGING_DB: 0
+    command: prefect server services start
+
+  prefect-worker:
+    container_name: prefect-worker
+    image: prefecthq/prefect:3-latest
+    depends_on:
+      prefect-server:
+        condition: service_started
+    environment:
+      PREFECT_API_URL: http://prefect-server:4200/api
+    command: prefect worker start --pool local-pool
+
+  # The flow server: registers and runs the alert-receiver deployment, with
+  # all the workshop SDK code mounted in. This is the container the webhook
+  # invokes via run_deployment().
+  prefect-flows:
+    container_name: prefect-flows
+    build:
+      context: .
+      dockerfile: ./automation/flows.Dockerfile
+    command: ["python", "/app/serve.py"]
+    environment:
+      PREFECT_API_URL: http://prefect-server:4200/api
+      INFRAHUB_ADDRESS: ${INFRAHUB_ADDRESS:-http://infrahub-server:8000}
+      INFRAHUB_API_TOKEN: ${INFRAHUB_API_TOKEN}
+      PROMETHEUS_URL: http://prometheus:9090
+      LOKI_URL: http://loki:3001
+      ALERTMANAGER_URL: http://alertmanager:9093
+      ENABLE_AI_RCA: ${ENABLE_AI_RCA:-false}
+      AI_RCA_PROVIDER: ${AI_RCA_PROVIDER:-openai}
+      AI_RCA_MODEL: ${AI_RCA_MODEL:-gpt-4o-mini}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    volumes:
+      - ./automation:/app
+    depends_on:
+      prefect-server:
+        condition: service_started
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://127.0.0.1:12201"

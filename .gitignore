@@ -1,0 +1,50 @@
+# Local secrets / overrides
+.env
+**/.env
+!.env.example
+!**/.env.example
+.envrc
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors / IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+
+# uv — keep uv.lock tracked for reproducible installs.
+# (No ignore needed for uv.lock itself; it should be committed.)
+
+# Docker / runtime artefacts
+*.pid
+*.log
+**/sonda_shared/
+**/scenario-ids.txt
+
+# Node (just in case)
+node_modules/
+
+# Local data dumps
+**/_local/
+
+# notes/ — local-only working scratchpad. See notes/README.md for the
+# convention. The folder structure is tracked (README + .gitkeep); the
+# contents are private to your machine.
+notes/*
+!notes/README.md
+!notes/.gitkeep

@@ -1,0 +1,31 @@
+[project]
+name = "autocon5-workshop"
+version = "0.1.0"
+description = "AutoCon5 — Modern Network Observability workshop CLI (autocon5)."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+  "nobs",                     # the shared CLI / clients (workspace member)
+  "typer[all]>=0.12,<1",
+  "infrahub-sdk[ctl]>=1.0,<2.0",
+  "pyyaml>=6.0",
+  "requests>=2.31",
+]
+
+[project.scripts]
+autocon5 = "autocon5_cli.main:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/autocon5_cli"]
+
+[tool.uv]
+package = true
+
+# Resolve `nobs` from the local workspace member instead of PyPI.
+[tool.uv.sources]
+nobs = { workspace = true }

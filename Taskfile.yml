@@ -1,0 +1,60 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+#
+# Umbrella Taskfile for the workshops repo.
+# Each workshop lives under workshops/<name>/ and ships its own Taskfile.yml.
+# The tasks below are thin wrappers that namespace into each workshop so a
+# user can run `task <workshop>:<task>` from the repo root without cd'ing.
+#
+# Python tooling is managed by uv (https://docs.astral.sh/uv/). The repo is
+# a uv workspace (see pyproject.toml at the root); each workshop is a
+# member with its own deps. `task setup` runs `uv sync` to install
+# everything into a single .venv/ at the root.
+
+version: "3"
+
+silent: true
+
+includes:
+  autocon5:
+    taskfile: ./workshops/autocon5/Taskfile.yml
+    dir: ./workshops/autocon5
+
+tasks:
+  default:
+    desc: List all available tasks
+    cmds:
+      - task --list-all
+
+  setup:
+    desc: Install Python deps for every workshop (uv sync)
+    cmds:
+      - |
+        if ! command -v uv >/dev/null 2>&1; then
+          echo "uv is not installed. Get it from https://docs.astral.sh/uv/" >&2
+          echo "  curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
+          exit 1
+        fi
+      - uv sync
+      - echo "Workshop deps are installed in ./.venv. Use 'task <workshop>:up' to bring a stack online."
+
+  preflight:
+    desc: Check the current shell + machine can run a workshop (Docker, RAM, disk, network)
+    cmds:
+      - bash scripts/preflight.sh
+
+  workshops:
+    desc: List the workshops in this repo
+    cmds:
+      - |
+        echo "Available workshops:"
+        for d in workshops/*/; do
+          name=$(basename "$d")
+          if [ -f "$d/README.md" ]; then
+            desc=$(grep -m1 -E "^# " "$d/README.md" | sed 's/^# //')
+            printf "  %-12s  %s\n" "$name" "$desc"
+          else
+            printf "  %s\n" "$name"
+          fi
+        done
+        echo ""
+        echo "Run 'task <workshop>:default' for workshop-specific tasks (e.g. 'task autocon5:up')."

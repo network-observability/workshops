@@ -1,0 +1,392 @@
+# Sonda scenarios for srl2 — served by sonda-server for telegraf scraping
+#
+# These scenarios are POSTed to sonda-server via the init script.
+# Telegraf-02 scrapes the /scenarios/{id}/metrics endpoint.
+#
+# NOTE: Each scenario is posted individually to sonda-server as a separate
+# API call. The scenarios array here is split into individual files by
+# the setup script.
+#
+# Encoder/sink are set to prometheus_text/stdout since sonda-server
+# uses its internal recent_metrics buffer for the scrape endpoint.
+scenarios:
+  # ---------------------------------------------------------------------------
+  # BGP metrics — peer 10.1.2.1 (established)
+  # ---------------------------------------------------------------------------
+  - signal_type: metrics
+    name: bgp_admin_state
+    rate: 0.1
+    labels:
+      device: srl2
+      peer_address: "10.1.2.1"
+      afi_safi_name: ipv4-unicast
+      name: default
+    generator:
+      type: constant
+      value: 1.0
+    encoder: { type: prometheus_text }
+    sink: { type: stdout }
+
+  - signal_type: metrics
+    name: bgp_oper_state
+    rate: 0.1
+    labels:
+      device: srl2
+      peer_address: "10.1.2.1"
+      afi_safi_name: ipv4-unicast
+      name: default
+    generator:
+      type: constant
+      value: 1.0
+    encoder: { type: prometheus_text }
+    sink: { type: stdout }
+
+  - signal_type: metrics
+    name: bgp_received_routes
+    rate: 0.1
+    labels:
+      device: srl2
+      peer_address: "10.1.2.1"
+      afi_safi_name: ipv4-unicast
+      name: default
+    generator:
+      type: constant
+      value: 10.0
+    encoder: { type: prometheus_text }
+    sink: { type: stdout }
+
+  - signal_type: metrics
+    name: bgp_sent_routes
+    rate: 0.1
+    labels:
+      device: srl2
+      peer_address: "10.1.2.1"
+      afi_safi_name: ipv4-unicast
+      name: default
+    generator:
+      type: constant
+      value: 10.0
+    encoder: { type: prometheus_text }
+    sink: { type: stdout }
+
+  - signal_type: metrics
+    name: bgp_active_routes
+    rate: 0.1
+    labels:
+      device: srl2
+      peer_address: "10.1.2.1"
+      afi_safi_name: ipv4-unicast
+      name: default
+    generator:
+      type: constant
+      value: 10.0
+    encoder: { type: prometheus_text }
+    sink: { type: stdout }
+
+  # ---------------------------------------------------------------------------
+  # BGP metrics — peer 10.1.7.1 (established)
+  # ---------------------------------------------------------------------------
+  - signal_type: metrics
+    name: bgp_admin_state
+    rate: 0.1
+    labels:
+      device: srl2
+      peer_address: "10.1.7.1"
+      afi_safi_name: ipv4-unicast
+      name: default
+    generator:
+      type: constant
+      value: 1.0
+    encoder: { type: prometheus_text }
+    sink: { type: stdout }
+
+  - signal_type: metrics
+    name: bgp_oper_state
+    rate: 0.1
+    labels:
+      device: srl2
+      peer_address: "10.1.7.1"
+      afi_safi_name: ipv4-unicast
+      name: default
+    generator:
+      type: constant
+      value: 1.0
+    encoder: { type: prometheus_text }
+    sink: { type: stdout }
+
+  - signal_type: metrics
+    name: bgp_received_routes
+    rate: 0.1
+    labels:
+      device: srl2
+      peer_address: "10.1.7.1"
+      afi_safi_name: ipv4-unicast
+      name: default
+    generator:
+      type: constant
+      value: 10.0
+    encoder: { type: prometheus_text }
+    sink: { type: stdout }
+
+  - signal_type: metrics
+    name: bgp_sent_routes
+    rate: 0.1
+    labels:
+      device: srl2
+      peer_address: "10.1.7.1"
+      afi_safi_name: ipv4-unicast
+      name: default
+    generator:
+      type: constant
+      value: 10.0
+    encoder: { type: prometheus_text }
+    sink: { type: stdout }
+
+  - signal_type: metrics
+    name: bgp_active_routes
+    rate: 0.1
+    labels:
+      device: srl2
+      peer_address: "10.1.7.1"
+      afi_safi_name: ipv4-unicast
+      name: default
+    generator:
+      type: constant
+      value: 10.0
+    encoder: { type: prometheus_text }
+    sink: { type: stdout }
+
+  # ---------------------------------------------------------------------------
+  # BGP metrics — peer 10.1.11.1 (broken — intentional mismatch)
+  # ---------------------------------------------------------------------------
+  - signal_type: metrics
+    name: bgp_admin_state
+    rate: 0.1
+    labels:
+      device: srl2
+      peer_address: "10.1.11.1"
+      afi_safi_name: ipv4-unicast
+      name: default
+    generator:
+      type: constant
+      value: 1.0
+    encoder: { type: prometheus_text }
+    sink: { type: stdout }
+
+  - signal_type: metrics
+    name: bgp_oper_state
+    rate: 0.1
+    labels:
+      device: srl2
+      peer_address: "10.1.11.1"
+      afi_safi_name: ipv4-unicast
+      name: default
+    generator:
+      type: constant
+      value: 5.0  # active (not established)
+    encoder: { type: prometheus_text }
+    sink: { type: stdout }
+
+  - signal_type: metrics
+    name: bgp_received_routes
+    rate: 0.1
+    labels:
+      device: srl2
+      peer_address: "10.1.11.1"
+      afi_safi_name: ipv4-unicast
+      name: default
+    generator:
+      type: constant
+      value: 0.0
+    encoder: { type: prometheus_text }
+    sink: { type: stdout }
+
+  # ---------------------------------------------------------------------------
+  # Interface metrics — ethernet-1/1
+  # ---------------------------------------------------------------------------
+  - signal_type: metrics
+    name: interface_admin_state
+    rate: 0.1
+    labels:
+      device: srl2
+      name: ethernet-1/1
+      intf_role: peer
+    generator:
+      type: constant
+      value: 1.0
+    encoder: { type: prometheus_text }
+    sink: { type: stdout }
+
+  - signal_type: metrics
+    name: interface_oper_state
+    rate: 0.1
+    labels:
+      device: srl2
+      name: ethernet-1/1
+      intf_role: peer
+    generator:
+      type: constant
+      value: 1.0
+    encoder: { type: prometheus_text }
+    sink: { type: stdout }
+
+  - signal_type: metrics
+    name: interface_in_octets
+    rate: 0.1
+    labels:
+      device: srl2
+      name: ethernet-1/1
+      intf_role: peer
+    generator:
+      type: sawtooth
+      min: 0.0
+      max: 500000000.0
+      period_secs: 300
+    jitter: 1000000.0
+    jitter_seed: 142
+    encoder: { type: prometheus_text }
+    sink: { type: stdout }
+
+  - signal_type: metrics
+    name: interface_out_octets
+    rate: 0.1
+    labels:
+      device: srl2
+      name: ethernet-1/1
+      intf_role: peer
+    generator:
+      type: sawtooth
+      min: 0.0
+      max: 400000000.0
+      period_secs: 300
+    jitter: 800000.0
+    jitter_seed: 143
+    encoder: { type: prometheus_text }
+    sink: { type: stdout }
+
+  # ---------------------------------------------------------------------------
+  # Interface metrics — ethernet-1/10
+  # ---------------------------------------------------------------------------
+  - signal_type: metrics
+    name: interface_admin_state
+    rate: 0.1
+    labels:
+      device: srl2
+      name: ethernet-1/10
+      intf_role: peer
+    generator:
+      type: constant
+      value: 1.0
+    encoder: { type: prometheus_text }
+    sink: { type: stdout }
+
+  - signal_type: metrics
+    name: interface_oper_state
+    rate: 0.1
+    labels:
+      device: srl2
+      name: ethernet-1/10
+      intf_role: peer
+    generator:
+      type: constant
+      value: 1.0
+    encoder: { type: prometheus_text }
+    sink: { type: stdout }
+
+  - signal_type: metrics
+    name: interface_in_octets
+    rate: 0.1
+    labels:
+      device: srl2
+      name: ethernet-1/10
+      intf_role: peer
+    generator:
+      type: sawtooth
+      min: 0.0
+      max: 300000000.0
+      period_secs: 240
+    jitter: 750000.0
+    jitter_seed: 144
+    encoder: { type: prometheus_text }
+    sink: { type: stdout }
+
+  - signal_type: metrics
+    name: interface_out_octets
+    rate: 0.1
+    labels:
+      device: srl2
+      name: ethernet-1/10
+      intf_role: peer
+    generator:
+      type: sawtooth
+      min: 0.0
+      max: 250000000.0
+      period_secs: 240
+    jitter: 600000.0
+    jitter_seed: 145
+    encoder: { type: prometheus_text }
+    sink: { type: stdout }
+
+  # ---------------------------------------------------------------------------
+  # Interface metrics — ethernet-1/11 (broken link)
+  # ---------------------------------------------------------------------------
+  - signal_type: metrics
+    name: interface_admin_state
+    rate: 0.1
+    labels:
+      device: srl2
+      name: ethernet-1/11
+      intf_role: peer
+    generator:
+      type: constant
+      value: 1.0
+    encoder: { type: prometheus_text }
+    sink: { type: stdout }
+
+  - signal_type: metrics
+    name: interface_oper_state
+    rate: 0.1
+    labels:
+      device: srl2
+      name: ethernet-1/11
+      intf_role: peer
+    generator:
+      type: constant
+      value: 2.0  # down
+    encoder: { type: prometheus_text }
+    sink: { type: stdout }
+
+  # ---------------------------------------------------------------------------
+  # System metrics
+  # ---------------------------------------------------------------------------
+  - signal_type: metrics
+    name: cpu_used
+    rate: 0.1
+    labels:
+      device: srl2
+      slot: A
+    generator:
+      type: sine
+      amplitude: 12.0
+      period_secs: 150
+      offset: 22.0
+    jitter: 2.0
+    jitter_seed: 150
+    encoder: { type: prometheus_text }
+    sink: { type: stdout }
+
+  - signal_type: metrics
+    name: memory_used
+    rate: 0.1
+    labels:
+      device: srl2
+      slot: A
+    generator:
+      type: sine
+      amplitude: 4.0
+      period_secs: 200
+      offset: 42.0
+    jitter: 1.0
+    jitter_seed: 151
+    encoder: { type: prometheus_text }
+    sink: { type: stdout }

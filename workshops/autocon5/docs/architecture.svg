@@ -1,0 +1,229 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="0 0 1180 640"
+     role="img"
+     aria-labelledby="title desc"
+     font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+  <title id="title">AutoCon5 workshop architecture</title>
+  <desc id="desc">
+    Synthetic telemetry from sonda flows into Prometheus and Loki, then through
+    Alertmanager into a FastAPI webhook, which fans out to a Prefect flow that
+    queries Infrahub for source-of-truth intent before deciding to quarantine,
+    skip, or annotate. Grafana sits on top reading from all three stores.
+  </desc>
+
+  <style><![CDATA[
+    .layer-label  { font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+                    text-transform: uppercase; fill: #6b7280; }
+    .box          { stroke-width: 1.5; }
+    .box-title    { font-size: 13px; font-weight: 600; fill: #111827; }
+    .box-sub      { font-size: 11px; fill: #4b5563; }
+    .arrow        { fill: none; stroke: #9ca3af; stroke-width: 1.5; }
+    .arrow-strong { fill: none; stroke: #6b7280; stroke-width: 2; }
+    .edge-label   { font-size: 10px; fill: #6b7280; font-style: italic; }
+
+    /* Per-layer fills, light pastel backgrounds. */
+    .src      { fill: #e0f2fe; stroke: #0284c7; }   /* sonda — sky      */
+    .pipe     { fill: #fef3c7; stroke: #d97706; }   /* prom/loki — amber */
+    .alert    { fill: #fee2e2; stroke: #dc2626; }   /* alertmanager — red */
+    .auto     { fill: #ede9fe; stroke: #7c3aed; }   /* webhook + prefect — violet */
+    .sot      { fill: #dcfce7; stroke: #16a34a; }   /* infrahub — green */
+    .viz      { fill: #f3e8ff; stroke: #9333ea; }   /* grafana — purple */
+  ]]></style>
+
+  <defs>
+    <marker id="arrowhead" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6b7280"/>
+    </marker>
+    <marker id="arrowhead-faint" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#9ca3af"/>
+    </marker>
+  </defs>
+
+  <!-- ============================================================== -->
+  <!-- Row 1 — Grafana (top, spans middle)                             -->
+  <!-- ============================================================== -->
+  <text x="60"  y="50" class="layer-label">Visualization</text>
+  <g>
+    <rect x="430" y="40" width="320" height="60" rx="8" class="box viz"/>
+    <text x="590" y="64" class="box-title" text-anchor="middle">Grafana</text>
+    <text x="590" y="84" class="box-sub"   text-anchor="middle">3 dashboards · prom + loki + infrahub datasources</text>
+  </g>
+
+  <!-- ============================================================== -->
+  <!-- Row 2 — Sonda / Pipelines / Alerting / Automation               -->
+  <!-- ============================================================== -->
+  <text x="60"  y="160" class="layer-label">Synthetic telemetry</text>
+
+  <!-- sonda-srl1 (CLI direct push) -->
+  <g>
+    <rect x="40" y="180" width="180" height="64" rx="8" class="box src"/>
+    <text x="130" y="204" class="box-title" text-anchor="middle">sonda-srl1 (CLI)</text>
+    <text x="130" y="224" class="box-sub"   text-anchor="middle">remote_write</text>
+  </g>
+
+  <!-- sonda-server + telegraf-02 -->
+  <g>
+    <rect x="40" y="270" width="180" height="64" rx="8" class="box src"/>
+    <text x="130" y="294" class="box-title" text-anchor="middle">sonda-server</text>
+    <text x="130" y="314" class="box-sub"   text-anchor="middle">scenarios for srl2</text>
+  </g>
+  <g>
+    <rect x="40" y="358" width="180" height="64" rx="8" class="box src"/>
+    <text x="130" y="382" class="box-title" text-anchor="middle">telegraf-02</text>
+    <text x="130" y="402" class="box-sub"   text-anchor="middle">scrape + normalize</text>
+  </g>
+  <!-- arrow sonda-server -> telegraf -->
+  <path d="M 130 334 L 130 358" class="arrow" marker-end="url(#arrowhead-faint)"/>
+
+  <!-- sonda-logs -->
+  <g>
+    <rect x="40" y="446" width="180" height="64" rx="8" class="box src"/>
+    <text x="130" y="470" class="box-title" text-anchor="middle">sonda-logs</text>
+    <text x="130" y="490" class="box-sub"   text-anchor="middle">syslog + UPDOWN</text>
+  </g>
+
+  <!-- logstash (host containers' GELF logs) -->
+  <g>
+    <rect x="40" y="534" width="180" height="56" rx="8" class="box src"/>
+    <text x="130" y="558" class="box-title" text-anchor="middle">logstash (GELF)</text>
+    <text x="130" y="576" class="box-sub"   text-anchor="middle">container logs</text>
+  </g>
+
+  <!-- ============================================================== -->
+  <!-- Storage column                                                  -->
+  <!-- ============================================================== -->
+  <text x="290" y="160" class="layer-label">Storage</text>
+
+  <g>
+    <rect x="280" y="180" width="180" height="84" rx="8" class="box pipe"/>
+    <text x="370" y="208" class="box-title" text-anchor="middle">Prometheus</text>
+    <text x="370" y="228" class="box-sub"   text-anchor="middle">remote_write rcvr</text>
+    <text x="370" y="246" class="box-sub"   text-anchor="middle">+ alerting / recording rules</text>
+  </g>
+
+  <g>
+    <rect x="280" y="446" width="180" height="84" rx="8" class="box pipe"/>
+    <text x="370" y="474" class="box-title" text-anchor="middle">Loki</text>
+    <text x="370" y="494" class="box-sub"   text-anchor="middle">log streams</text>
+    <text x="370" y="512" class="box-sub"   text-anchor="middle">+ recording rule → Prom</text>
+  </g>
+
+  <!-- arrows into storage -->
+  <path d="M 220 212 L 280 212" class="arrow" marker-end="url(#arrowhead-faint)"/>
+  <text x="250" y="206" class="edge-label" text-anchor="middle">push</text>
+
+  <path d="M 220 390 C 250 390, 250 240, 280 240" class="arrow" marker-end="url(#arrowhead-faint)"/>
+  <text x="262" y="350" class="edge-label">scrape</text>
+
+  <path d="M 220 478 L 280 478" class="arrow" marker-end="url(#arrowhead-faint)"/>
+  <text x="250" y="472" class="edge-label" text-anchor="middle">push</text>
+
+  <path d="M 220 562 C 250 562, 250 510, 280 510" class="arrow" marker-end="url(#arrowhead-faint)"/>
+
+  <!-- Loki recording rule remote_write back into Prom -->
+  <path d="M 370 446 L 370 264" class="arrow" stroke-dasharray="4 3" marker-end="url(#arrowhead-faint)"/>
+  <text x="382" y="358" class="edge-label">recording rule → remote_write</text>
+
+  <!-- ============================================================== -->
+  <!-- Alerting                                                        -->
+  <!-- ============================================================== -->
+  <text x="540" y="160" class="layer-label">Alerting</text>
+
+  <g>
+    <rect x="510" y="180" width="180" height="64" rx="8" class="box alert"/>
+    <text x="600" y="204" class="box-title" text-anchor="middle">Alertmanager</text>
+    <text x="600" y="224" class="box-sub"   text-anchor="middle">routes &amp; silences</text>
+  </g>
+
+  <!-- prom -> AM -->
+  <path d="M 460 212 L 510 212" class="arrow" marker-end="url(#arrowhead)"/>
+  <!-- loki ruler -> AM -->
+  <path d="M 460 488 C 490 488, 490 240, 510 240" class="arrow" marker-end="url(#arrowhead)"/>
+  <text x="478" y="368" class="edge-label">loki ruler</text>
+
+  <!-- ============================================================== -->
+  <!-- Automation column                                               -->
+  <!-- ============================================================== -->
+  <text x="780" y="160" class="layer-label">Automation</text>
+
+  <g>
+    <rect x="750" y="180" width="180" height="64" rx="8" class="box auto"/>
+    <text x="840" y="204" class="box-title" text-anchor="middle">webhook (FastAPI)</text>
+    <text x="840" y="224" class="box-sub"   text-anchor="middle">fan-out to Prefect</text>
+  </g>
+
+  <!-- AM -> webhook -->
+  <path d="M 690 212 L 750 212" class="arrow" marker-end="url(#arrowhead)"/>
+  <text x="720" y="206" class="edge-label" text-anchor="middle">POST</text>
+
+  <g>
+    <rect x="750" y="270" width="180" height="64" rx="8" class="box auto"/>
+    <text x="840" y="294" class="box-title" text-anchor="middle">Prefect alert-receiver</text>
+    <text x="840" y="314" class="box-sub"   text-anchor="middle">flow + tasks</text>
+  </g>
+
+  <!-- webhook -> prefect -->
+  <path d="M 840 244 L 840 270" class="arrow" marker-end="url(#arrowhead)"/>
+
+  <!-- decision branch -->
+  <g>
+    <rect x="980" y="180" width="160" height="64" rx="8" class="box auto"/>
+    <text x="1060" y="204" class="box-title" text-anchor="middle">policy</text>
+    <text x="1060" y="224" class="box-sub"   text-anchor="middle">stop / skip / proceed</text>
+  </g>
+  <path d="M 930 302 C 955 302, 955 220, 980 220" class="arrow" marker-end="url(#arrowhead)"/>
+
+  <!-- four canonical paths from policy / prefect -->
+  <g>
+    <rect x="980" y="270" width="160" height="44" rx="6" class="box auto"/>
+    <text x="1060" y="296" class="box-title" text-anchor="middle">quarantine (silence)</text>
+  </g>
+  <g>
+    <rect x="980" y="324" width="160" height="44" rx="6" class="box auto"/>
+    <text x="1060" y="350" class="box-title" text-anchor="middle">skip (intent matches)</text>
+  </g>
+  <g>
+    <rect x="980" y="378" width="160" height="44" rx="6" class="box auto"/>
+    <text x="1060" y="404" class="box-title" text-anchor="middle">audit (resolved)</text>
+  </g>
+  <g>
+    <rect x="980" y="432" width="160" height="44" rx="6" class="box auto"/>
+    <text x="1060" y="458" class="box-title" text-anchor="middle">AI RCA (opt-in)</text>
+  </g>
+  <path d="M 930 290 L 980 290" class="arrow" marker-end="url(#arrowhead-faint)"/>
+  <path d="M 930 302 L 980 344" class="arrow" marker-end="url(#arrowhead-faint)"/>
+  <path d="M 930 314 L 980 398" class="arrow" marker-end="url(#arrowhead-faint)"/>
+  <path d="M 930 326 L 980 452" class="arrow" marker-end="url(#arrowhead-faint)"/>
+
+  <!-- annotations all flow back to Loki -->
+  <path d="M 1060 476 C 1060 600, 370 600, 370 530" class="arrow"
+        stroke-dasharray="4 3" marker-end="url(#arrowhead-faint)"/>
+  <text x="700" y="615" class="edge-label" text-anchor="middle">annotate decisions back into Loki (audit trail)</text>
+
+  <!-- ============================================================== -->
+  <!-- Source of truth (bottom)                                        -->
+  <!-- ============================================================== -->
+  <text x="540" y="370" class="layer-label">Source of truth</text>
+
+  <g>
+    <rect x="510" y="390" width="180" height="84" rx="8" class="box sot"/>
+    <text x="600" y="418" class="box-title" text-anchor="middle">Infrahub</text>
+    <text x="600" y="438" class="box-sub"   text-anchor="middle">Workshop schema</text>
+    <text x="600" y="456" class="box-sub"   text-anchor="middle">device · iface · bgp · maintenance</text>
+  </g>
+
+  <!-- Prefect <-> Infrahub (GraphQL) -->
+  <path d="M 750 302 C 720 302, 720 432, 690 432" class="arrow" marker-end="url(#arrowhead)"/>
+  <text x="710" y="368" class="edge-label" text-anchor="middle">GraphQL (intent gate)</text>
+
+  <!-- Grafana edges (top) -->
+  <path d="M 510 80 C 480 80, 480 200, 460 200" class="arrow" stroke-dasharray="3 3" marker-end="url(#arrowhead-faint)"/>
+  <text x="468" y="142" class="edge-label">prom</text>
+  <path d="M 510 95 C 460 95, 460 470, 460 470" class="arrow" stroke-dasharray="3 3" marker-end="url(#arrowhead-faint)"/>
+  <text x="430" y="276" class="edge-label">loki</text>
+  <path d="M 750 95 C 760 95, 760 410, 690 410" class="arrow" stroke-dasharray="3 3" marker-end="url(#arrowhead-faint)"/>
+  <text x="760" y="142" class="edge-label">infrahub</text>
+</svg>

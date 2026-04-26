@@ -1,0 +1,124 @@
+# Sonda log scenarios for both srl1 and srl2 — direct push to Loki
+#
+# Generates syslog-style log messages that match what SR Linux devices produce.
+# Includes UPDOWN events to trigger the PeerInterfaceFlapping Loki alert.
+scenarios:
+  # ---------------------------------------------------------------------------
+  # srl1 — General device logs
+  # ---------------------------------------------------------------------------
+  - signal_type: logs
+    name: srl1_system_logs
+    rate: 0.05
+    labels:
+      device: srl1
+      level: info
+      type: syslog
+    generator:
+      type: template
+      templates:
+        - message: "mgmt|2456|17|00071|Configuration committed by user {user}"
+          field_pools:
+            user: ["netobs", "admin"]
+        - message: "aaa|2310|17|00045|User {user} logged in via {method}"
+          field_pools:
+            user: ["netobs", "admin"]
+            method: ["ssh", "console", "api"]
+        - message: "chassis|1044|8|00012|Temperature sensor {sensor}: {temp}C (threshold: 70C)"
+          field_pools:
+            sensor: ["inlet", "outlet", "cpu"]
+            temp: ["32", "35", "38", "41"]
+      severity_weights:
+        info: 0.8
+        warn: 0.15
+        error: 0.05
+    encoder: { type: json_lines }
+    sink:
+      type: loki
+      url: "http://loki:3001"
+      batch_size: 10
+
+  # ---------------------------------------------------------------------------
+  # srl1 — Interface UPDOWN events (triggers PeerInterfaceFlapping alert)
+  # ---------------------------------------------------------------------------
+  - signal_type: logs
+    name: srl1_updown_logs
+    rate: 0.05  # ~6 events/2min, exceeds PeerInterfaceFlapping threshold (>3)
+    labels:
+      device: srl1
+      level: warning
+      type: syslog
+      vendor_facility_process: UPDOWN
+      interface: ethernet-1/1
+    generator:
+      type: template
+      templates:
+        - message: "Interface ethernet-1/1, operational state changed to {state}"
+          field_pools:
+            state: ["up", "down"]
+      severity_weights:
+        warn: 1.0
+    encoder: { type: json_lines }
+    sink:
+      type: loki
+      url: "http://loki:3001"
+      batch_size: 5
+
+  # ---------------------------------------------------------------------------
+  # srl2 — General device logs
+  # ---------------------------------------------------------------------------
+  - signal_type: logs
+    name: srl2_system_logs
+    rate: 0.05
+    labels:
+      device: srl2
+      level: info
+      type: syslog
+    generator:
+      type: template
+      templates:
+        - message: "mgmt|2456|17|00071|Configuration committed by user {user}"
+          field_pools:
+            user: ["netobs", "admin"]
+        - message: "aaa|2310|17|00045|User {user} logged in via {method}"
+          field_pools:
+            user: ["netobs", "admin"]
+            method: ["ssh", "console", "api"]
+        - message: "chassis|1044|8|00012|Temperature sensor {sensor}: {temp}C (threshold: 70C)"
+          field_pools:
+            sensor: ["inlet", "outlet", "cpu"]
+            temp: ["31", "34", "37", "40"]
+      severity_weights:
+        info: 0.8
+        warn: 0.15
+        error: 0.05
+    encoder: { type: json_lines }
+    sink:
+      type: loki
+      url: "http://loki:3001"
+      batch_size: 10
+
+  # ---------------------------------------------------------------------------
+  # srl2 — Interface UPDOWN events (triggers PeerInterfaceFlapping alert)
+  # ---------------------------------------------------------------------------
+  - signal_type: logs
+    name: srl2_updown_logs
+    rate: 0.05  # ~6 events/2min, exceeds PeerInterfaceFlapping threshold (>3)
+    labels:
+      device: srl2
+      level: warning
+      type: syslog
+      vendor_facility_process: UPDOWN
+      interface: ethernet-1/1
+    generator:
+      type: template
+      templates:
+        - message: "Interface ethernet-1/1, operational state changed to {state}"
+          field_pools:
+            state: ["up", "down"]
+      severity_weights:
+        warn: 1.0
+    encoder: { type: json_lines }
+    sink:
+      type: loki
+      url: "http://loki:3001"
+      batch_size: 5

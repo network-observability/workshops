@@ -1,0 +1,43 @@
+# uv workspace root for the workshops repo.
+#
+# Each workshop under workshops/<name>/ is a workspace member with its own
+# pyproject.toml and its own dependency set. There is a single uv.lock at
+# the repo root, so `uv sync` resolves and installs everything in one shot
+# into a shared .venv/ at the root.
+#
+# Usage:
+#     uv sync                               # install all workshop deps
+#     uv sync --package autocon5-workshop   # install just AutoCon5
+#     uv run python workshops/autocon5/scripts/load_infrahub.py ...
+#
+# We deliberately set `package = false` because nothing here is published
+# as a package — it's all scripts that uv just needs an env for.
+
+[project]
+name = "workshops"
+version = "0.1.0"
+description = "Network observability workshops — laptop-friendly hands-on labs."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = []
+
+[dependency-groups]
+dev = [
+  "ruff>=0.6,<1",
+  "pyyaml>=6.0",   # used by the lint scripts
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["packages/*", "workshops/*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+ignore = ["E501"]

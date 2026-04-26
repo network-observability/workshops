@@ -1,0 +1,25 @@
+[project]
+name = "nobs"
+version = "0.1.0"
+description = "Network observability operator toolkit — CLI for the workshops repo and beyond."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+  "typer[all]>=0.12,<1",       # brings Rich
+  "infrahub-sdk[ctl]>=1.0,<2.0",
+  "requests>=2.31",
+]
+
+[project.scripts]
+nobs = "nobs.main:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nobs"]
+
+[tool.uv]
+package = true

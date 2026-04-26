@@ -1,0 +1,36 @@
+---
+global:
+  # How long with no firing updates before AM auto-marks an alert resolved.
+  resolve_timeout: 2m
+
+route:
+  receiver: 'default'
+  group_by: ['alertname', 'device', 'peer_address']
+  group_wait: 5s
+  # After the first notification for a group, wait at least 2m before sending another.
+  group_interval: 2m
+  # The Prefect quarantine flow silences for 20m by default; repeat slower than that
+  # so we don't fire duplicates while a workflow is investigating.
+  repeat_interval: 30m
+
+  routes:
+    - receiver: 'webhook-receiver'
+      matchers:
+        - alertname = BgpSessionNotUp
+      continue: true
+
+    - receiver: 'webhook-receiver'
+      matchers:
+        - alertname = PeerInterfaceFlapping
+      continue: true
+
+receivers:
+  # Default receiver for alerts that don't match any of the routes above.
+  # Logged into Alertmanager's audit trail; no external notification.
+  - name: 'default'
+
+  # Forwards into the FastAPI webhook, which kicks off a Prefect flow.
+  - name: 'webhook-receiver'
+    webhook_configs:
+      - url: 'http://webhook:9997/v1/api/webhook'
+        send_resolved: true
