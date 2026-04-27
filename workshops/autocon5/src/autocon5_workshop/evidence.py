@@ -1,4 +1,4 @@
-"""`autocon5 evidence DEVICE PEER` — inspect what the Prefect flow would see.
+"""`nobs autocon5 evidence DEVICE PEER` - inspect what the Prefect flow would see.
 
 Mirrors the evidence bundle the workshop SDK collects in
 `automation/workshop_sdk.py`, but renders it as Rich panels + tables for a
@@ -70,8 +70,6 @@ def evidence(
     if not token:
         fail("INFRAHUB_API_TOKEN is required.")
         raise typer.Exit(code=1)
-    if "infrahub-server" in infrahub_url:
-        infrahub_url = "http://localhost:8000"
 
     sot = _fetch_sot(infrahub_url, token, device, peer, afi_safi)
     metrics = _fetch_metrics(prom_url, device, peer, afi_safi, instance)
@@ -234,7 +232,7 @@ def _render_logs(logs: list[str]) -> None:
         return
     body = "\n".join(logs)
     syntax = Syntax(body, "log", theme="ansi_dark", word_wrap=True)
-    console.print(Panel(syntax, title=f"Loki — last {len(logs)} relevant line(s)", border_style="cyan"))
+    console.print(Panel(syntax, title=f"Loki - last {len(logs)} relevant line(s)", border_style="cyan"))
 
 
 def _render_decision(decision: dict[str, str]) -> None:

@@ -5,10 +5,9 @@ Use this when you're tracing a feature end-to-end (e.g. "an alert fires — wher
 
 ```text
 workshops/autocon5/
-  Taskfile.yml         # the commands attendees and operators actually use
   pyproject.toml       # workshop's Python deps (uv workspace member)
   docker-compose.yml   # the stack — ~25 services
-  .env.example         # tracked template; copied to .env on first `task up`
+  .env.example         # tracked template; copied to .env on first `nobs autocon5 up`
   lab_vars.yml         # source-of-truth data fed into Infrahub
   docs/                # operator/maintainer docs (you are here)
   sonda/
@@ -22,13 +21,12 @@ workshops/autocon5/
   telegraf/            # scrape config for sonda-server (the "srl2" pipeline)
   logstash/            # GELF -> Loki ingest (currently disabled in compose)
   infrahub/            # schema YAML + design notes — see infrahub/README.md
-  src/autocon5_cli/    # workshop-specific Typer commands (load, evidence, try-it)
-  scripts/             # shell glue (load-infrahub.sh waits for Infrahub then runs the CLI)
+  src/autocon5_workshop/   # workshop-specific commands; registers itself with `nobs`
   webhook/             # FastAPI receiver for Alertmanager
   automation/          # Prefect flows + workshop SDK + Dockerfile
 ```
 
-Workshop-agnostic helpers live one level up at [`../../scripts/`](../../../scripts/) — currently `preflight.sh` (generic env check) and `sonda-trigger.sh` (the `flap-interface` backend).
+Workshop-agnostic helpers live one level up under [`../../packages/nobs/src/nobs/lifecycle/`](../../../packages/nobs/src/nobs/lifecycle/) — `preflight.py` (generic env check), `env.py` (the single `.env` loader with the centralised `infrahub-server → localhost` rewrite), `compose.py` + `commands.py` (compose lifecycle closures), and `setup.py` (one-shot uv sync + bootstrap).
 
 ## Where major flows touch what
 
@@ -41,24 +39,24 @@ A few common operator questions:
 Both paths land in the same Prometheus.
 
 **"How does Infrahub get its data?"** Schema in `infrahub/schema.yml`, data in `lab_vars.yml`.
-Both are applied by `task autocon5:load-infrahub`, which delegates to `src/autocon5_cli/load.py`.
+Both are applied by `nobs autocon5 load-infrahub`, which delegates to `src/autocon5_workshop/load.py`.
 See [`../infrahub/README.md`](../infrahub/README.md) for the schema walkthrough.
 
-**"How does `.env` flow into all of this?"** Three independent loaders; see [`env-lifecycle.md`](env-lifecycle.md).
+**"How does `.env` flow into all of this?"** Two independent loaders; see [`env-lifecycle.md`](env-lifecycle.md).
 
-**"Where do the workshop CLIs live?"** `src/autocon5_cli/` — workshop-specific commands (`load-infrahub`, `evidence`, `try-it`).
-The generic ones (`status`, `alerts`, `schema load`, `maintenance`) live in [`../../../packages/nobs/`](../../../packages/nobs/) and are re-exported by the `autocon5` CLI.
+**"Where do the workshop commands live?"** `src/autocon5_workshop/` — workshop-specific commands (`load-infrahub`, `evidence`, `try-it`, `flap-interface`, `scenarios`).
+The generic ones (`status`, `alerts`, `schema load`, `maintenance`, plus the compose lifecycle) live in [`../../../packages/nobs/`](../../../packages/nobs/) and are exposed under the `nobs autocon5` subcommand group.
 
-## Two CLIs, one workspace
+## One CLI, one workspace
 
-`uv sync` from the repo root installs both:
+`nobs setup` (or `uv sync` from the repo root) installs the single CLI:
 
-- **`nobs`** — generic operator toolkit.
-  Reusable across workshops and ad-hoc work.
-  Lives at `packages/nobs/`.
-- **`autocon5`** — workshop CLI.
-  Re-exports every `nobs` subcommand and adds workshop-specific ones (`load-infrahub`, `evidence`, `try-it`).
-  Lives at `workshops/autocon5/src/autocon5_cli/`.
+- **`nobs`** — the operator toolkit.
+  Generic commands (`nobs status`, `nobs alerts`, `nobs maintenance`, `nobs schema load`) work against any stack via env-defined URLs.
+  Per-workshop subcommand groups (`nobs autocon5 ...`) are built dynamically from each registered workshop.
+  Lives at `packages/nobs/`; the `nobs` console script lands in `.venv/bin/`.
 
-Attendees only ever invoke `autocon5` (via `task autocon5:*`).
-`nobs` is exposed for operators driving an arbitrary stack — for example, applying a schema to a different Infrahub instance with `uv run nobs schema load some-other-schema.yml`.
+`autocon5_workshop` is **not** a CLI — it's a Python plugin package that imports `nobs.workshops.register(WORKSHOP)` at module load.
+When `nobs.main` imports `autocon5_workshop`, the plugin registers a `Workshop` instance describing autocon5's directory, bootstrap hook, and extra commands; `nobs` then attaches an `autocon5` Typer subcommand group with the generic lifecycle (`up`, `down`, `restart`, `ps`, `logs`, `exec`, `build`) plus the workshop-specific commands.
+
+For ad-hoc work outside any workshop — applying a schema to a different Infrahub instance, for example — the top-level commands keep working: `uv run nobs schema load some-other-schema.yml`.

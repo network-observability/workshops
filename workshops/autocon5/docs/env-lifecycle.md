@@ -1,21 +1,20 @@
 # The `.env` lifecycle
 
 The workshop uses a single `.env` file at `workshops/autocon5/.env` to hold secrets and overrides.
-It looks small from the outside but it has **three independent consumers**, each loading it slightly differently.
-This doc walks through who creates it, who reads it, why the duplication exists, and the one nuance that catches operators running the workshop CLI on their host.
+It looks small from the outside but it has **two independent consumers**, each loading it slightly differently.
+This doc walks through who creates it, who reads it, why the duplication exists, and the one nuance (`infrahub-server` vs `localhost`) that used to bite operators on the host.
 
 ## TL;DR
 
 ```
 .env.example  (committed template)
 │
-│  cp on first `task autocon5:up`  (handled by `.ensure-env`)
+│  cp on first `nobs autocon5 up`  (handled by the workshop bootstrap hook)
 ▼
 .env          (gitignored, edited by the operator)
 │
 ├─► docker compose            (auto-loaded; expands ${VAR} in compose.yml)
-├─► scripts/load-infrahub.sh  (sources `.env`, then runs `uv run`)
-└─► Taskfile direct-CLI tasks (inline `set -a; . ./.env; set +a`)
+└─► nobs CLI startup          (load_env() in nobs.lifecycle.env)
 ```
 
 `.env` is gitignored.
@@ -23,22 +22,12 @@ This doc walks through who creates it, who reads it, why the duplication exists,
 
 ## Who creates it
 
-The internal task **`.ensure-env`** in [`Taskfile.yml`](../Taskfile.yml) (under the `tasks:` block) runs as a `deps:` of `task autocon5:up`.
-On first invocation it copies `.env.example` to `.env` if `.env` is missing:
+The autocon5 workshop registers a `bootstrap()` hook with `nobs` (see [`src/autocon5_workshop/__init__.py`](../src/autocon5_workshop/__init__.py)).
+`nobs setup`, `nobs autocon5 setup`, and `nobs autocon5 up` all call it as a precondition.
+On first invocation it copies `.env.example` to `.env` if `.env` is missing.
 
-```yaml
-.ensure-env:
-  internal: true
-  cmds:
-    - |
-      if [ ! -f .env ]; then
-        echo "Copying .env.example to .env (edit it if you want to override defaults)"
-        cp .env.example .env
-      fi
-```
-
-After that the operator owns `.env` — edits stick across `task up`, `task down`, `task destroy`.
-The only way `.env` gets recreated is if you delete it and run `task autocon5:up` again.
+After that the operator owns `.env` — edits stick across `nobs autocon5 up`, `nobs autocon5 down`, `nobs autocon5 destroy`.
+The only way `.env` gets recreated is if you delete it and re-run a command that triggers the bootstrap.
 
 ## What's in it
 
@@ -49,7 +38,7 @@ The committed `.env.example` defines:
 | `GRAFANA_USER` | `admin` | Grafana admin login. |
 | `GRAFANA_PASSWORD` | `admin` | Grafana admin password. |
 | `INFRAHUB_ADDRESS` | `http://infrahub-server:8000` | Infrahub URL. The default is the **container DNS** name — see [the host vs container nuance](#the-host-vs-container-nuance) below. |
-| `INFRAHUB_API_TOKEN` | `06438eb2-...` | Token seeded into Infrahub on first boot via `INFRAHUB_INITIAL_ADMIN_TOKEN`. Both Grafana's GraphQL datasource and the workshop CLI read this. |
+| `INFRAHUB_API_TOKEN` | `06438eb2-...` | Token seeded into Infrahub on first boot via `INFRAHUB_INITIAL_ADMIN_TOKEN`. Both Grafana's GraphQL datasource and `nobs` read this. |
 | `ENABLE_AI_RCA` | `false` | Toggles the LLM RCA step in the Prefect quarantine flow. |
 | `AI_RCA_PROVIDER` | `openai` | `openai` or `anthropic`. |
 | `AI_RCA_MODEL` | `gpt-4o-mini` | The model id; e.g. `claude-haiku-4-5-20251001` for anthropic. |
@@ -59,9 +48,9 @@ The committed `.env.example` defines:
 `.env.example` also ships commented `*_IMAGE` overrides (`SONDA_IMAGE`, `PROMETHEUS_IMAGE`, `LOKI_IMAGE`, `GRAFANA_IMAGE`, `ALERTMANAGER_IMAGE`, `LOGSTASH_LOKI_IMAGE`, `TELEGRAF_IMAGE`, `INFRAHUB_IMAGE`, `INFRAHUB_RAY_VERSION`).
 Uncomment one to pin or upgrade an image without editing `docker-compose.yml`.
 
-## Three consumers, three loaders
+## Two consumers, two loaders
 
-Every consumer runs from `workshops/autocon5/`.
+Both consumers run from `workshops/autocon5/`.
 The loading mechanism differs because each consumer has a different default for "what counts as the environment."
 
 ### 1. `docker compose` — automatic
@@ -80,108 +69,74 @@ grafana:
 ```
 
 No explicit loading is needed — it's compose's built-in behaviour.
-The Taskfile `cd`s into `workshops/autocon5/` (it's where `Taskfile.yml` lives) before running `docker compose`, so the right `.env` is in scope.
+`nobs` `cd`s into the workshop directory before running `docker compose`, so the right `.env` is in scope.
 
 This consumer is **mandatory**.
 Every container with `${VAR}` in `docker-compose.yml` depends on it.
 Image pins, the Infrahub initial token, the AI RCA toggle, and Grafana credentials all flow through this path.
 
-### 2. `scripts/load-infrahub.sh` — explicit
+### 2. `nobs` startup — `load_env()`
 
-The schema/data loader sources `.env` into the bash environment, then hands off to the Typer CLI:
+Every `nobs autocon5 ...` command calls `nobs.lifecycle.env.load_env(workshop_dir)` once at startup.
+The loader uses [`python-dotenv`][dotenv]'s `dotenv_values()` to read the file, merges the values into `os.environ` (process env wins on conflict, matching docker-compose semantics), and applies the `infrahub-server → localhost` rewrite (see below) before any Typer command runs.
 
-```bash
-# from scripts/load-infrahub.sh
-if [ -f .env ]; then
-  set -o allexport
-  . ./.env
-  set +o allexport
-fi
-# ... waits for Infrahub to be reachable ...
-INFRAHUB_ADDRESS="$ADDRESS" \
-INFRAHUB_API_TOKEN="$INFRAHUB_API_TOKEN" \
-  uv run --project ../.. --package autocon5-workshop autocon5 load-infrahub
+```python
+# packages/nobs/src/nobs/lifecycle/env.py
+def load_env(workshop_dir: Path) -> dict[str, str]:
+    env_file = workshop_dir / ".env"
+    values = dotenv_values(env_file) if env_file.is_file() else {}
+    # merge, then rewrite infrahub-server -> localhost in INFRAHUB_ADDRESS
+    ...
 ```
 
-`autocon5 load-infrahub` reads the env via Typer `envvar=...` declarations on its parameters.
-Without this explicit source step, the CLI starts with an empty environment and exits with `INFRAHUB_API_TOKEN is required`.
+Each Typer command then reads its env via `envvar=...` declarations on its parameters.
+Without this startup load, the CLI would start with an empty `INFRAHUB_API_TOKEN` and exit early.
 
-### 3. The direct-CLI Taskfile tasks — inline
+[dotenv]: https://pypi.org/project/python-dotenv/
 
-`status`, `alerts`, `evidence`, `set-maintenance`, and `try-it` invoke the workshop CLI directly (no shell wrapper).
-They use a `LOAD_ENV` var declared at the top of `Taskfile.yml`:
+## Why two consumers, not one
 
-```yaml
-vars:
-  LOAD_ENV: 'set -a; [ -f .env ] && . ./.env; set +a'
-```
+It boils down to two constraints:
 
-Each task inlines it into its `cmds:`, e.g.:
-
-```yaml
-status:
-  deps: [.ensure-uv]
-  cmds:
-    - |
-      {{.LOAD_ENV}}
-      cd ../.. && uv run --package autocon5-workshop autocon5 status
-```
-
-The pattern is identical to `load-infrahub.sh`'s — sourcing `.env` into the shell so Typer can pick up the env vars.
-It's inlined because **go-task disallows top-level `dotenv:` in included Taskfiles**; the workshop's Taskfile is included from the umbrella `Taskfile.yml` at the repo root, so a clean `dotenv:` directive isn't an option.
-
-## Why three consumers, not one
-
-It boils down to three constraints stacked on each other:
-
-1. **Compose auto-load is non-negotiable.** Every container with `${VAR}` in `docker-compose.yml` depends on it.
+1. **Compose auto-load is non-negotiable.**
+   Every container with `${VAR}` in `docker-compose.yml` depends on it.
    Removing it isn't an option.
-2. **`uv run` doesn't read `.env` itself.** It runs the command in a pristine subprocess inheriting only the calling shell's environment.
-   So the calling shell has to source `.env` first.
-3. **The included Taskfile can't use `dotenv:`.** That would have been the cleanest single-source path for the CLI tasks, but go-task rejects `dotenv:` in included files.
-   Hence the inline pattern.
+2. **`uv run` doesn't read `.env` itself.**
+   It runs the command in a pristine subprocess inheriting only the calling shell's environment.
+   So `nobs` reads `.env` itself at startup via `python-dotenv`, before any Typer command dispatches.
 
-The result is one `.env` file with three readers, all converging on the same values.
+The result is one `.env` file with two readers, both converging on the same values.
 
 ## The host vs container nuance
 
 `INFRAHUB_ADDRESS=http://infrahub-server:8000` is the **container DNS name** of the Infrahub server inside the workshop's docker network.
 That's the value Grafana and the Prefect alert-receiver flow need — they run inside the network and resolve `infrahub-server` correctly.
 
-The workshop CLI runs on the **host**.
+`nobs` runs on the **host**.
 From there, `infrahub-server` doesn't resolve at all.
-To keep `.env` correct for both audiences without forcing the operator to swap values when running CLI commands, three CLI entry points silently rewrite the address:
+To keep `.env` correct for both audiences without forcing the operator to swap values, the rewrite happens **once**, centrally, at CLI startup:
 
-| File | Line | Behaviour |
-|------|------|-----------|
-| [`src/autocon5_cli/load.py`](../src/autocon5_cli/load.py) | 55 | If `infrahub-server` is in `INFRAHUB_ADDRESS`, rewrite to `http://localhost:8000`. |
-| [`src/autocon5_cli/try_it.py`](../src/autocon5_cli/try_it.py) | 41 | Same rewrite. |
-| [`packages/nobs/src/nobs/commands/maintenance.py`](../../../packages/nobs/src/nobs/commands/maintenance.py) | 41 | Same rewrite, plus prints `INFRAHUB_ADDRESS rewritten to host-reachable http://localhost:8000`. |
-| [`packages/nobs/src/nobs/commands/schema.py`](../../../packages/nobs/src/nobs/commands/schema.py) | 30 | Same rewrite. |
+| File | Behaviour |
+|------|-----------|
+| [`packages/nobs/src/nobs/lifecycle/env.py`](../../../packages/nobs/src/nobs/lifecycle/env.py) (`load_env`) | If `infrahub-server` is in `INFRAHUB_ADDRESS`, rewrite it to `http://localhost:8000` and re-export to `os.environ` before any command runs. |
 
-The `note(...)` line in `maintenance.py` is what attendees see when they run `task autocon5:set-maintenance` — that informational message is intentional and confirms `.env` is being loaded correctly.
-
-> **⚠️ Known limitation.** `nobs status` (called by `task autocon5:status`)
-> reads `INFRAHUB_ADDRESS` from env but does **not** apply the
-> `infrahub-server → localhost` rewrite. If you customise
-> `INFRAHUB_ADDRESS` to something host-unreachable, `nobs status` will show
-> Infrahub as unreachable even when it isn't. Cosmetic only — every other
-> CLI path handles it correctly.
+Every `nobs ...` invocation — `status`, `alerts`, `evidence`, `try-it`, `maintenance`, `load-infrahub`, `schema load` — sees the host-reachable URL automatically.
+No per-command rewrite, no caveat.
 
 ## Editing `.env` after first boot
 
 Most edits are picked up cleanly:
 
-- **Image overrides, AI RCA toggles, AI keys, Grafana password**: edit `.env`, then `task autocon5:restart` (or `task autocon5:restart-flows` for AI/Prefect-only changes).
+- **Image overrides, AI RCA toggles, AI keys, Grafana password**: edit `.env`, then `nobs autocon5 restart` (or `nobs autocon5 restart prefect-flows` for AI/Prefect-only changes).
 - **`INFRAHUB_API_TOKEN`**: this one is special.
   Infrahub seeds the token via `INFRAHUB_INITIAL_ADMIN_TOKEN`, which is **only honoured on the first boot of `infrahub-server`**.
-  Changing it after first boot desyncs the value in `.env` (used by Grafana + the CLI) from the value Infrahub actually accepts.
+  Changing it after first boot desyncs the value in `.env` (used by Grafana + `nobs`) from the value Infrahub actually accepts.
   Recover with:
 
   ```bash
-  task autocon5:destroy   # drops infrahub_db_data so the token re-seeds
-  task autocon5:up
-  task autocon5:load-infrahub
+  nobs autocon5 destroy   # drops infrahub_db_data so the token re-seeds
+  nobs autocon5 up
+  nobs autocon5 load-infrahub
   ```
 
 Anything else (`GRAFANA_USER`, `INFRAHUB_ADDRESS`, etc.) follows the restart pattern — no destroy needed.
@@ -191,6 +146,6 @@ Anything else (`GRAFANA_USER`, `INFRAHUB_ADDRESS`, etc.) follows the restart pat
 | File | Role |
 |------|------|
 | [`../.env.example`](../.env.example) | Tracked template. The seed for the operator's `.env`. |
-| [`../Taskfile.yml`](../Taskfile.yml) | Defines `.ensure-env`, `LOAD_ENV`, and the tasks that consume `.env`. |
-| [`../scripts/load-infrahub.sh`](../scripts/load-infrahub.sh) | The bash wrapper that sources `.env` for the data loader. |
-| [`../docker-compose.yml`](../docker-compose.yml) | The third consumer; uses `${VAR}` interpolation throughout. |
+| [`../src/autocon5_workshop/bootstrap.py`](../src/autocon5_workshop/bootstrap.py) | Workshop bootstrap hook — copies `.env.example` to `.env` if missing. |
+| [`../../../packages/nobs/src/nobs/lifecycle/env.py`](../../../packages/nobs/src/nobs/lifecycle/env.py) | The single startup loader. Reads `.env` via `python-dotenv` and applies the `infrahub-server → localhost` rewrite. |
+| [`../docker-compose.yml`](../docker-compose.yml) | The other consumer; uses `${VAR}` interpolation throughout. |

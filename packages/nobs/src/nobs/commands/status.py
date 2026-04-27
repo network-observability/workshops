@@ -1,6 +1,7 @@
-"""`nobs status` — quick health snapshot of the running stack."""
+"""`nobs status` - quick health snapshot of the running stack."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Annotated
 
 import requests
@@ -8,6 +9,8 @@ import typer
 from rich.table import Table
 
 from .._console import console
+from ..lifecycle import env as _env
+from ..workshops import Workshop
 
 
 def status(
@@ -21,7 +24,7 @@ def status(
 ) -> None:
     """Hit each service's health endpoint and report a tidy table.
 
-    Useful as the first thing to run after bringing the stack up — confirms
+    Useful as the first thing to run after bringing the stack up - confirms
     the stack is ready before you start loading data or driving demos.
     """
     targets = [
@@ -55,5 +58,42 @@ def status(
     console.print()
     console.print(table)
     if any_down:
-        console.print("\n[warn]Some services aren't ready yet — give them a minute, or check `task logs`.[/]")
+        console.print(
+            "\n[warn]Some services aren't ready yet - give them a minute, "
+            "or check `nobs <workshop> logs`.[/]"
+        )
         raise typer.Exit(code=1)
+
+
+def status_for(ws: Workshop) -> Callable[..., None]:
+    """Return a `status` callable bound to a workshop's `.env` URLs.
+
+    Loads the workshop's `.env` once before delegating so any envvar-driven
+    defaults (e.g. `PROMETHEUS_URL`) reflect the workshop's stack.
+    """
+
+    def status_ws(
+        prom_url: Annotated[str, typer.Option(envvar="PROMETHEUS_URL")] = "http://localhost:9090",
+        loki_url: Annotated[str, typer.Option(envvar="LOKI_URL")] = "http://localhost:3001",
+        am_url: Annotated[str, typer.Option(envvar="ALERTMANAGER_URL")] = "http://localhost:9093",
+        infrahub_url: Annotated[
+            str, typer.Option(envvar="INFRAHUB_ADDRESS")
+        ] = "http://localhost:8000",
+        grafana_url: Annotated[str, typer.Option()] = "http://localhost:3000",
+        prefect_url: Annotated[str, typer.Option()] = "http://localhost:4200",
+        sonda_url: Annotated[str, typer.Option()] = "http://localhost:8085",
+    ) -> None:
+        _env.load_env(ws.dir)
+        status(
+            prom_url=prom_url,
+            loki_url=loki_url,
+            am_url=am_url,
+            infrahub_url=infrahub_url,
+            grafana_url=grafana_url,
+            prefect_url=prefect_url,
+            sonda_url=sonda_url,
+        )
+
+    status_ws.__doc__ = f"Quick health snapshot of the {ws.title} stack."
+    status_ws.__name__ = "status"
+    return status_ws

@@ -1,4 +1,4 @@
-"""`autocon5 try-it` — guided tour through the four canonical Part 3 paths.
+"""`nobs autocon5 try-it` - guided tour through the four canonical Part 3 paths.
 
 Python rewrite of the original `scripts/try-it.sh`, with Rich panels +
 progress so each step is a clearer story for the audience.
@@ -38,17 +38,15 @@ def try_it(
     if not token:
         fail("INFRAHUB_API_TOKEN is required.")
         raise typer.Exit(code=1)
-    if "infrahub-server" in infrahub_url:
-        infrahub_url = "http://localhost:8000"
 
     _preflight(prom_url, loki_url, am_url, infrahub_url)
     _pause(auto)
 
     loki = LokiClient(loki_url)
 
-    # Path 1 — quarantine for the broken peer
+    # Path 1 - quarantine for the broken peer
     _header(
-        "Path 1 — Actionable / mismatch → quarantine",
+        "Path 1 - Actionable / mismatch → quarantine",
         "The lab ships srl1→10.1.99.2 and srl2→10.1.11.1 as intentionally broken.\n"
         "BgpSessionNotUp should already be firing; we wait for the Prefect annotation.",
     )
@@ -60,9 +58,9 @@ def try_it(
     )
     _pause(auto)
 
-    # Path 2 — maintenance-skip
+    # Path 2 - maintenance-skip
     _header(
-        "Path 2 — In-maintenance → skip",
+        "Path 2 - In-maintenance → skip",
         "Mark srl1 as in maintenance, replay an alert, expect decision='skip'.",
     )
     _set_maintenance("srl1", True, infrahub_url, token)
@@ -77,9 +75,9 @@ def try_it(
     _set_maintenance("srl1", False, infrahub_url, token)
     _pause(auto)
 
-    # Path 3 — healthy-skip
+    # Path 3 - healthy-skip
     _header(
-        "Path 3 — Healthy peer → skip",
+        "Path 3 - Healthy peer → skip",
         "Replay an alert payload for srl1→10.1.2.2 (a healthy peer). Decision should be 'skip'.",
     )
     _post_alert(webhook_url, "firing", "srl1", "10.1.2.2", "try-it-3")
@@ -91,9 +89,9 @@ def try_it(
     )
     _pause(auto)
 
-    # Path 4 — resolved → audit
+    # Path 4 - resolved → audit
     _header(
-        "Path 4 — Resolved → audit",
+        "Path 4 - Resolved → audit",
         "Replay a 'resolved' payload. The resolved_bgp_flow should annotate decision='resolved'.",
     )
     _post_alert(webhook_url, "resolved", "srl1", "10.1.99.2", "try-it-4")
@@ -148,14 +146,14 @@ def _preflight(prom_url: str, loki_url: str, am_url: str, infrahub_url: str) -> 
         try:
             r = requests.get(url, timeout=3)
             # Loki's /ready returns 503 with body "Ingester not ready: waiting for
-            # 15s after being ready" during a self-imposed warm-up — the service
+            # 15s after being ready" during a self-imposed warm-up - the service
             # is fully functional. Treat that specific body as ready.
             if r.ok or (name == "Loki" and r.status_code == 503 and "Ingester not ready" in r.text):
                 ok(f"{name} reachable")
                 continue
         except requests.RequestException:
             pass
-        fail(f"{name} NOT reachable at {url} — bring the stack up first (task autocon5:up)")
+        fail(f"{name} NOT reachable at {url} - bring the stack up first (nobs autocon5 up)")
         raise typer.Exit(code=1)
     # Infrahub: try both common paths
     for path in ("/api/healthcheck", "/health"):
@@ -166,7 +164,7 @@ def _preflight(prom_url: str, loki_url: str, am_url: str, infrahub_url: str) -> 
                 return
         except requests.RequestException:
             continue
-    fail("Infrahub NOT reachable — bring the stack up first (task autocon5:up)")
+    fail("Infrahub NOT reachable - bring the stack up first (nobs autocon5 up)")
     raise typer.Exit(code=1)
 
 
@@ -174,7 +172,7 @@ def _set_maintenance(device: str, state: bool, infrahub_url: str, token: str) ->
     try:
         from infrahub_sdk import Config, InfrahubClientSync
     except ImportError:
-        fail("infrahub-sdk is not installed. Run `task setup` first.")
+        fail("infrahub-sdk is not installed. Run `nobs setup` first.")
         sys.exit(1)
     client = InfrahubClientSync(address=infrahub_url, config=Config(api_token=token))
     matches = client.filters(kind="WorkshopDevice", name__value=device)
@@ -237,4 +235,4 @@ def _wait_for_loki(client: LokiClient, query: str, label: str, timeout: int) -> 
             time.sleep(poll)
             elapsed += poll
             progress.update(task, completed=elapsed)
-    fail(f"{label} — no Loki match after {timeout}s")
+    fail(f"{label} - no Loki match after {timeout}s")

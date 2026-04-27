@@ -4,8 +4,8 @@ A four-hour, laptop-friendly workshop.
 You bring a laptop with Docker; we bring a self-contained observability stack (Prometheus, Loki, Grafana, Alertmanager) plus a synthetic telemetry generator that stands in for a small network.
 By lunchtime you'll have queried real-shaped telemetry, made a dashboard answer an operational question, watched alerts route through an automated workflow, and seen what an opt-in AI RCA step does next to that workflow.
 
-> **Format:** ~20% framing and guided demos, ~80% hands-on. The whole stack
-> runs locally — no shared backend, no live network gear.
+> **Format:** ~20% framing and guided demos, ~80% hands-on.
+> The whole stack runs locally — no shared backend, no live network gear.
 
 ## Agenda (Tuesday, 09:00 – 13:00)
 
@@ -20,11 +20,10 @@ By lunchtime you'll have queried real-shaped telemetry, made a dashboard answer 
 
 ## Before you arrive
 
-Run the preflight from the repo root:
+Run the preflight from anywhere in the repo:
 
 ```bash
-cd workshops
-task preflight
+nobs preflight
 ```
 
 It checks Docker, Compose v2, Python, RAM, free disk, and outbound reachability to `ghcr.io`, `docker.io`, and `github.com`.
@@ -34,9 +33,9 @@ You also need:
 
 - **Docker** (or Docker Desktop / Colima / Rancher Desktop) with **Compose v2**.
   On Windows, run everything inside **WSL 2**.
-- **[go-task](https://taskfile.dev/installation/)** (`brew install go-task` on macOS)
 - **[uv](https://docs.astral.sh/uv/)** for the workshop's Python helpers (Infrahub loader, maintenance toggle).
-  Install with `curl -LsSf https://astral.sh/uv/install.sh | sh`. uv installs its own pinned Python, so a system Python isn't required.
+  Install with `curl -LsSf https://astral.sh/uv/install.sh | sh`.
+  uv installs its own pinned Python, so a system Python isn't required.
 - ~8 GB of free RAM and ~5 GB of free disk while the stack is running
 
 ## Bring it up
@@ -44,19 +43,19 @@ You also need:
 The very first time, in this order:
 
 ```bash
-# 1. From the repo root: install the Python deps once. Creates .venv/.
-task setup
+# 1. From the repo root: sync deps into .venv/ and bootstrap the workshop.
+#    Creates .env from .env.example if it's missing.
+nobs setup
 
 # 2. Bring up the stack. The first run pulls a few GB of images (5–10 minutes
-#    on the first run, then cached). The Taskfile auto-creates .env from
-#    .env.example if it's missing.
-task autocon5:up
+#    on the first run, then cached).
+nobs autocon5 up
 
 # 3. Wait ~60 seconds for Infrahub to finish its first-boot init, then check.
-task autocon5:status            # repeat until every row says 'ok'
+nobs autocon5 status            # repeat until every row says 'ok'
 
 # 4. Apply the schema and seed lab_vars.yml into Infrahub.
-task autocon5:load-infrahub
+nobs autocon5 load-infrahub
 ```
 
 Once the stack is up and Infrahub is seeded, you'll have:
@@ -74,8 +73,8 @@ Once the stack is up and Infrahub is seeded, you'll have:
 When you're done:
 
 ```bash
-task down       # stop everything but keep volumes
-task destroy    # full reset (drops volumes too)
+nobs autocon5 down       # stop everything but keep volumes
+nobs autocon5 destroy    # full reset (drops volumes too)
 ```
 
 If anything misbehaves during the workshop, ask the instructor — they have the operator runbook in [`docs/troubleshooting.md`](docs/troubleshooting.md).
@@ -149,20 +148,20 @@ You drive these by hand:
 
 ```bash
 # Force an interface flap into the log stream — trips PeerInterfaceFlapping in ~30s.
-task autocon5:flap-interface DEVICE=srl1 INTERFACE=ethernet-1/1
+nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1
 
 # Toggle a device into maintenance and watch the next quarantine flow skip.
-task autocon5:set-maintenance DEVICE=srl1 STATE=true
-task autocon5:set-maintenance DEVICE=srl1 STATE=false
+nobs autocon5 maintenance --device srl1 --state
+nobs autocon5 maintenance --device srl1 --clear
 
 # Inspect what the Prefect flow would see for a given peer.
-task autocon5:evidence DEVICE=srl1 PEER=10.1.99.2
+nobs autocon5 evidence srl1 10.1.99.2
 
 # List what's currently firing.
-task autocon5:alerts
+nobs autocon5 alerts
 
 # Walk all four canonical Part 3 paths in one go.
-task autocon5:try-it
+nobs autocon5 try-it
 ```
 
 ### AI-assisted RCA toggle
@@ -179,7 +178,7 @@ AI_RCA_MODEL=gpt-4o-mini        # or e.g. claude-haiku-4-5-20251001
 OPENAI_API_KEY=sk-...           # only the one matching AI_RCA_PROVIDER is required
 ```
 
-Then `task restart`.
+Then `nobs autocon5 restart`.
 Honest framing: the LLM output is annotated next to the deterministic policy result, not in place of it.
 Human judgement still owns the call to act — the AI gives you a faster narrative around the evidence, not an autonomous decision.
 
