@@ -80,21 +80,11 @@ nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1
 git clone https://github.com/network-observability/workshops.git
 cd workshops
 
-# One-time: sync the Python deps into a workspace .venv/ and bootstrap workshops.
-# `uv run` ensures `.venv/bin/nobs` exists for first-time runs; subsequent
-# invocations can be bare `nobs ...` after activating the venv (or keep using `uv run`).
+uv sync --all-packages
 uv run nobs setup
-
-# Generic environment check (works for any workshop).
-uv run nobs preflight
-
-# Bring up the AutoCon5 stack.
 uv run nobs autocon5 up
-
-# Seed the source-of-truth (Infrahub).
 uv run nobs autocon5 load-infrahub
-
-# When you're done.
+# ... when you're done ...
 uv run nobs autocon5 down
 ```
 

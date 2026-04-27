@@ -101,6 +101,12 @@ def _seed_lab_vars(address: str, token: str, lab_vars: Path) -> dict[str, dict[s
 
     client = InfrahubClientSync(address=address, config=Config(api_token=token))
 
+    # The schema apply two steps above just landed; Infrahub's read-side
+    # schema cache may not have propagated yet. The SDK fetches the schema
+    # the first time we call .filters(...) and raises SchemaNotFoundError if
+    # the workshop kinds aren't visible. Poll until they are, with a 30s cap.
+    _wait_for_workshop_schema(client, kinds=list(counts.keys()), timeout=30.0)
+
     for device_name, node_def in nodes.items():
         device, was_created = _upsert_device(client, device_name, node_def)
         counts["WorkshopDevice"]["created" if was_created else "updated"] += 1
@@ -115,6 +121,36 @@ def _seed_lab_vars(address: str, token: str, lab_vars: Path) -> dict[str, dict[s
             counts["WorkshopBgpSession"]["created" if was_created else "updated"] += 1
 
     return counts
+
+
+def _wait_for_workshop_schema(
+    client: Any, kinds: list[str], timeout: float, branch: str = "main"
+) -> None:
+    """Block until every workshop schema kind is visible to the SDK.
+
+    The schema apply above is sync from `infrahubctl`'s perspective, but
+    Infrahub's internal schema-propagation can take a beat. Without this,
+    the very first `client.filters(kind="WorkshopDevice", ...)` call after
+    a fresh `nobs autocon5 up` raises `SchemaNotFoundError`.
+    """
+    import time
+
+    deadline = time.monotonic() + timeout
+    last_error: Exception | None = None
+    while time.monotonic() < deadline:
+        try:
+            client.schema.fetch(branch=branch)
+            for kind in kinds:
+                client.schema.get(kind=kind, branch=branch)
+            return
+        except Exception as e:  # noqa: BLE001 - SDK raises SchemaNotFoundError + others here
+            last_error = e
+            time.sleep(1.0)
+    fail(
+        f"workshop schema kinds {kinds!r} not visible to Infrahub after "
+        f"{timeout:.0f}s ({type(last_error).__name__}: {last_error})."
+    )
+    raise typer.Exit(code=1)
 
 
 def _upsert_device(client: Any, name: str, node: dict[str, Any]) -> tuple[Any, bool]:
