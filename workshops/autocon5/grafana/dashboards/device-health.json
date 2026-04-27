@@ -1811,7 +1811,7 @@
                     "5": {
                       "color": "orange",
                       "index": 4,
-                      "text": "CONSENT"
+                      "text": "OPENSENT"
                     },
                     "6": {
                       "color": "orange",
@@ -1905,7 +1905,7 @@
               "format": "time_series",
               "instant": false,
               "interval": "",
-              "legendFormat": "(ASN: {{neighbor_asn}}) - {{neighbor}}",
+              "legendFormat": "(ASN: {{neighbor_asn}}) - {{peer_address}}",
               "range": true,
               "refId": "A"
             }
