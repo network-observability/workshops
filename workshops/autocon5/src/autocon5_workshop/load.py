@@ -7,8 +7,9 @@ from typing import Annotated, Any
 
 import typer
 import yaml
-from nobs._console import console, fail, ok, step, warn
+from nobs._console import console, fail, note, ok, step, warn
 from nobs.commands import schema as nobs_schema
+from nobs.lifecycle import env as _env
 from rich.panel import Panel
 from rich.table import Table
 
@@ -56,15 +57,19 @@ def load_infrahub(
         fail("INFRAHUB_API_TOKEN is required (set it in .env or pass --token).")
         raise typer.Exit(code=1)
 
+    host_addr = _env.host_address(address)
+    if host_addr != address:
+        note(f"INFRAHUB_ADDRESS rewritten to host-reachable {host_addr}")
+
     if not skip_schema:
-        nobs_schema.load(path=schema, address=address, token=token)
+        nobs_schema.load(path=schema, address=host_addr, token=token)
 
     if not lab_vars.exists():
         fail(f"lab_vars file not found: {lab_vars}")
         raise typer.Exit(code=1)
 
-    step(f"Loading [label]{lab_vars}[/] into Infrahub at [label]{address}[/]")
-    summary = _seed_lab_vars(address=address, token=token, lab_vars=lab_vars)
+    step(f"Loading [label]{lab_vars}[/] into Infrahub at [label]{host_addr}[/]")
+    summary = _seed_lab_vars(address=host_addr, token=token, lab_vars=lab_vars)
     _print_summary(summary)
 
 

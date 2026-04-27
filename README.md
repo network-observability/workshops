@@ -81,19 +81,21 @@ git clone https://github.com/network-observability/workshops.git
 cd workshops
 
 # One-time: sync the Python deps into a workspace .venv/ and bootstrap workshops.
-nobs setup
+# `uv run` ensures `.venv/bin/nobs` exists for first-time runs; subsequent
+# invocations can be bare `nobs ...` after activating the venv (or keep using `uv run`).
+uv run nobs setup
 
 # Generic environment check (works for any workshop).
-nobs preflight
+uv run nobs preflight
 
 # Bring up the AutoCon5 stack.
-nobs autocon5 up
+uv run nobs autocon5 up
 
 # Seed the source-of-truth (Infrahub).
-nobs autocon5 load-infrahub
+uv run nobs autocon5 load-infrahub
 
 # When you're done.
-nobs autocon5 down
+uv run nobs autocon5 down
 ```
 
 Each workshop's own README walks through the agenda and the hands-on parts.

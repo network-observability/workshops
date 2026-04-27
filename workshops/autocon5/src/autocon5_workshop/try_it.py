@@ -14,6 +14,7 @@ import requests
 import typer
 from nobs._console import console, fail, note, ok, warn
 from nobs.clients import LokiClient
+from nobs.lifecycle import env as _env
 from rich.panel import Panel
 from rich.progress import (
     BarColumn,
@@ -38,6 +39,11 @@ def try_it(
     if not token:
         fail("INFRAHUB_API_TOKEN is required.")
         raise typer.Exit(code=1)
+
+    host_infrahub = _env.host_address(infrahub_url)
+    if host_infrahub != infrahub_url:
+        note(f"INFRAHUB_ADDRESS rewritten to host-reachable {host_infrahub}")
+    infrahub_url = host_infrahub
 
     _preflight(prom_url, loki_url, am_url, infrahub_url)
     _pause(auto)

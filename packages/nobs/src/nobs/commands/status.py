@@ -27,6 +27,9 @@ def status(
     Useful as the first thing to run after bringing the stack up - confirms
     the stack is ready before you start loading data or driving demos.
     """
+    # Rewrite the in-network Infrahub DNS name so the host-side probe
+    # actually resolves. See nobs.lifecycle.env.host_address.
+    infrahub_url = _env.host_address(infrahub_url) or infrahub_url
     targets = [
         ("Grafana", grafana_url, "/api/health"),
         ("Prometheus", prom_url, "/-/ready"),

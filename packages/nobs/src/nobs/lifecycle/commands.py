@@ -14,7 +14,6 @@ from typing import Annotated
 
 import typer
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.tree import Tree
 
 from .. import workshops as _workshops_module
@@ -69,19 +68,10 @@ def up_for(ws: Workshop) -> Callable[..., None]:
 
         action = "up -d --build" if build else "up -d"
         step(f"docker compose {action} (project={ws.name})")
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            TimeElapsedColumn(),
-            console=console,
-            transient=True,
-        ) as progress:
-            task = progress.add_task(
-                f"Pulling / building {ws.name} stack",
-                total=None,
-            )
-            result = run_compose(action, ws, services=services)
-            progress.update(task, completed=1)
+        # Stream compose output natively. We tried wrapping it in a Rich
+        # Progress earlier but compose's own pull/build progress is already
+        # rich enough; competing with it produced visually mangled output.
+        result = run_compose(action, ws, services=services)
         if result.returncode != 0:
             fail(f"docker compose exited {result.returncode}")
             raise typer.Exit(code=result.returncode)

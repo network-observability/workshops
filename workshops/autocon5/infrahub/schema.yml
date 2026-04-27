@@ -5,9 +5,9 @@
 # scenario stored in Nautobot (devices, interfaces, BGP peers, plus a
 # `maintenance` flag and the BGP intent), in a flat, easy-to-grok shape.
 #
-# Apply with:  task load-infrahub
-# (which runs `infrahubctl schema load infrahub/schema.yml` followed by
-#  `python scripts/load_infrahub.py lab_vars.yml`).
+# Apply with:  nobs autocon5 load-infrahub
+# (which calls `nobs schema load infrahub/schema.yml` then upserts
+#  lab_vars.yml via the Infrahub SDK in autocon5_workshop/load.py).
 ---
 version: '1.0'
 

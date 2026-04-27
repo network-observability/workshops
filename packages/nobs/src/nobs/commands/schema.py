@@ -40,7 +40,8 @@ def load(
         raise typer.Exit(code=1)
 
     step(f"Applying schema [label]{path}[/]")
-    env = {**os.environ, "INFRAHUB_ADDRESS": address, "INFRAHUB_API_TOKEN": token}
+    host_addr = _env.host_address(address)
+    env = {**os.environ, "INFRAHUB_ADDRESS": host_addr, "INFRAHUB_API_TOKEN": token}
     result = subprocess.run(
         ["infrahubctl", "schema", "load", str(path)],
         env=env,

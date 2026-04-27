@@ -27,6 +27,7 @@ _install_rich_tb(show_locals=False)
 from . import workshops as _workshops_module  # noqa: E402
 from .commands import alerts, maintenance, schema, status  # noqa: E402
 from .lifecycle import commands as lifecycle  # noqa: E402
+from .lifecycle import env as _env  # noqa: E402
 from .lifecycle import preflight as preflight_module  # noqa: E402
 from .lifecycle import setup as setup_module  # noqa: E402
 
@@ -49,12 +50,25 @@ app.command("maintenance")(maintenance.maintenance)
 app.add_typer(schema.app, name="schema")
 
 # Per-workshop subcommand group.
+def _make_callback(ws):
+    """Build a Typer callback that loads the workshop's `.env` BEFORE Typer
+    parses any subcommand's `envvar=`-driven options. Without this, options
+    like `--infrahub-url` resolve from a stale `os.environ` (whatever the
+    user's shell happened to have) instead of the workshop's `.env`."""
+
+    def _cb() -> None:
+        _env.load_env(ws.dir)
+
+    return _cb
+
+
 for _ws in _workshops_module.REGISTRY:
     _sub = typer.Typer(
         name=_ws.name,
         help=f"{_ws.title} - workshop commands.",
         no_args_is_help=True,
         rich_markup_mode="rich",
+        callback=_make_callback(_ws),
     )
     _sub.command("setup")(setup_module.run_for(_ws))
     _sub.command("up")(lifecycle.up_for(_ws))

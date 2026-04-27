@@ -45,13 +45,17 @@ def maintenance(
         fail("INFRAHUB_API_TOKEN is required.")
         raise typer.Exit(code=1)
 
+    host_addr = _env.host_address(address)
+    if host_addr != address:
+        note(f"INFRAHUB_ADDRESS rewritten to host-reachable {host_addr}")
+
     try:
         from infrahub_sdk import Config, InfrahubClientSync
     except ImportError:
         fail("infrahub-sdk is not installed. Run `nobs setup` first.")
         sys.exit(1)
 
-    client = InfrahubClientSync(address=address, config=Config(api_token=token))
+    client = InfrahubClientSync(address=host_addr, config=Config(api_token=token))
     matches = client.filters(kind=kind, name__value=device)
     if not matches:
         fail(f"{kind} [label]{device}[/] not found in Infrahub.")
