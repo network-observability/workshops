@@ -117,8 +117,8 @@
                 "value": [
                   {
                     "targetBlank": true,
-                    "title": "Nautobot Detail",
-                    "url": "http://network-observability.lab:8080/dcim/devices/${__data.fields.id}"
+                    "title": "Infrahub Detail",
+                    "url": "http://localhost:8000/objects/WorkshopDevice/${__data.fields[\"id\"]}"
                   }
                 ]
               }
@@ -127,7 +127,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Intended State"
+              "options": "Maintenance"
             },
             "properties": [
               {
@@ -135,20 +135,15 @@
                 "value": [
                   {
                     "options": {
-                      "Active": {
+                      "true": {
+                        "color": "light-orange",
+                        "index": 0,
+                        "text": "MAINTENANCE"
+                      },
+                      "false": {
                         "color": "light-green",
                         "index": 1,
-                        "text": "Active"
-                      },
-                      "Retired": {
-                        "color": "light-red",
-                        "index": 2,
-                        "text": "Retired"
-                      },
-                      "lab-active": {
-                        "color": "light-green",
-                        "index": 0,
-                        "text": "Active"
+                        "text": "ACTIVE"
                       }
                     },
                     "type": "value"
@@ -193,14 +188,14 @@
           "annotationText": "",
           "annotationTitle": "",
           "constant": 6.5,
-          "dataPath": "devices",
+          "dataPath": "WorkshopDevice.edges",
           "datasource": {
             "type": "fifemon-graphql-datasource",
             "uid": "P6F0309FEA1DB13F7"
           },
           "endTimePath": "endTime",
           "groupBy": "",
-          "queryText": "query {\n  devices(name: \"$device\") {\n    id\n    name\n    role {\n      name\n    }\n    device_type {\n      manufacturer {\n        name\n      }\n      model\n    }\n    status {\n      name\n    }\n  }\n}",
+          "queryText": "{\n  WorkshopDevice(name__value: \"$device\") {\n    edges {\n      node {\n        id\n        name { value }\n        asn { value }\n        site_name { value }\n        role { value }\n        maintenance { value }\n      }\n    }\n  }\n}\n",
           "refId": "A",
           "timePath": ""
         }
@@ -208,20 +203,32 @@
       "title": "Device Details",
       "transformations": [
         {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "node\\.([a-z_]+)\\.value",
+            "renamePattern": "$1"
+          }
+        },
+        {
           "id": "organize",
           "options": {
-            "excludeByName": {
-              "id": false
-            },
+            "excludeByName": {},
             "includeByName": {},
-            "indexByName": {},
+            "indexByName": {
+              "name": 0,
+              "role": 1,
+              "asn": 2,
+              "site_name": 3,
+              "maintenance": 4,
+              "node.id": 5
+            },
             "renameByName": {
-              "device_type.manufacturer.name": "Manufacturer",
-              "device_type.model": "Model",
-              "id": "",
               "name": "Hostname",
-              "role.name": "Role",
-              "status.name": "Intended State"
+              "role": "Role",
+              "asn": "ASN",
+              "site_name": "Site",
+              "maintenance": "Maintenance",
+              "node.id": "id"
             }
           }
         }
@@ -1160,15 +1167,15 @@
                 "value": [
                   {
                     "options": {
-                      "lab-active": {
-                        "color": "light-blue",
+                      "up": {
+                        "color": "light-green",
                         "index": 0,
-                        "text": "Active"
+                        "text": "Up"
                       },
-                      "lab-suspended": {
-                        "color": "#8e948e",
+                      "down": {
+                        "color": "light-red",
                         "index": 1,
-                        "text": "Suspended"
+                        "text": "Down"
                       }
                     },
                     "type": "value"
@@ -1251,7 +1258,7 @@
           "annotationText": "",
           "annotationTitle": "",
           "constant": 6.5,
-          "dataPath": "interfaces",
+          "dataPath": "WorkshopInterface.edges",
           "datasource": {
             "type": "fifemon-graphql-datasource",
             "uid": "P6F0309FEA1DB13F7"
@@ -1259,7 +1266,7 @@
           "endTimePath": "endTime",
           "groupBy": "",
           "hide": false,
-          "queryText": "{\n  interfaces(device: \"$device\", label__n: \"loopback\") {\n    name\n    label\n    sot_device: device {\n      name\n    }\n    sot_intended_state: status {\n      name\n    }\n  }\n}",
+          "queryText": "{\n  WorkshopInterface(role__values: [\"peer\", \"mgmt\"], device__name__value: \"$device\") {\n    edges {\n      node {\n        name { value }\n        role { value }\n        ip_address { value }\n        expected_state { value }\n      }\n    }\n  }\n}\n",
           "refId": "D",
           "timePath": ""
         }
@@ -1269,7 +1276,7 @@
         {
           "id": "renameByRegex",
           "options": {
-            "regex": "sot_(.*)\\.name",
+            "regex": "node\\.([a-z_]+)\\.value",
             "renamePattern": "$1"
           }
         },
@@ -1298,25 +1305,23 @@
                 ],
                 "operation": "aggregate"
               },
-              "device": {
-                "aggregations": [],
-                "operation": "groupby"
-              },
-              "intended_state": {
-                "aggregations": [
-                  "lastNotNull"
-                ],
-                "operation": "aggregate"
-              },
-              "intf_role": {
-                "aggregations": [
-                  "lastNotNull"
-                ],
-                "operation": "aggregate"
-              },
               "name": {
                 "aggregations": [],
                 "operation": "groupby"
+              },
+              "device": {
+                "aggregations": []
+              },
+              "ip_address": {
+                "aggregations": [],
+                "operation": "groupby"
+              },
+              "expected_state": {
+                "aggregations": [],
+                "operation": "groupby"
+              },
+              "role": {
+                "aggregations": []
               }
             }
           }
@@ -1330,18 +1335,25 @@
           "options": {
             "excludeByName": {
               "device": true,
-              "sot_device.name": true
+              "role": true,
+              "Time": true
             },
             "includeByName": {},
-            "indexByName": {},
+            "indexByName": {
+              "name": 0,
+              "Value #A (lastNotNull)": 1,
+              "Value #B (lastNotNull)": 2,
+              "Value #C (lastNotNull)": 3,
+              "ip_address": 4,
+              "expected_state": 5
+            },
             "renameByName": {
+              "name": "Interface",
               "Value #A (lastNotNull)": "Traffic",
               "Value #B (lastNotNull)": "Oper State",
               "Value #C (lastNotNull)": "Enabled",
-              "device": "Device",
-              "intended_state (lastNotNull)": "Intended State",
-              "intf_role (lastNotNull)": "Role",
-              "name": "Interface"
+              "ip_address": "IP",
+              "expected_state": "Intended State"
             }
           }
         }
