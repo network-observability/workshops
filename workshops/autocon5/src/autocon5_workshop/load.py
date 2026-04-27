@@ -175,13 +175,20 @@ def _upsert_device(client: Any, name: str, node: dict[str, Any]) -> tuple[Any, b
     return device, True
 
 
+def _interface_ip(intf: dict[str, Any]) -> str | None:
+    raw = intf.get("ipv4") or intf.get("ip")
+    if isinstance(raw, list):
+        return raw[0] if raw else None
+    return raw
+
+
 def _upsert_interface(client: Any, device: Any, intf: dict[str, Any]) -> bool:
     name = intf["name"]
     existing = client.filters(kind="WorkshopInterface", name__value=name, device__ids=[device.id])
     payload = {
         "name": name,
         "role": intf.get("role", "peer"),
-        "ip_address": intf.get("ip"),
+        "ip_address": _interface_ip(intf),
         "expected_state": intf.get("expected_state", "up"),
         "device": device.id,
     }
