@@ -1,15 +1,5 @@
 # srl1 telemetry — pushed directly into Prometheus via remote_write.
-#
-# Schema: sonda v2 (https://docs.davidban77.com/sonda/configuration/v2-scenarios/).
-# Uses the workshop's local packs (../packs/srlinux-gnmi-*.yaml) so the
-# scenario stays small and the pack abstraction is visible to attendees.
-#
-# Broken-on-purpose for the workshop demo:
-#   - Peer 10.1.99.2 (BGP):     bgp_oper_state = 5 (active, not established)
-#                               bgp_received_routes = 0
-#                               -> trips BgpSessionNotUp
-#   - Interface ethernet-1/11:  interface_oper_state = 2 (down)
-#                               -> trips InterfaceAdminUpOperDown
+# Broken-on-purpose: BGP peer 10.1.99.2 and interface ethernet-1/11.
 ---
 version: 2
 
@@ -26,15 +16,14 @@ defaults:
     url: "${PROMETHEUS_REMOTE_WRITE_URL:-http://prometheus:9090/api/v1/write}"
 
 scenarios:
-  # =========================================================================
-  # BGP peers (intent: established, ipv4-unicast, default network instance)
-  # =========================================================================
+  # BGP peers
   - id: bgp_peer_10_1_2_2
     signal_type: metrics
     pack: srlinux_gnmi_bgp
     labels:
       device: srl1
       peer_address: "10.1.2.2"
+      neighbor_asn: "65102"
 
   - id: bgp_peer_10_1_7_2
     signal_type: metrics
@@ -42,16 +31,20 @@ scenarios:
     labels:
       device: srl1
       peer_address: "10.1.7.2"
+      neighbor_asn: "65102"
 
-  # Broken peer — the metric story behind BgpSessionNotUp.
-  # Override:  oper_state -> 5 (active), received_routes -> 0.
   - id: bgp_peer_10_1_99_2_broken
     signal_type: metrics
     pack: srlinux_gnmi_bgp
     labels:
       device: srl1
       peer_address: "10.1.99.2"
+      neighbor_asn: "65102"
     overrides:
+      bgp_neighbor_state:
+        generator:
+          type: constant
+          value: 4.0
       bgp_oper_state:
         generator:
           type: constant
@@ -60,10 +53,12 @@ scenarios:
         generator:
           type: constant
           value: 0.0
+      bgp_prefixes_accepted:
+        generator:
+          type: constant
+          value: 0.0
 
-  # =========================================================================
-  # Interfaces — peer links
-  # =========================================================================
+  # Interfaces
   - id: intf_ethernet_1_1
     signal_type: metrics
     pack: srlinux_gnmi_interface
@@ -78,8 +73,6 @@ scenarios:
       device: srl1
       name: "ethernet-1/10"
 
-  # Broken interface — operationally down (admin-up oper-down) for the
-  # InterfaceAdminUpOperDown alert demo.
   - id: intf_ethernet_1_11_broken
     signal_type: metrics
     pack: srlinux_gnmi_interface
@@ -91,7 +84,6 @@ scenarios:
         generator:
           type: constant
           value: 2.0
-      # Stop counters from advancing on a downed interface.
       interface_in_octets:
         generator:
           type: constant
@@ -101,9 +93,7 @@ scenarios:
           type: constant
           value: 0.0
 
-  # =========================================================================
   # System: CPU + memory + uptime
-  # =========================================================================
   - id: system_cpu_used
     signal_type: metrics
     name: cpu_used
@@ -133,9 +123,8 @@ scenarios:
       period_secs: 240.0
     jitter: 1.0
 
-  # device_uptime mirrors SNMP sysUpTime (hundredths of a second). Required
-  # by the device-health.json template variable `label_values(device_uptime,
-  # device)` — without this, the device picker on that dashboard is empty.
+  # device-health.json's template variable does `label_values(device_uptime, device)`;
+  # without this metric the dashboard's device picker is empty.
   - id: system_uptime
     signal_type: metrics
     name: device_uptime

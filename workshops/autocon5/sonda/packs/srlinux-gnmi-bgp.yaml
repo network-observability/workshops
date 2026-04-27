@@ -1,44 +1,43 @@
-# SR Linux gNMI BGP metrics pack — Telegraf-normalized schema.
-#
-# Models the BGP-per-peer metrics Telegraf would collect from SR Linux
-# (network instance default, AFI/SAFI ipv4-unicast) via the gNMI subscription
-# `/network-instance[name=*]/protocols/bgp/neighbor[peer-address=*]/...`.
-#
-# All metric names + label keys match what telegraf-01.conf.toml in the
-# `webinar-completed` scenario emits, so the workshop's alerts and dashboards
-# work without dashboard-side changes.
-#
-# Override `bgp_oper_state` and `bgp_received_routes` per peer when the lab
-# wants to model a broken peer (e.g. set oper_state to constant 5.0 (active)
-# and received_routes to 0.0). Alerts then fire as designed.
+# SR Linux gNMI BGP per-peer metrics. Caller supplies device, peer_address,
+# neighbor_asn at the reference site.
 
 name: srlinux_gnmi_bgp
 description: "SR Linux gNMI BGP per-peer metrics (Telegraf-normalized)"
 category: network
 
-# Empty string = caller MUST supply at the reference site. The other labels
-# are constants so attendees see them and they match the webinar lab.
 shared_labels:
   device: ""
   peer_address: ""
+  neighbor_asn: ""
   afi_safi_name: ipv4-unicast
   name: default
   collection_type: gnmi
 
 metrics:
-  # Enum: enable=1, disable=2 (per telegraf processors.enum mapping)
+  # 1=ESTABLISHED, 2=IDLE, 3=CONNECT, 4=ACTIVE, 5=OPENSENT, 6=OPENCONFIRM, 7=NONEXISTENT
+  - name: bgp_neighbor_state
+    generator:
+      type: constant
+      value: 1.0
+
+  # enable=1, disable=2
   - name: bgp_admin_state
     generator:
       type: constant
       value: 1.0
 
-  # Enum: up=1, down=2, idle=3, connect=4, active=5
+  # up=1, down=2, idle=3, connect=4, active=5
   - name: bgp_oper_state
     generator:
       type: constant
       value: 1.0
 
   - name: bgp_received_routes
+    generator:
+      type: constant
+      value: 10.0
+
+  - name: bgp_prefixes_accepted
     generator:
       type: constant
       value: 10.0

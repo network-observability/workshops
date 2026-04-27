@@ -1,12 +1,5 @@
-# srl2 telemetry — served by sonda-server, scraped by telegraf-02.
-#
-# Schema: sonda v2 (https://docs.davidban77.com/sonda/configuration/v2-scenarios/).
-# This file is POST'ed to sonda-server by sonda-setup.sh and is then exposed
-# at `/scenarios/{id}/metrics` for telegraf-02 to scrape (Prometheus text).
-#
-# Broken-on-purpose:
-#   - Peer 10.1.11.1 (BGP):     bgp_oper_state = 5  -> trips BgpSessionNotUp
-#   - Interface ethernet-1/11:  interface_oper_state = 2  -> trips InterfaceAdminUpOperDown
+# srl2 telemetry — POSTed to sonda-server, scraped by telegraf-02.
+# Broken-on-purpose: BGP peer 10.1.11.1 and interface ethernet-1/11.
 ---
 version: 2
 
@@ -16,19 +9,16 @@ description: "AutoCon5 srl2 telemetry served by sonda-server (scraped by telegra
 
 defaults:
   rate: 0.1
-  # No encoder/sink set — sonda-server defaults to prometheus_text in-memory
-  # buffer exposed at /scenarios/{id}/metrics for the scraper.
 
 scenarios:
-  # =========================================================================
   # BGP peers
-  # =========================================================================
   - id: bgp_peer_10_1_2_1
     signal_type: metrics
     pack: srlinux_gnmi_bgp
     labels:
       device: srl2
       peer_address: "10.1.2.1"
+      neighbor_asn: "65101"
 
   - id: bgp_peer_10_1_7_1
     signal_type: metrics
@@ -36,6 +26,7 @@ scenarios:
     labels:
       device: srl2
       peer_address: "10.1.7.1"
+      neighbor_asn: "65101"
 
   - id: bgp_peer_10_1_11_1_broken
     signal_type: metrics
@@ -43,7 +34,12 @@ scenarios:
     labels:
       device: srl2
       peer_address: "10.1.11.1"
+      neighbor_asn: "65101"
     overrides:
+      bgp_neighbor_state:
+        generator:
+          type: constant
+          value: 4.0
       bgp_oper_state:
         generator:
           type: constant
@@ -52,10 +48,12 @@ scenarios:
         generator:
           type: constant
           value: 0.0
+      bgp_prefixes_accepted:
+        generator:
+          type: constant
+          value: 0.0
 
-  # =========================================================================
   # Interfaces
-  # =========================================================================
   - id: intf_ethernet_1_1
     signal_type: metrics
     pack: srlinux_gnmi_interface
@@ -90,9 +88,7 @@ scenarios:
           type: constant
           value: 0.0
 
-  # =========================================================================
   # System
-  # =========================================================================
   - id: system_cpu_used
     signal_type: metrics
     name: cpu_used
