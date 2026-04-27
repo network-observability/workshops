@@ -36,36 +36,49 @@ services:
   # srl1 pipeline: sonda CLI -> remote_write directly into Prometheus.
   sonda-srl1:
     container_name: sonda-srl1
-    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:latest}
+    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.2.1}
     entrypoint: ["/sonda"]
     command: ["run", "--scenario", "/scenarios/srl1-metrics.yaml"]
+    environment:
+      # Custom packs (srlinux_gnmi_bgp, srlinux_gnmi_interface) are loaded
+      # from the bind-mount; SONDA_PACK_PATH adds them to the discovery path
+      # alongside the image's built-ins.
+      SONDA_PACK_PATH: "/packs:/sonda/packs"
+      SONDA_SCENARIO_PATH: "/scenarios"
     volumes:
       - ./sonda/scenarios:/scenarios:ro
+      - ./sonda/packs:/packs:ro
     depends_on:
       prometheus:
         condition: service_started
     restart: unless-stopped
-    logging:
-      driver: gelf
-      options:
-        gelf-address: "udp://127.0.0.1:12201"
+    # logging:                      # disabled with logstash — see top of file
+    #   driver: gelf
+    #   options:
+    #     gelf-address: "udp://127.0.0.1:12201"
 
   # srl2 pipeline: sonda-server holds the scenarios and exposes per-scenario
   # /metrics endpoints; telegraf-02 scrapes them.
   sonda-server:
     container_name: sonda-server
-    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:latest}
+    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.2.1}
     command: ["--port", "8080", "--bind", "0.0.0.0"]
+    environment:
+      SONDA_PACK_PATH: "/packs:/sonda/packs"
+      SONDA_SCENARIO_PATH: "/scenarios"
+    volumes:
+      - ./sonda/packs:/packs:ro
     ports:
       - "8085:8080"
     restart: unless-stopped
-    logging:
-      driver: gelf
-      options:
-        gelf-address: "udp://127.0.0.1:12201"
+    # logging:                      # disabled with logstash — see top of file
+    #   driver: gelf
+    #   options:
+    #     gelf-address: "udp://127.0.0.1:12201"
 
-  # Init container: posts srl2 scenarios into sonda-server and writes the
-  # discovered IDs to a shared volume for telegraf to pick up.
+  # Init container: POSTs the srl2 scenario file (a v2 envelope) to
+  # sonda-server, then reads back the registered scenario IDs and drops
+  # them in a shared volume for telegraf-02's scrape script to pick up.
   sonda-setup:
     container_name: sonda-setup
     image: python:3.12-slim
@@ -75,6 +88,8 @@ services:
       SCENARIOS_DIR: "/scenarios"
     volumes:
       - ./sonda/scripts/sonda-setup.sh:/scripts/sonda-setup.sh:ro
+      # Mount only the srl2 file — sonda-srl1 + sonda-logs handle the others
+      # via the CLI directly.
       - ./sonda/scenarios/srl2-metrics.yaml:/scenarios/srl2-metrics.yaml:ro
       - sonda_shared:/shared
     depends_on:
@@ -84,19 +99,23 @@ services:
   # Logs for both devices — direct push to Loki.
   sonda-logs:
     container_name: sonda-logs
-    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:latest}
+    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.2.1}
     entrypoint: ["/sonda"]
     command: ["run", "--scenario", "/scenarios/all-logs.yaml"]
+    environment:
+      SONDA_PACK_PATH: "/packs:/sonda/packs"
+      SONDA_SCENARIO_PATH: "/scenarios"
     volumes:
       - ./sonda/scenarios:/scenarios:ro
+      - ./sonda/packs:/packs:ro
     depends_on:
       loki:
         condition: service_started
     restart: unless-stopped
-    logging:
-      driver: gelf
-      options:
-        gelf-address: "udp://127.0.0.1:12201"
+    # logging:                      # disabled with logstash — see top of file
+    #   driver: gelf
+    #   options:
+    #     gelf-address: "udp://127.0.0.1:12201"
 
   # =========================================================================
   # Telegraf — collection (srl2 only)
@@ -122,28 +141,41 @@ services:
     depends_on:
       sonda-setup:
         condition: service_completed_successfully
-    logging:
-      driver: gelf
-      options:
-        gelf-address: "udp://127.0.0.1:12201"
+    # logging:                      # disabled with logstash — see top of file
+    #   driver: gelf
+    #   options:
+    #     gelf-address: "udp://127.0.0.1:12201"
 
   # =========================================================================
-  # Logstash — GELF -> Loki ingest
+  # Logstash — GELF -> Loki ingest   *** DISABLED (2026-04-27) ***
+  #
+  # `grafana/logstash-output-loki:3.1.1` is amd64-only — no arm64 manifest at
+  # any tag — so the lab can't bring up the gelf -> loki ingest path on
+  # Apple-Silicon laptops. Running it under qemu/Rosetta works but is heavy.
+  #
+  # TODO(meta-monitoring): replace this with Vector
+  # (https://vector.dev — multi-arch, native ARM, lighter than Logstash).
+  # When done, restore the `logging:` blocks on the other services so the
+  # Meta-monitoring dashboard regains container stdout streams.
+  #
+  # While the service is disabled, the `logging: driver: gelf` directives on
+  # the other services are commented out too — otherwise Docker would route
+  # those streams to a non-existent UDP collector and break `docker logs`.
   # =========================================================================
 
-  logstash:
-    container_name: logstash
-    image: ${LOGSTASH_LOKI_IMAGE:-docker.io/grafana/logstash-output-loki:3.1.1}
-    command: -f /home/logstash/logstash.cfg
-    volumes:
-      - ./logstash/logstash.cfg:/home/logstash/logstash.cfg
-    ports:
-      - "1515:1515"
-      - "1515:1515/udp"
-      - "9600:9600"
-      - "12201:12201/udp"
-    environment:
-      XPACK_MONITORING_ENABLED: "false"
+  # logstash:
+  #   container_name: logstash
+  #   image: ${LOGSTASH_LOKI_IMAGE:-docker.io/grafana/logstash-output-loki:3.1.1}
+  #   command: -f /home/logstash/logstash.cfg
+  #   volumes:
+  #     - ./logstash/logstash.cfg:/home/logstash/logstash.cfg
+  #   ports:
+  #     - "1515:1515"
+  #     - "1515:1515/udp"
+  #     - "9600:9600"
+  #     - "12201:12201/udp"
+  #   environment:
+  #     XPACK_MONITORING_ENABLED: "false"
 
   # =========================================================================
   # Storage / querying
@@ -159,10 +191,10 @@ services:
       - ./loki/loki-config.yml:/etc/loki/loki-config.yml
       - ./loki/rules/:/rules/fake/
       - loki_data:/loki:rw
-    logging:
-      driver: gelf
-      options:
-        gelf-address: "udp://127.0.0.1:12201"
+    # logging:                      # disabled with logstash — see top of file
+    #   driver: gelf
+    #   options:
+    #     gelf-address: "udp://127.0.0.1:12201"
 
   prometheus:
     container_name: prometheus
@@ -178,10 +210,10 @@ services:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
       - ./prometheus/rules/:/etc/prometheus/rules/
       - prometheus_data:/prometheus
-    logging:
-      driver: gelf
-      options:
-        gelf-address: "udp://127.0.0.1:12201"
+    # logging:                      # disabled with logstash — see top of file
+    #   driver: gelf
+    #   options:
+    #     gelf-address: "udp://127.0.0.1:12201"
 
   # =========================================================================
   # Visualization & alerting
@@ -196,10 +228,10 @@ services:
     volumes:
       - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
       - alertmanager_data:/data
-    logging:
-      driver: gelf
-      options:
-        gelf-address: "udp://127.0.0.1:12201"
+    # logging:                      # disabled with logstash — see top of file
+    #   driver: gelf
+    #   options:
+    #     gelf-address: "udp://127.0.0.1:12201"
 
   grafana:
     container_name: grafana
@@ -217,10 +249,10 @@ services:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
       INFRAHUB_API_TOKEN: ${INFRAHUB_API_TOKEN}
-    logging:
-      driver: gelf
-      options:
-        gelf-address: "udp://127.0.0.1:12201"
+    # logging:                      # disabled with logstash — see top of file
+    #   driver: gelf
+    #   options:
+    #     gelf-address: "udp://127.0.0.1:12201"
 
   # =========================================================================
   # Source of truth — Infrahub
@@ -301,10 +333,10 @@ services:
     tty: true
     environment:
       PREFECT_API_URL: "http://prefect-server:4200/api"
-    logging:
-      driver: gelf
-      options:
-        gelf-address: "udp://127.0.0.1:12201"
+    # logging:                      # disabled with logstash — see top of file
+    #   driver: gelf
+    #   options:
+    #     gelf-address: "udp://127.0.0.1:12201"
 
   # =========================================================================
   # Prefect 3 — workflow orchestration for Part 3
@@ -411,7 +443,7 @@ services:
     depends_on:
       prefect-server:
         condition: service_started
-    logging:
-      driver: gelf
-      options:
-        gelf-address: "udp://127.0.0.1:12201"
+    # logging:                      # disabled with logstash — see top of file
+    #   driver: gelf
+    #   options:
+    #     gelf-address: "udp://127.0.0.1:12201"

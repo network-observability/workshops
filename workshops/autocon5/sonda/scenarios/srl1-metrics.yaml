@@ -1,439 +1,148 @@
-# Sonda scenarios for srl1 — direct push via Prometheus remote_write
+# srl1 telemetry — pushed directly into Prometheus via remote_write.
 #
-# This replaces both containerlab (srl1 device) and telegraf-01.
-# Metrics are pushed directly to Prometheus, matching the exact schema
-# that Telegraf would produce from gNMI/SNMP collection.
+# Schema: sonda v2 (https://docs.davidban77.com/sonda/configuration/v2-scenarios/).
+# Uses the workshop's local packs (../packs/srlinux-gnmi-*.yaml) so the
+# scenario stays small and the pack abstraction is visible to attendees.
 #
-# Sink: remote_write → prometheus:9090/api/v1/write
+# Broken-on-purpose for the workshop demo:
+#   - Peer 10.1.99.2 (BGP):     bgp_oper_state = 5 (active, not established)
+#                               bgp_received_routes = 0
+#                               -> trips BgpSessionNotUp
+#   - Interface ethernet-1/11:  interface_oper_state = 2 (down)
+#                               -> trips InterfaceAdminUpOperDown
+---
+version: 2
+
+scenario_name: autocon5-srl1-metrics
+category: network
+description: "AutoCon5 srl1 telemetry — BGP, interfaces, system, uptime."
+
+defaults:
+  rate: 0.1
+  encoder:
+    type: remote_write
+  sink:
+    type: remote_write
+    url: "${PROMETHEUS_REMOTE_WRITE_URL:-http://prometheus:9090/api/v1/write}"
+
 scenarios:
-  # ---------------------------------------------------------------------------
-  # BGP metrics — peer 10.1.2.2 (established)
-  # ---------------------------------------------------------------------------
-  - signal_type: metrics
-    name: bgp_admin_state
-    rate: 0.1
+  # =========================================================================
+  # BGP peers (intent: established, ipv4-unicast, default network instance)
+  # =========================================================================
+  - id: bgp_peer_10_1_2_2
+    signal_type: metrics
+    pack: srlinux_gnmi_bgp
     labels:
       device: srl1
       peer_address: "10.1.2.2"
-      afi_safi_name: ipv4-unicast
-      name: default
-    generator:
-      type: constant
-      value: 1.0
-    encoder: { type: remote_write }
-    sink:
-      type: remote_write
-      url: "http://prometheus:9090/api/v1/write"
 
-  - signal_type: metrics
-    name: bgp_oper_state
-    rate: 0.1
-    labels:
-      device: srl1
-      peer_address: "10.1.2.2"
-      afi_safi_name: ipv4-unicast
-      name: default
-    generator:
-      type: constant
-      value: 1.0
-    encoder: { type: remote_write }
-    sink:
-      type: remote_write
-      url: "http://prometheus:9090/api/v1/write"
-
-  - signal_type: metrics
-    name: bgp_received_routes
-    rate: 0.1
-    labels:
-      device: srl1
-      peer_address: "10.1.2.2"
-      afi_safi_name: ipv4-unicast
-      name: default
-    generator:
-      type: constant
-      value: 10.0
-    encoder: { type: remote_write }
-    sink:
-      type: remote_write
-      url: "http://prometheus:9090/api/v1/write"
-
-  - signal_type: metrics
-    name: bgp_sent_routes
-    rate: 0.1
-    labels:
-      device: srl1
-      peer_address: "10.1.2.2"
-      afi_safi_name: ipv4-unicast
-      name: default
-    generator:
-      type: constant
-      value: 10.0
-    encoder: { type: remote_write }
-    sink:
-      type: remote_write
-      url: "http://prometheus:9090/api/v1/write"
-
-  - signal_type: metrics
-    name: bgp_active_routes
-    rate: 0.1
-    labels:
-      device: srl1
-      peer_address: "10.1.2.2"
-      afi_safi_name: ipv4-unicast
-      name: default
-    generator:
-      type: constant
-      value: 10.0
-    encoder: { type: remote_write }
-    sink:
-      type: remote_write
-      url: "http://prometheus:9090/api/v1/write"
-
-  # ---------------------------------------------------------------------------
-  # BGP metrics — peer 10.1.7.2 (established)
-  # ---------------------------------------------------------------------------
-  - signal_type: metrics
-    name: bgp_admin_state
-    rate: 0.1
+  - id: bgp_peer_10_1_7_2
+    signal_type: metrics
+    pack: srlinux_gnmi_bgp
     labels:
       device: srl1
       peer_address: "10.1.7.2"
-      afi_safi_name: ipv4-unicast
-      name: default
-    generator:
-      type: constant
-      value: 1.0
-    encoder: { type: remote_write }
-    sink:
-      type: remote_write
-      url: "http://prometheus:9090/api/v1/write"
 
-  - signal_type: metrics
-    name: bgp_oper_state
-    rate: 0.1
-    labels:
-      device: srl1
-      peer_address: "10.1.7.2"
-      afi_safi_name: ipv4-unicast
-      name: default
-    generator:
-      type: constant
-      value: 1.0
-    encoder: { type: remote_write }
-    sink:
-      type: remote_write
-      url: "http://prometheus:9090/api/v1/write"
-
-  - signal_type: metrics
-    name: bgp_received_routes
-    rate: 0.1
-    labels:
-      device: srl1
-      peer_address: "10.1.7.2"
-      afi_safi_name: ipv4-unicast
-      name: default
-    generator:
-      type: constant
-      value: 10.0
-    encoder: { type: remote_write }
-    sink:
-      type: remote_write
-      url: "http://prometheus:9090/api/v1/write"
-
-  - signal_type: metrics
-    name: bgp_sent_routes
-    rate: 0.1
-    labels:
-      device: srl1
-      peer_address: "10.1.7.2"
-      afi_safi_name: ipv4-unicast
-      name: default
-    generator:
-      type: constant
-      value: 10.0
-    encoder: { type: remote_write }
-    sink:
-      type: remote_write
-      url: "http://prometheus:9090/api/v1/write"
-
-  - signal_type: metrics
-    name: bgp_active_routes
-    rate: 0.1
-    labels:
-      device: srl1
-      peer_address: "10.1.7.2"
-      afi_safi_name: ipv4-unicast
-      name: default
-    generator:
-      type: constant
-      value: 10.0
-    encoder: { type: remote_write }
-    sink:
-      type: remote_write
-      url: "http://prometheus:9090/api/v1/write"
-
-  # ---------------------------------------------------------------------------
-  # BGP metrics — peer 10.1.99.2 (broken — intentional mismatch)
-  # admin_state=enable but oper_state=active (not established)
-  # ---------------------------------------------------------------------------
-  - signal_type: metrics
-    name: bgp_admin_state
-    rate: 0.1
+  # Broken peer — the metric story behind BgpSessionNotUp.
+  # Override:  oper_state -> 5 (active), received_routes -> 0.
+  - id: bgp_peer_10_1_99_2_broken
+    signal_type: metrics
+    pack: srlinux_gnmi_bgp
     labels:
       device: srl1
       peer_address: "10.1.99.2"
-      afi_safi_name: ipv4-unicast
-      name: default
-    generator:
-      type: constant
-      value: 1.0
-    encoder: { type: remote_write }
-    sink:
-      type: remote_write
-      url: "http://prometheus:9090/api/v1/write"
+    overrides:
+      bgp_oper_state:
+        generator:
+          type: constant
+          value: 5.0
+      bgp_received_routes:
+        generator:
+          type: constant
+          value: 0.0
 
-  - signal_type: metrics
-    name: bgp_oper_state
-    rate: 0.1
+  # =========================================================================
+  # Interfaces — peer links
+  # =========================================================================
+  - id: intf_ethernet_1_1
+    signal_type: metrics
+    pack: srlinux_gnmi_interface
     labels:
       device: srl1
-      peer_address: "10.1.99.2"
-      afi_safi_name: ipv4-unicast
-      name: default
-    generator:
-      type: constant
-      value: 5.0  # active (not established) — triggers BgpSessionNotUp alert
-    encoder: { type: remote_write }
-    sink:
-      type: remote_write
-      url: "http://prometheus:9090/api/v1/write"
+      name: "ethernet-1/1"
 
-  - signal_type: metrics
-    name: bgp_received_routes
-    rate: 0.1
+  - id: intf_ethernet_1_10
+    signal_type: metrics
+    pack: srlinux_gnmi_interface
     labels:
       device: srl1
-      peer_address: "10.1.99.2"
-      afi_safi_name: ipv4-unicast
-      name: default
-    generator:
-      type: constant
-      value: 0.0
-    encoder: { type: remote_write }
-    sink:
-      type: remote_write
-      url: "http://prometheus:9090/api/v1/write"
+      name: "ethernet-1/10"
 
-  # ---------------------------------------------------------------------------
-  # Interface metrics — ethernet-1/1
-  # ---------------------------------------------------------------------------
-  - signal_type: metrics
-    name: interface_admin_state
-    rate: 0.1
+  # Broken interface — operationally down (admin-up oper-down) for the
+  # InterfaceAdminUpOperDown alert demo.
+  - id: intf_ethernet_1_11_broken
+    signal_type: metrics
+    pack: srlinux_gnmi_interface
     labels:
       device: srl1
-      name: ethernet-1/1
-      intf_role: peer
-    generator:
-      type: constant
-      value: 1.0
-    encoder: { type: remote_write }
-    sink:
-      type: remote_write
-      url: "http://prometheus:9090/api/v1/write"
+      name: "ethernet-1/11"
+    overrides:
+      interface_oper_state:
+        generator:
+          type: constant
+          value: 2.0
+      # Stop counters from advancing on a downed interface.
+      interface_in_octets:
+        generator:
+          type: constant
+          value: 0.0
+      interface_out_octets:
+        generator:
+          type: constant
+          value: 0.0
 
-  - signal_type: metrics
-    name: interface_oper_state
-    rate: 0.1
-    labels:
-      device: srl1
-      name: ethernet-1/1
-      intf_role: peer
-    generator:
-      type: constant
-      value: 1.0
-    encoder: { type: remote_write }
-    sink:
-      type: remote_write
-      url: "http://prometheus:9090/api/v1/write"
-
-  - signal_type: metrics
-    name: interface_in_octets
-    rate: 0.1
-    labels:
-      device: srl1
-      name: ethernet-1/1
-      intf_role: peer
-    generator:
-      type: sawtooth
-      min: 0.0
-      max: 500000000.0
-      period_secs: 300
-    jitter: 1000000.0
-    jitter_seed: 42
-    encoder: { type: remote_write }
-    sink:
-      type: remote_write
-      url: "http://prometheus:9090/api/v1/write"
-
-  - signal_type: metrics
-    name: interface_out_octets
-    rate: 0.1
-    labels:
-      device: srl1
-      name: ethernet-1/1
-      intf_role: peer
-    generator:
-      type: sawtooth
-      min: 0.0
-      max: 400000000.0
-      period_secs: 300
-    jitter: 800000.0
-    jitter_seed: 43
-    encoder: { type: remote_write }
-    sink:
-      type: remote_write
-      url: "http://prometheus:9090/api/v1/write"
-
-  # ---------------------------------------------------------------------------
-  # Interface metrics — ethernet-1/10
-  # ---------------------------------------------------------------------------
-  - signal_type: metrics
-    name: interface_admin_state
-    rate: 0.1
-    labels:
-      device: srl1
-      name: ethernet-1/10
-      intf_role: peer
-    generator:
-      type: constant
-      value: 1.0
-    encoder: { type: remote_write }
-    sink:
-      type: remote_write
-      url: "http://prometheus:9090/api/v1/write"
-
-  - signal_type: metrics
-    name: interface_oper_state
-    rate: 0.1
-    labels:
-      device: srl1
-      name: ethernet-1/10
-      intf_role: peer
-    generator:
-      type: constant
-      value: 1.0
-    encoder: { type: remote_write }
-    sink:
-      type: remote_write
-      url: "http://prometheus:9090/api/v1/write"
-
-  - signal_type: metrics
-    name: interface_in_octets
-    rate: 0.1
-    labels:
-      device: srl1
-      name: ethernet-1/10
-      intf_role: peer
-    generator:
-      type: sawtooth
-      min: 0.0
-      max: 300000000.0
-      period_secs: 240
-    jitter: 750000.0
-    jitter_seed: 44
-    encoder: { type: remote_write }
-    sink:
-      type: remote_write
-      url: "http://prometheus:9090/api/v1/write"
-
-  - signal_type: metrics
-    name: interface_out_octets
-    rate: 0.1
-    labels:
-      device: srl1
-      name: ethernet-1/10
-      intf_role: peer
-    generator:
-      type: sawtooth
-      min: 0.0
-      max: 250000000.0
-      period_secs: 240
-    jitter: 600000.0
-    jitter_seed: 45
-    encoder: { type: remote_write }
-    sink:
-      type: remote_write
-      url: "http://prometheus:9090/api/v1/write"
-
-  # ---------------------------------------------------------------------------
-  # Interface metrics — ethernet-1/11 (broken link)
-  # ---------------------------------------------------------------------------
-  - signal_type: metrics
-    name: interface_admin_state
-    rate: 0.1
-    labels:
-      device: srl1
-      name: ethernet-1/11
-      intf_role: peer
-    generator:
-      type: constant
-      value: 1.0
-    encoder: { type: remote_write }
-    sink:
-      type: remote_write
-      url: "http://prometheus:9090/api/v1/write"
-
-  - signal_type: metrics
-    name: interface_oper_state
-    rate: 0.1
-    labels:
-      device: srl1
-      name: ethernet-1/11
-      intf_role: peer
-    generator:
-      type: constant
-      value: 2.0  # down — triggers InterfaceAdminUpOperDown
-    encoder: { type: remote_write }
-    sink:
-      type: remote_write
-      url: "http://prometheus:9090/api/v1/write"
-
-  # ---------------------------------------------------------------------------
-  # System metrics
-  # ---------------------------------------------------------------------------
-  - signal_type: metrics
+  # =========================================================================
+  # System: CPU + memory + uptime
+  # =========================================================================
+  - id: system_cpu_used
+    signal_type: metrics
     name: cpu_used
-    rate: 0.1
     labels:
       device: srl1
       slot: A
+      index: "0"
+      collection_type: gnmi
     generator:
       type: sine
       amplitude: 15.0
-      period_secs: 120
       offset: 25.0
+      period_secs: 120.0
     jitter: 2.0
-    jitter_seed: 50
-    encoder: { type: remote_write }
-    sink:
-      type: remote_write
-      url: "http://prometheus:9090/api/v1/write"
 
-  - signal_type: metrics
+  - id: system_memory_used
+    signal_type: metrics
     name: memory_used
-    rate: 0.1
     labels:
       device: srl1
       slot: A
+      collection_type: gnmi
     generator:
       type: sine
-      amplitude: 5.0
-      period_secs: 180
-      offset: 45.0
+      amplitude: 8.0
+      offset: 42.0
+      period_secs: 240.0
     jitter: 1.0
-    jitter_seed: 51
-    encoder: { type: remote_write }
-    sink:
-      type: remote_write
-      url: "http://prometheus:9090/api/v1/write"
+
+  # device_uptime mirrors SNMP sysUpTime (hundredths of a second). Required
+  # by the device-health.json template variable `label_values(device_uptime,
+  # device)` — without this, the device picker on that dashboard is empty.
+  - id: system_uptime
+    signal_type: metrics
+    name: device_uptime
+    labels:
+      device: srl1
+      collection_type: snmp
+    generator:
+      type: step
+      start: 36000.0       # 6 minutes "of uptime" at start
+      step_size: 100.0     # +1s of uptime per tick at rate 0.1

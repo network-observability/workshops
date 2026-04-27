@@ -150,7 +150,7 @@ tasks:
           *) echo "STATE must be true|false (got '{{.STATE}}')" >&2; exit 2 ;;
         esac
         cd ../.. && uv run --package autocon5-workshop \
-          autocon5 set-maintenance --device "{{.DEVICE}}" $FLAG
+          autocon5 maintenance --device "{{.DEVICE}}" $FLAG
 
   status:
     desc: Quick health check on every service in the stack

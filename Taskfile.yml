@@ -34,7 +34,7 @@ tasks:
           echo "  curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
           exit 1
         fi
-      - uv sync
+      - uv sync --all-packages
       - echo "Workshop deps are installed in ./.venv. Use 'task <workshop>:up' to bring a stack online."
 
   preflight:

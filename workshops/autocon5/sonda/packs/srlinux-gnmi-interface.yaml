@@ -1,0 +1,48 @@
+# SR Linux gNMI interface metrics pack — Telegraf-normalized schema.
+#
+# Models the interface-level metrics Telegraf collects from SR Linux via gNMI
+# subscription `/interface[name=*]/{statistics,oper-state,admin-state}`.
+# Counter metrics (in_octets, out_octets) are modelled as `step` so the
+# `rate(...)` PromQL queries the workshop teaches return realistic non-zero
+# bps numbers.
+#
+# Override `interface_oper_state` per interface to model the broken-link
+# story (set to constant 2.0 for the down peer link).
+
+name: srlinux_gnmi_interface
+description: "SR Linux gNMI per-interface metrics (Telegraf-normalized)"
+category: network
+
+shared_labels:
+  device: ""
+  name: ""              # interface name, e.g. ethernet-1/1
+  intf_role: peer       # alerts filter on this; lab interfaces are all peers
+  collection_type: gnmi
+
+metrics:
+  # Enum: enable=1, disable=2
+  - name: interface_admin_state
+    generator:
+      type: constant
+      value: 1.0
+
+  # Enum: up=1, down=2
+  - name: interface_oper_state
+    generator:
+      type: constant
+      value: 1.0
+
+  # Counter — step generator gives a realistic monotonic increase. step_size
+  # is bytes/tick; with the workshop's default rate=0.1 that's ~12.5 KB/s,
+  # ~100 kbps. Big enough for the throughput panel to render a line.
+  - name: interface_in_octets
+    generator:
+      type: step
+      start: 0.0
+      step_size: 125000.0
+
+  - name: interface_out_octets
+    generator:
+      type: step
+      start: 0.0
+      step_size: 62500.0
