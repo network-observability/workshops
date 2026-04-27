@@ -212,7 +212,10 @@ def _post_alert(webhook_url: str, status: str, device: str, peer: str, fingerpri
         }],
     }
     try:
-        requests.post(webhook_url, json=payload, timeout=5).raise_for_status()
+        # 15s, not 5s: the webhook calls run_deployment(timeout=10) which
+        # blocks until Prefect picks the run up. A tight timeout here logs a
+        # spurious "could not POST" even though the chain ultimately works.
+        requests.post(webhook_url, json=payload, timeout=15).raise_for_status()
         ok(f"replayed {status} payload for {device} → {peer}")
     except requests.RequestException as e:
         warn(f"could not POST to webhook ({e})")

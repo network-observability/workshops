@@ -43,20 +43,10 @@ You also need:
 The very first time, in this order:
 
 ```bash
-# 1. From the repo root: sync deps into .venv/ and bootstrap the workshop.
-#    `uv run` creates .venv/bin/nobs the first time; after this, you can
-#    activate the venv (or keep using `uv run nobs ...`).
-#    Creates .env from .env.example if it's missing.
-uv run nobs setup
-
-# 2. Bring up the stack. The first run pulls a few GB of images (5–10 minutes
-#    on the first run, then cached).
-uv run nobs autocon5 up
-
-# 3. Wait ~60 seconds for Infrahub to finish its first-boot init, then check.
-uv run nobs autocon5 status            # repeat until every row says 'ok'
-
-# 4. Apply the schema and seed lab_vars.yml into Infrahub.
+uv sync --all-packages          # install workspace deps into .venv/
+uv run nobs setup               # bootstrap .env + preflight
+uv run nobs autocon5 up         # first run pulls images, ~5–10 min
+uv run nobs autocon5 status     # repeat until every row says 'ok'
 uv run nobs autocon5 load-infrahub
 ```
 
@@ -180,7 +170,7 @@ AI_RCA_MODEL=gpt-4o-mini        # or e.g. claude-haiku-4-5-20251001
 OPENAI_API_KEY=sk-...           # only the one matching AI_RCA_PROVIDER is required
 ```
 
-Then `nobs autocon5 restart prefect-flows` (just the Prefect container — ~5s, vs `restart` which would down + up the whole stack).
+Then `nobs autocon5 restart prefect-flows`.
 Honest framing: the LLM output is annotated next to the deterministic policy result, not in place of it.
 Human judgement still owns the call to act — the AI gives you a faster narrative around the evidence, not an autonomous decision.
 

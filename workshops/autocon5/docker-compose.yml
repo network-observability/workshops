@@ -53,7 +53,7 @@ services:
       prometheus:
         condition: service_started
     restart: unless-stopped
-    # logging:                      # disabled with logstash — see top of file
+    # logging:                      # restore with the logstash service
     #   driver: gelf
     #   options:
     #     gelf-address: "udp://127.0.0.1:12201"
@@ -72,7 +72,7 @@ services:
     ports:
       - "8085:8080"
     restart: unless-stopped
-    # logging:                      # disabled with logstash — see top of file
+    # logging:                      # restore with the logstash service
     #   driver: gelf
     #   options:
     #     gelf-address: "udp://127.0.0.1:12201"
@@ -113,7 +113,7 @@ services:
       loki:
         condition: service_started
     restart: unless-stopped
-    # logging:                      # disabled with logstash — see top of file
+    # logging:                      # restore with the logstash service
     #   driver: gelf
     #   options:
     #     gelf-address: "udp://127.0.0.1:12201"
@@ -142,26 +142,18 @@ services:
     depends_on:
       sonda-setup:
         condition: service_completed_successfully
-    # logging:                      # disabled with logstash — see top of file
+    # logging:                      # restore with the logstash service
     #   driver: gelf
     #   options:
     #     gelf-address: "udp://127.0.0.1:12201"
 
   # =========================================================================
-  # Logstash — GELF -> Loki ingest   *** DISABLED (2026-04-27) ***
+  # Logstash — GELF -> Loki ingest (DISABLED — pending Vector replacement)
   #
-  # `grafana/logstash-output-loki:3.1.1` is amd64-only — no arm64 manifest at
-  # any tag — so the lab can't bring up the gelf -> loki ingest path on
-  # Apple-Silicon laptops. Running it under qemu/Rosetta works but is heavy.
-  #
-  # TODO(meta-monitoring): replace this with Vector
-  # (https://vector.dev — multi-arch, native ARM, lighter than Logstash).
-  # When done, restore the `logging:` blocks on the other services so the
-  # Meta-monitoring dashboard regains container stdout streams.
-  #
-  # While the service is disabled, the `logging: driver: gelf` directives on
-  # the other services are commented out too — otherwise Docker would route
-  # those streams to a non-existent UDP collector and break `docker logs`.
+  # The Meta-monitoring Grafana dashboard expects container stdout streams
+  # in Loki. Logstash carries those today via the `logging: driver: gelf`
+  # blocks on every service. The service + those gelf directives are
+  # commented out together; once Vector is wired in, restore both.
   # =========================================================================
 
   # logstash:
@@ -192,7 +184,7 @@ services:
       - ./loki/loki-config.yml:/etc/loki/loki-config.yml
       - ./loki/rules/:/rules/fake/
       - loki_data:/loki:rw
-    # logging:                      # disabled with logstash — see top of file
+    # logging:                      # restore with the logstash service
     #   driver: gelf
     #   options:
     #     gelf-address: "udp://127.0.0.1:12201"
@@ -211,7 +203,7 @@ services:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
       - ./prometheus/rules/:/etc/prometheus/rules/
       - prometheus_data:/prometheus
-    # logging:                      # disabled with logstash — see top of file
+    # logging:                      # restore with the logstash service
     #   driver: gelf
     #   options:
     #     gelf-address: "udp://127.0.0.1:12201"
@@ -229,7 +221,7 @@ services:
     volumes:
       - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
       - alertmanager_data:/data
-    # logging:                      # disabled with logstash — see top of file
+    # logging:                      # restore with the logstash service
     #   driver: gelf
     #   options:
     #     gelf-address: "udp://127.0.0.1:12201"
@@ -250,24 +242,20 @@ services:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
       INFRAHUB_API_TOKEN: ${INFRAHUB_API_TOKEN}
-    # logging:                      # disabled with logstash — see top of file
+    # logging:                      # restore with the logstash service
     #   driver: gelf
     #   options:
     #     gelf-address: "udp://127.0.0.1:12201"
 
   # =========================================================================
   # Source of truth — Infrahub
-  # The compose layout is the standard OpsMill demo: server + database +
-  # cache + task-worker. Token-seeded admin so the loader script can apply
-  # the schema and create nodes immediately on first boot.
+  # Five services: graph DB (Neo4j), cache (Redis), message bus (RabbitMQ),
+  # API server, and git-agent. Admin token is seeded on first boot so the
+  # workshop loader can apply the schema + lab_vars without manual auth.
   # =========================================================================
 
   infrahub-db:
     container_name: infrahub-db
-    # Switched to Neo4j — Memgraph (any of mage:1.22-2.22, plain :latest, :2.13.0)
-    # rejected Infrahub 1.1's startup Cypher with `Redeclaring variable: r.`
-    # Neo4j is Infrahub's other supported backend and accepts the queries
-    # without the variable-scope strictness.
     image: neo4j:5-community
     environment:
       NEO4J_AUTH: neo4j/admin
@@ -287,11 +275,7 @@ services:
     volumes:
       - infrahub_cache_data:/data
 
-  # Message bus. Infrahub 1.1 requires RabbitMQ for AMQP traffic between
-  # the API server and the git-agent (Redis-as-broker is no longer
-  # supported in :1.1 — see notes/infrahub-bug-report-2026-04-27.md §5).
-  # rabbitmq:3.13-management-alpine is multi-arch (amd64 + arm64) per the
-  # bug-report's manifest check.
+  # AMQP message bus between the Infrahub API server and the git-agent.
   infrahub-message-queue:
     container_name: infrahub-message-queue
     image: rabbitmq:3.13-management-alpine
@@ -309,18 +293,13 @@ services:
   infrahub-server:
     container_name: infrahub-server
     image: ${INFRAHUB_IMAGE:-registry.opsmill.io/opsmill/infrahub:1.1}
-    # The gunicorn config moved upstream from backend/infrahub/api/ to
-    # backend/infrahub/serve/ between the compose authoring and infrahub :1.1
-    # as currently published.
     command: gunicorn --config backend/infrahub/serve/gunicorn_config.py --logger-class infrahub.serve.log.GunicornLogger -w 2 infrahub.server:app
     ports:
       - "8000:8000"
     environment:
       INFRAHUB_PRODUCTION: "true"
-      # Run workflows in-process (WorkflowLocalExecution), bypassing the embedded
-      # Prefect / SQLite orchestrator. The default WORKER driver was deadlocking
-      # schema-load with SQLite-lock + missing-deployment errors. The workshop
-      # exercises schema CRUD + GraphQL reads only — no orchestration needed.
+      # In-process workflow execution. The workshop only exercises schema
+      # CRUD + GraphQL reads, so the worker-pool path isn't needed.
       INFRAHUB_WORKFLOW_DRIVER: local
       INFRAHUB_INITIAL_ADMIN_TOKEN: ${INFRAHUB_API_TOKEN}
       INFRAHUB_SECURITY_SECRET_KEY: 327f747f-efac-42be-9e73-999f08f86b92
@@ -329,14 +308,11 @@ services:
       INFRAHUB_DB_PORT: 7687
       NEO4J_USERNAME: neo4j
       NEO4J_PASSWORD: admin
-      # Broker (RabbitMQ) and cache (Redis) are now separate services per
-      # Infrahub 1.1's deployment shape.
       INFRAHUB_BROKER_ADDRESS: infrahub-message-queue
       INFRAHUB_BROKER_USERNAME: infrahub
       INFRAHUB_BROKER_PASSWORD: infrahub
       INFRAHUB_CACHE_ADDRESS: infrahub-cache
-      # Infrahub 1.1 rejects same-value admin/agent tokens; give the agent its own.
-      # Used by the git-agent worker for Server↔Agent auth.
+      # Distinct from the admin token; same-value pairs are rejected.
       INFRAHUB_INITIAL_AGENT_TOKEN: a4f3c1d2-9b8e-4a7f-8c5d-1e2f3a4b5c6d
       INFRAHUB_LOG_LEVEL: INFO
     volumes:
@@ -353,17 +329,10 @@ services:
   infrahub-task-worker:
     container_name: infrahub-task-worker
     image: ${INFRAHUB_IMAGE:-registry.opsmill.io/opsmill/infrahub:1.1}
-    # The `task-worker` subcommand was renamed to `git-agent start` in
-    # infrahub :1.1. The git-agent handles branch / changeset / repository
-    # background work the workshop doesn't directly exercise, but the server
-    # expects an agent to be present (otherwise some schema-load paths queue).
+    # Background worker for branch / changeset / repository operations.
     command: infrahub git-agent start
     environment:
       INFRAHUB_PRODUCTION: "true"
-      # Run workflows in-process (WorkflowLocalExecution), bypassing the embedded
-      # Prefect / SQLite orchestrator. The default WORKER driver was deadlocking
-      # schema-load with SQLite-lock + missing-deployment errors. The workshop
-      # exercises schema CRUD + GraphQL reads only — no orchestration needed.
       INFRAHUB_WORKFLOW_DRIVER: local
       INFRAHUB_DB_TYPE: neo4j
       INFRAHUB_DB_ADDRESS: infrahub-db
@@ -400,7 +369,7 @@ services:
     tty: true
     environment:
       PREFECT_API_URL: "http://prefect-server:4200/api"
-    # logging:                      # disabled with logstash — see top of file
+    # logging:                      # restore with the logstash service
     #   driver: gelf
     #   options:
     #     gelf-address: "udp://127.0.0.1:12201"
@@ -518,7 +487,7 @@ services:
     # for the API to be listening; first `python /app/serve.py` can crash on
     # httpx.ConnectError before the server's `prefect.serve()` is reachable.
     restart: on-failure
-    # logging:                      # disabled with logstash — see top of file
+    # logging:                      # restore with the logstash service
     #   driver: gelf
     #   options:
     #     gelf-address: "udp://127.0.0.1:12201"

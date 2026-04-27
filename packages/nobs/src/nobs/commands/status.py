@@ -35,7 +35,9 @@ def status(
         ("Prometheus", prom_url, "/-/ready"),
         ("Loki", loki_url, "/ready"),
         ("Alertmanager", am_url, "/-/ready"),
-        ("Infrahub", infrahub_url, "/api/healthcheck"),
+        # `/health` is the live endpoint on Infrahub 1.1+; `/api/healthcheck`
+        # was the old name and now 404s.
+        ("Infrahub", infrahub_url, "/health"),
         ("Prefect", prefect_url, "/api/health"),
         ("Sonda server", sonda_url, "/health"),
     ]

@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Annotated
 
@@ -35,15 +36,25 @@ def load(
     if not token:
         fail("INFRAHUB_API_TOKEN is required (set it in .env or pass --token).")
         raise typer.Exit(code=1)
-    if shutil.which("infrahubctl") is None:
-        fail("`infrahubctl` is not on PATH. Did you run `nobs setup` (uv sync)?")
+    # `infrahubctl` is installed alongside `nobs` in `.venv/bin/` (it ships
+    # with infrahub-sdk[ctl]). When the user runs `.venv/bin/nobs ...`
+    # directly (without activating the venv or using `uv run`), the
+    # inherited shell PATH won't include `.venv/bin/`, so `shutil.which`
+    # misses it. Resolve via `sys.executable`'s sibling first.
+    same_venv_ctl = Path(sys.executable).parent / "infrahubctl"
+    infrahubctl = (
+        str(same_venv_ctl) if same_venv_ctl.is_file()
+        else shutil.which("infrahubctl")
+    )
+    if infrahubctl is None:
+        fail("`infrahubctl` is not on PATH. Did you run `uv sync --all-packages` (or `nobs setup`)?")
         raise typer.Exit(code=1)
 
     step(f"Applying schema [label]{path}[/]")
     host_addr = _env.host_address(address)
     env = {**os.environ, "INFRAHUB_ADDRESS": host_addr, "INFRAHUB_API_TOKEN": token}
     result = subprocess.run(
-        ["infrahubctl", "schema", "load", str(path)],
+        [infrahubctl, "schema", "load", str(path)],
         env=env,
         check=False,
     )
