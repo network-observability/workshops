@@ -17,12 +17,15 @@ version: "3"
 
 silent: true
 
-# Load INFRAHUB_API_TOKEN, GRAFANA_USER, etc. from the workshop's .env file
-# so subcommands invoked directly (autocon5 evidence / try-it / alerts /
-# status / maintenance) inherit them without needing a wrapper script.
-dotenv: ['.env']
+# NOTE: go-task disallows `dotenv:` in included Taskfiles. Tasks that need
+# INFRAHUB_API_TOKEN etc. source `.env` inline in their shell command (see
+# the `_load_env` snippet referenced by status / alerts / evidence /
+# set-maintenance / try-it below).
 
 vars:
+  # Inline-source `.env` if present. Used by tasks that invoke the autocon5
+  # CLI directly without a bash wrapper script.
+  LOAD_ENV: 'set -a; [ -f .env ] && . ./.env; set +a'
   COMPOSE: docker compose
   COMPOSE_PROJECT_NAME: autocon5
   REPO_ROOT: '{{.USER_WORKING_DIR}}/../..'
@@ -154,6 +157,7 @@ tasks:
           false|0|no|off)  FLAG="--clear" ;;
           *) echo "STATE must be true|false (got '{{.STATE}}')" >&2; exit 2 ;;
         esac
+        {{.LOAD_ENV}}
         cd ../.. && uv run --package autocon5-workshop \
           autocon5 maintenance --device "{{.DEVICE}}" $FLAG
 
@@ -161,7 +165,9 @@ tasks:
     desc: Quick health check on every service in the stack
     deps: [.ensure-uv]
     cmds:
-      - cd ../.. && uv run --package autocon5-workshop autocon5 status
+      - |
+        {{.LOAD_ENV}}
+        cd ../.. && uv run --package autocon5-workshop autocon5 status
 
   alerts:
     desc: "List active Alertmanager alerts (use FILTER='alertname=BgpSessionNotUp' to narrow)"
@@ -170,6 +176,7 @@ tasks:
       FILTER: '{{.FILTER | default ""}}'
     cmds:
       - |
+        {{.LOAD_ENV}}
         if [ -n "{{.FILTER}}" ]; then
           cd ../.. && uv run --package autocon5-workshop autocon5 alerts -l "{{.FILTER}}"
         else
@@ -184,6 +191,7 @@ tasks:
       PEER: '{{.PEER | default "10.1.99.2"}}'
     cmds:
       - |
+        {{.LOAD_ENV}}
         cd ../.. && uv run --package autocon5-workshop autocon5 evidence \
           "{{.DEVICE}}" "{{.PEER}}"
 
@@ -194,6 +202,7 @@ tasks:
       AUTO: '{{.AUTO | default ""}}'
     cmds:
       - |
+        {{.LOAD_ENV}}
         if [ -n "{{.AUTO}}" ]; then
           cd ../.. && uv run --package autocon5-workshop autocon5 try-it --auto
         else
