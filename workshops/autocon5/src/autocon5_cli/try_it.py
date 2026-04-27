@@ -147,7 +147,10 @@ def _preflight(prom_url: str, loki_url: str, am_url: str, infrahub_url: str) -> 
     for name, url in targets:
         try:
             r = requests.get(url, timeout=3)
-            if r.ok:
+            # Loki's /ready returns 503 with body "Ingester not ready: waiting for
+            # 15s after being ready" during a self-imposed warm-up — the service
+            # is fully functional. Treat that specific body as ready.
+            if r.ok or (name == "Loki" and r.status_code == 503 and "Ingester not ready" in r.text):
                 ok(f"{name} reachable")
                 continue
         except requests.RequestException:
@@ -169,11 +172,11 @@ def _preflight(prom_url: str, loki_url: str, am_url: str, infrahub_url: str) -> 
 
 def _set_maintenance(device: str, state: bool, infrahub_url: str, token: str) -> None:
     try:
-        from infrahub_sdk import InfrahubClientSync
+        from infrahub_sdk import Config, InfrahubClientSync
     except ImportError:
         fail("infrahub-sdk is not installed. Run `task setup` first.")
         sys.exit(1)
-    client = InfrahubClientSync(address=infrahub_url, api_token=token)
+    client = InfrahubClientSync(address=infrahub_url, config=Config(api_token=token))
     matches = client.filters(kind="WorkshopDevice", name__value=device)
     if not matches:
         warn(f"could not find {device} in Infrahub (maintenance toggle skipped)")

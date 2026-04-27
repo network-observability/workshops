@@ -79,7 +79,7 @@ def load_infrahub(
 
 def _seed_lab_vars(address: str, token: str, lab_vars: Path) -> dict[str, dict[str, int]]:
     try:
-        from infrahub_sdk import InfrahubClientSync
+        from infrahub_sdk import Config, InfrahubClientSync
     except ImportError:
         fail("infrahub-sdk is not installed. Run `task setup` first.")
         sys.exit(1)
@@ -98,7 +98,7 @@ def _seed_lab_vars(address: str, token: str, lab_vars: Path) -> dict[str, dict[s
     afi_safi = intent_bgp.get("afi_safi", "ipv4-unicast")
     intended_peers = intent_bgp.get("intended_peers") or {}
 
-    client = InfrahubClientSync(address=address, api_token=token)
+    client = InfrahubClientSync(address=address, config=Config(api_token=token))
 
     for device_name, node_def in nodes.items():
         device, was_created = _upsert_device(client, device_name, node_def)

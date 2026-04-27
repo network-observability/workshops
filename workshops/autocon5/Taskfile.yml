@@ -17,6 +17,11 @@ version: "3"
 
 silent: true
 
+# Load INFRAHUB_API_TOKEN, GRAFANA_USER, etc. from the workshop's .env file
+# so subcommands invoked directly (autocon5 evidence / try-it / alerts /
+# status / maintenance) inherit them without needing a wrapper script.
+dotenv: ['.env']
+
 vars:
   COMPOSE: docker compose
   COMPOSE_PROJECT_NAME: autocon5

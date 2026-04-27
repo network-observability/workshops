@@ -25,6 +25,7 @@ volumes:
   infrahub_data:
   infrahub_db_data:
   infrahub_cache_data:
+  infrahub_mq_data:
   infrahub_storage_data:
   sonda_shared:
 
@@ -263,20 +264,47 @@ services:
 
   infrahub-db:
     container_name: infrahub-db
-    image: memgraph/memgraph-mage:1.22-memgraph-2.22
-    # `--data-recovery-on-startup` (was `--storage-recover-on-startup` in memgraph
-    # <2.22; renamed in 2.22+).
-    command: ["--storage-snapshot-interval-sec=300", "--storage-wal-enabled=true",
-              "--data-recovery-on-startup=true", "--storage-snapshot-on-exit=true",
-              "--telemetry-enabled=false", "--bolt-server-name-for-init=Neo4j/v5.11.0"]
+    # Switched to Neo4j — Memgraph (any of mage:1.22-2.22, plain :latest, :2.13.0)
+    # rejected Infrahub 1.1's startup Cypher with `Redeclaring variable: r.`
+    # Neo4j is Infrahub's other supported backend and accepts the queries
+    # without the variable-scope strictness.
+    image: neo4j:5-community
+    environment:
+      NEO4J_AUTH: neo4j/admin
+      NEO4J_dbms_security_auth__minimum__password__length: "4"
+    healthcheck:
+      test: wget -qO /dev/null http://localhost:7474 || exit 1
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 10s
     volumes:
-      - infrahub_db_data:/var/lib/memgraph
+      - infrahub_db_data:/data
 
   infrahub-cache:
     container_name: infrahub-cache
     image: redis:7.2
     volumes:
       - infrahub_cache_data:/data
+
+  # Message bus. Infrahub 1.1 requires RabbitMQ for AMQP traffic between
+  # the API server and the git-agent (Redis-as-broker is no longer
+  # supported in :1.1 — see notes/infrahub-bug-report-2026-04-27.md §5).
+  # rabbitmq:3.13-management-alpine is multi-arch (amd64 + arm64) per the
+  # bug-report's manifest check.
+  infrahub-message-queue:
+    container_name: infrahub-message-queue
+    image: rabbitmq:3.13-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: infrahub
+      RABBITMQ_DEFAULT_PASS: infrahub
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 30s
+      retries: 5
+    volumes:
+      - infrahub_mq_data:/var/lib/rabbitmq
 
   infrahub-server:
     container_name: infrahub-server
@@ -289,12 +317,23 @@ services:
       - "8000:8000"
     environment:
       INFRAHUB_PRODUCTION: "true"
+      # Run workflows in-process (WorkflowLocalExecution), bypassing the embedded
+      # Prefect / SQLite orchestrator. The default WORKER driver was deadlocking
+      # schema-load with SQLite-lock + missing-deployment errors. The workshop
+      # exercises schema CRUD + GraphQL reads only — no orchestration needed.
+      INFRAHUB_WORKFLOW_DRIVER: local
       INFRAHUB_INITIAL_ADMIN_TOKEN: ${INFRAHUB_API_TOKEN}
       INFRAHUB_SECURITY_SECRET_KEY: 327f747f-efac-42be-9e73-999f08f86b92
-      INFRAHUB_DB_TYPE: memgraph
+      INFRAHUB_DB_TYPE: neo4j
       INFRAHUB_DB_ADDRESS: infrahub-db
       INFRAHUB_DB_PORT: 7687
-      INFRAHUB_BROKER_ADDRESS: infrahub-cache
+      NEO4J_USERNAME: neo4j
+      NEO4J_PASSWORD: admin
+      # Broker (RabbitMQ) and cache (Redis) are now separate services per
+      # Infrahub 1.1's deployment shape.
+      INFRAHUB_BROKER_ADDRESS: infrahub-message-queue
+      INFRAHUB_BROKER_USERNAME: infrahub
+      INFRAHUB_BROKER_PASSWORD: infrahub
       INFRAHUB_CACHE_ADDRESS: infrahub-cache
       # Infrahub 1.1 rejects same-value admin/agent tokens; give the agent its own.
       # Used by the git-agent worker for Server↔Agent auth.
@@ -304,8 +343,12 @@ services:
       - infrahub_storage_data:/opt/infrahub/storage
       - infrahub_data:/opt/infrahub
     depends_on:
-      - infrahub-db
-      - infrahub-cache
+      infrahub-db:
+        condition: service_healthy
+      infrahub-cache:
+        condition: service_started
+      infrahub-message-queue:
+        condition: service_healthy
 
   infrahub-task-worker:
     container_name: infrahub-task-worker
@@ -317,15 +360,28 @@ services:
     command: infrahub git-agent start
     environment:
       INFRAHUB_PRODUCTION: "true"
-      INFRAHUB_DB_TYPE: memgraph
+      # Run workflows in-process (WorkflowLocalExecution), bypassing the embedded
+      # Prefect / SQLite orchestrator. The default WORKER driver was deadlocking
+      # schema-load with SQLite-lock + missing-deployment errors. The workshop
+      # exercises schema CRUD + GraphQL reads only — no orchestration needed.
+      INFRAHUB_WORKFLOW_DRIVER: local
+      INFRAHUB_DB_TYPE: neo4j
       INFRAHUB_DB_ADDRESS: infrahub-db
       INFRAHUB_DB_PORT: 7687
-      INFRAHUB_BROKER_ADDRESS: infrahub-cache
+      NEO4J_USERNAME: neo4j
+      NEO4J_PASSWORD: admin
+      # Broker (RabbitMQ) + cache (Redis) split — must match the server above.
+      INFRAHUB_BROKER_ADDRESS: infrahub-message-queue
+      INFRAHUB_BROKER_USERNAME: infrahub
+      INFRAHUB_BROKER_PASSWORD: infrahub
       INFRAHUB_CACHE_ADDRESS: infrahub-cache
       INFRAHUB_INTERNAL_ADDRESS: http://infrahub-server:8000
       INFRAHUB_API_TOKEN: ${INFRAHUB_API_TOKEN}
     depends_on:
-      - infrahub-server
+      infrahub-server:
+        condition: service_started
+      infrahub-message-queue:
+        condition: service_healthy
 
   # =========================================================================
   # Webhook receiver for Alertmanager
