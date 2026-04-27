@@ -110,14 +110,12 @@ Those drive the BGP alerts in Part 3.
 
 ## Part 2 — Dashboards
 
-Three dashboards ship pre-provisioned under `/var/lib/grafana/dashboards`:
+Two dashboards ship pre-provisioned under `/var/lib/grafana/dashboards`:
 
-- **Workshop Lab 1** — the attendee scratchpad.
-  You'll add a panel here.
+- **Workshop Lab 2026** — the attendee scratchpad. You'll add a panel here.
 - **Device Health** — the "one dashboard, one story" reference.
-- **Meta-monitoring** — health of the observability stack itself.
 
-The hands-on exercise is in the workshop slides; you'll add a panel to **Workshop Lab 1** that uses a `device` variable so it works across both `srl1` and `srl2`.
+The hands-on exercise is in the workshop slides; you'll add a panel to **Workshop Lab 2026** that uses a `device` variable so it works across both `srl1` and `srl2`.
 
 ## Part 3 — Alerts, automation, AI-assisted ops
 

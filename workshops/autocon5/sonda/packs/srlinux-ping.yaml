@@ -1,0 +1,27 @@
+# Telegraf inputs.ping shape — synthetic reachability metrics. Caller
+# supplies device at the reference site.
+
+name: srlinux_ping
+description: "Ping reachability + latency (Telegraf inputs.ping shape)"
+category: network
+
+shared_labels:
+  device: ""
+
+metrics:
+  # 0=success, 1=DNS error, 2=timeout. Override to non-zero for an
+  # unreachable-device demo.
+  - name: ping_result_code
+    generator:
+      type: constant
+      value: 0.0
+
+  # Average ICMP RTT in milliseconds. Sine wave around ~1.5ms with mild
+  # jitter — typical LAN latency.
+  - name: ping_average_response_ms
+    generator:
+      type: sine
+      amplitude: 0.6
+      offset: 1.5
+      period_secs: 90.0
+    jitter: 0.3
