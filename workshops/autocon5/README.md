@@ -64,14 +64,7 @@ task autocon5:status            # repeat until every row says 'ok'
 
 # 4. Apply the schema and seed lab_vars.yml into Infrahub.
 task autocon5:load-infrahub
-
-# 5. Useful any time:
-task autocon5:ps                # see what's running
-task autocon5:logs SVC=webhook  # tail a single container
 ```
-
-(Or `cd workshops/autocon5 && task up` and use the workshop-scoped names —
-both work, the umbrella tasks are just thin wrappers.)
 
 Once the stack is up and Infrahub is seeded, you'll have:
 
@@ -92,18 +85,20 @@ task down       # stop everything but keep volumes
 task destroy    # full reset (drops volumes too)
 ```
 
+If anything misbehaves during the workshop, ask the instructor — they have
+the operator runbook in [`docs/troubleshooting.md`](docs/troubleshooting.md).
+
 ## What's actually running
 
 ![AutoCon5 architecture](docs/architecture.svg)
 
-In words: synthetic telemetry from sonda lands in Prometheus and Loki via two
-different patterns (direct push for `srl1`, server + telegraf-scrape for
-`srl2`). Alerting rules in both stores route through Alertmanager into a
-FastAPI webhook, which fans out to a Prefect flow. The flow consults
-**Infrahub** for source-of-truth intent (is this peer expected up? is the
-device in maintenance?) before deciding to **quarantine**, **skip**, or just
-**audit** — and optionally runs an AI RCA against the same evidence bundle.
-Every decision is annotated back into Loki for the audit trail.
+In words: synthetic telemetry from sonda lands in Prometheus and Loki.
+Alerting rules in both stores route through Alertmanager into a FastAPI
+webhook, which fans out to a Prefect flow. The flow consults **Infrahub**
+for source-of-truth intent (is this peer expected up? is the device in
+maintenance?) before deciding to **quarantine**, **skip**, or just **audit**
+— and optionally runs an AI RCA against the same evidence bundle. Every
+decision is annotated back into Loki for the audit trail.
 
 The telemetry shape (metric names, labels, log streams) is real — sonda emits
 the same patterns a Nokia SR Linux device would. That's why the queries,
@@ -184,9 +179,6 @@ task autocon5:alerts
 
 # Walk all four canonical Part 3 paths in one go.
 task autocon5:try-it
-
-# Inspect what's currently registered with sonda-server.
-task autocon5:scenarios
 ```
 
 ### AI-assisted RCA toggle
@@ -212,58 +204,17 @@ not an autonomous decision.
 
 ## Going deeper
 
-- [`infrahub/README.md`](infrahub/README.md) — the source-of-truth schema
-  walkthrough: what the three node types are, why they look the way they
-  do, how the upstream Nautobot model maps onto them, and the GraphQL
-  queries Grafana + the Prefect flow run against them. Read this before
-  extending the schema or adding new alert/automation logic that depends
-  on intent.
+For maintainers, instructors, and anyone forking this workshop:
 
-## Repo layout (what's where)
-
-```text
-workshops/autocon5/
-  Taskfile.yml         # the commands you actually use
-  pyproject.toml       # workshop's Python deps (uv workspace member)
-  docker-compose.yml   # the stack
-  .env.example         # copy to .env to override defaults
-  lab_vars.yml         # source-of-truth data fed into Infrahub
-  sonda/
-    scenarios/         # synthetic metric + log scenarios (srl1, srl2, all-logs)
-    scripts/           # sonda-server bootstrap + telegraf scrape script
-  prometheus/          # config + alert/recording rules
-  loki/                # config + alert/recording rules
-  alertmanager/        # routing config
-  grafana/             # provisioning + the three dashboards
-  telegraf/            # scrape config for sonda-server
-  logstash/            # GELF -> Loki ingest
-  infrahub/            # schema YAML + design notes (see infrahub/README.md)
-  src/autocon5_cli/    # workshop-specific Typer commands (load, evidence, try-it)
-  scripts/             # shell glue (load-infrahub.sh — waits for Infrahub then runs the CLI)
-  webhook/             # FastAPI receiver for Alertmanager
-  automation/          # Prefect flows + workshop SDK + Dockerfile
-```
-
-Workshop-agnostic helpers live one level up at `../../scripts/` — currently
-`preflight.sh` and `sonda-trigger.sh`.
-
-## Troubleshooting
-
-- **`task autocon5:up` succeeds but Grafana can't reach Infrahub.** First
-  boot of Infrahub takes ~60s. Run `task autocon5:status` until every row
-  reads `ok`, then `task autocon5:load-infrahub`.
-- **`task autocon5:load-infrahub` says token mismatch.** The token in
-  `.env` must match `INFRAHUB_INITIAL_ADMIN_TOKEN`, which is seeded only
-  on the *first* boot of `infrahub-server`. If you changed the token after
-  first boot, run `task autocon5:destroy && task autocon5:up`.
-- **No metrics in Grafana.** Check the Prometheus targets at
-  http://localhost:9090/targets. `telegraf-02` should be `UP` and
-  `sonda-server` should have at least one registered scenario
-  (`task autocon5:scenarios`).
-- **Alerts never fire.** The "broken peer" data only fires after the alert's
-  `for:` window (30s for BGP, 30s for the flap rule on top of a 2m count).
-  Be patient, then `task autocon5:alerts` to see what's active.
-- **Webhook errors trying to call Prefect.** The `prefect-flows` container
-  registers and serves the `alert-receiver` deployment as soon as it boots.
-  If on a slow laptop the webhook starts firing before that's ready,
-  `task autocon5:restart-flows` re-registers the deployment.
+- [`docs/`](docs/) — operator documentation index (architecture diagram,
+  `.env` lifecycle, repo layout, troubleshooting).
+- [`docs/env-lifecycle.md`](docs/env-lifecycle.md) — who creates `.env`,
+  who reads it, and the host-vs-container nuance.
+- [`docs/troubleshooting.md`](docs/troubleshooting.md) — the recurring
+  failure modes and exact recovery commands.
+- [`docs/repo-layout.md`](docs/repo-layout.md) — what every directory
+  contributes and where to look when tracing a flow.
+- [`infrahub/README.md`](infrahub/README.md) — the source-of-truth
+  schema walkthrough: what the three node types are, why they look the
+  way they do, how the upstream Nautobot model maps onto them, and the
+  GraphQL queries Grafana + the Prefect flow run against them.
