@@ -49,7 +49,7 @@
   <g>
     <rect x="430" y="40" width="320" height="60" rx="8" class="box viz"/>
     <text x="590" y="64" class="box-title" text-anchor="middle">Grafana</text>
-    <text x="590" y="84" class="box-sub"   text-anchor="middle">3 dashboards · prom + loki + infrahub datasources</text>
+    <text x="590" y="84" class="box-sub"   text-anchor="middle">2 dashboards · prom + loki + infrahub datasources</text>
   </g>
 
   <!-- ============================================================== -->

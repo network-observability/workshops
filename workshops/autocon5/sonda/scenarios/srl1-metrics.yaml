@@ -93,6 +93,13 @@ scenarios:
           type: constant
           value: 0.0
 
+  # Reachability
+  - id: ping_srl1
+    signal_type: metrics
+    pack: srlinux_ping
+    labels:
+      device: srl1
+
   # System: CPU + memory + uptime
   - id: system_cpu_used
     signal_type: metrics
@@ -109,9 +116,9 @@ scenarios:
       period_secs: 120.0
     jitter: 2.0
 
-  - id: system_memory_used
+  - id: system_memory_utilization
     signal_type: metrics
-    name: memory_used
+    name: memory_utilization
     labels:
       device: srl1
       slot: A

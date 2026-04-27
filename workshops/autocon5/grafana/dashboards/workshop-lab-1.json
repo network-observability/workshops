@@ -197,7 +197,7 @@
             "uid": "P1809F7CD0C75ACF3"
           },
           "editorMode": "code",
-          "expr": "rate(interface_out_octets{name=~\"ethernet-1/1([0-2])?\", device=\"$device\", collection_type=\"gnmi\"}[$__rate_interval]) * 8",
+          "expr": "rate(interface_out_octets{name=~\"ethernet-1/1([0-2])?\", device=\"$device\", collection_type=\"gnmi\"}[$__rate_interval]) * 8 * -1",
           "legendFormat": "Out: {{name}}",
           "range": true,
           "refId": "A"
@@ -208,7 +208,7 @@
             "uid": "P1809F7CD0C75ACF3"
           },
           "editorMode": "code",
-          "expr": "rate(interface_in_octets{name=~\"ethernet-1/1([0-2])?\", device=\"$device\", collection_type=\"gnmi\"}[$__rate_interval]) * 8 * -1",
+          "expr": "rate(interface_in_octets{name=~\"ethernet-1/1([0-2])?\", device=\"$device\", collection_type=\"gnmi\"}[$__rate_interval]) * 8",
           "hide": false,
           "legendFormat": "In: {{name}}",
           "range": true,

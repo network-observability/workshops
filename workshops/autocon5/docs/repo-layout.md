@@ -17,7 +17,7 @@ workshops/autocon5/
   prometheus/          # config + alert/recording rules
   loki/                # config + alert/recording rules
   alertmanager/        # routing config
-  grafana/             # provisioning + the three dashboards
+  grafana/             # provisioning + the two dashboards
   telegraf/            # scrape config for sonda-server (the "srl2" pipeline)
   logstash/            # GELF -> Loki ingest (currently disabled in compose)
   infrahub/            # schema YAML + design notes — see infrahub/README.md
