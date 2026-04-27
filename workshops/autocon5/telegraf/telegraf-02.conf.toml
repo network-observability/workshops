@@ -100,3 +100,8 @@
 [[outputs.prometheus_client]]
   # HTTP port to listen on — Prometheus scrapes this endpoint
   listen = ":9005"
+  # v2 emits `<field>{tags}` (e.g. `bgp_oper_state{...}`); v1 (default) emits
+  # `<measurement>_<field>{tags}`, which would yield `prometheus_bgp_oper_state`
+  # since the prometheus parser uses "prometheus" as the measurement name.
+  # The alert rules and dashboards query the raw metric names, so v2 is required.
+  metric_version = 2

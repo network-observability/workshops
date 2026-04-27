@@ -36,7 +36,7 @@ services:
   # srl1 pipeline: sonda CLI -> remote_write directly into Prometheus.
   sonda-srl1:
     container_name: sonda-srl1
-    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.2.1}
+    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.2.2}
     entrypoint: ["/sonda"]
     command: ["run", "--scenario", "/scenarios/srl1-metrics.yaml"]
     environment:
@@ -61,7 +61,7 @@ services:
   # /metrics endpoints; telegraf-02 scrapes them.
   sonda-server:
     container_name: sonda-server
-    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.2.1}
+    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.2.2}
     command: ["--port", "8080", "--bind", "0.0.0.0"]
     environment:
       SONDA_PACK_PATH: "/packs:/sonda/packs"
@@ -99,7 +99,7 @@ services:
   # Logs for both devices — direct push to Loki.
   sonda-logs:
     container_name: sonda-logs
-    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.2.1}
+    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.2.2}
     entrypoint: ["/sonda"]
     command: ["run", "--scenario", "/scenarios/all-logs.yaml"]
     environment:
@@ -264,8 +264,10 @@ services:
   infrahub-db:
     container_name: infrahub-db
     image: memgraph/memgraph-mage:1.22-memgraph-2.22
+    # `--data-recovery-on-startup` (was `--storage-recover-on-startup` in memgraph
+    # <2.22; renamed in 2.22+).
     command: ["--storage-snapshot-interval-sec=300", "--storage-wal-enabled=true",
-              "--storage-recover-on-startup=true", "--storage-snapshot-on-exit=true",
+              "--data-recovery-on-startup=true", "--storage-snapshot-on-exit=true",
               "--telemetry-enabled=false", "--bolt-server-name-for-init=Neo4j/v5.11.0"]
     volumes:
       - infrahub_db_data:/var/lib/memgraph
@@ -279,7 +281,10 @@ services:
   infrahub-server:
     container_name: infrahub-server
     image: ${INFRAHUB_IMAGE:-registry.opsmill.io/opsmill/infrahub:1.1}
-    command: gunicorn --config backend/infrahub/api/gunicorn_config.py --logger-class infrahub.serve.log.GunicornLogger -w 2 infrahub.server:app
+    # The gunicorn config moved upstream from backend/infrahub/api/ to
+    # backend/infrahub/serve/ between the compose authoring and infrahub :1.1
+    # as currently published.
+    command: gunicorn --config backend/infrahub/serve/gunicorn_config.py --logger-class infrahub.serve.log.GunicornLogger -w 2 infrahub.server:app
     ports:
       - "8000:8000"
     environment:
@@ -291,7 +296,9 @@ services:
       INFRAHUB_DB_PORT: 7687
       INFRAHUB_BROKER_ADDRESS: infrahub-cache
       INFRAHUB_CACHE_ADDRESS: infrahub-cache
-      INFRAHUB_INITIAL_AGENT_TOKEN: ${INFRAHUB_API_TOKEN}
+      # Infrahub 1.1 rejects same-value admin/agent tokens; give the agent its own.
+      # Used by the git-agent worker for Server↔Agent auth.
+      INFRAHUB_INITIAL_AGENT_TOKEN: a4f3c1d2-9b8e-4a7f-8c5d-1e2f3a4b5c6d
       INFRAHUB_LOG_LEVEL: INFO
     volumes:
       - infrahub_storage_data:/opt/infrahub/storage
@@ -303,7 +310,11 @@ services:
   infrahub-task-worker:
     container_name: infrahub-task-worker
     image: ${INFRAHUB_IMAGE:-registry.opsmill.io/opsmill/infrahub:1.1}
-    command: infrahub task-worker
+    # The `task-worker` subcommand was renamed to `git-agent start` in
+    # infrahub :1.1. The git-agent handles branch / changeset / repository
+    # background work the workshop doesn't directly exercise, but the server
+    # expects an agent to be present (otherwise some schema-load paths queue).
+    command: infrahub git-agent start
     environment:
       INFRAHUB_PRODUCTION: "true"
       INFRAHUB_DB_TYPE: memgraph
@@ -416,6 +427,10 @@ services:
     environment:
       PREFECT_API_URL: http://prefect-server:4200/api
     command: prefect worker start --pool local-pool
+    # `prefect-server: condition: service_started` only waits for the container
+    # to start, not for the API socket to accept connections — first run of
+    # `prefect worker start` can race and exit with httpx.ConnectError.
+    restart: on-failure
 
   # The flow server: registers and runs the alert-receiver deployment, with
   # all the workshop SDK code mounted in. This is the container the webhook
@@ -443,6 +458,10 @@ services:
     depends_on:
       prefect-server:
         condition: service_started
+    # Same race as prefect-worker — depends_on `service_started` doesn't wait
+    # for the API to be listening; first `python /app/serve.py` can crash on
+    # httpx.ConnectError before the server's `prefect.serve()` is reachable.
+    restart: on-failure
     # logging:                      # disabled with logstash — see top of file
     #   driver: gelf
     #   options:
