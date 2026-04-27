@@ -1,4 +1,4 @@
-"""`autocon5 load-infrahub` — apply schema (via nobs) + seed lab_vars.yml."""
+"""`nobs autocon5 load-infrahub` - apply schema (via nobs) + seed lab_vars.yml."""
 from __future__ import annotations
 
 import sys
@@ -9,11 +9,12 @@ import typer
 import yaml
 from nobs._console import console, fail, note, ok, step, warn
 from nobs.commands import schema as nobs_schema
+from nobs.lifecycle import env as _env
 from rich.panel import Panel
 from rich.table import Table
 
 # Default paths are anchored to the workshop directory (workshops/autocon5/).
-_WORKSHOP_DIR = Path(__file__).resolve().parents[3]
+_WORKSHOP_DIR = Path(__file__).resolve().parents[2]
 
 
 def _detect_default(path: Path) -> Path:
@@ -52,23 +53,23 @@ def load_infrahub(
     schema = _detect_default(schema)
     lab_vars = _detect_default(lab_vars)
 
-    if "infrahub-server" in address:
-        address = "http://localhost:8000"
-        note(f"INFRAHUB_ADDRESS rewritten to host-reachable {address}")
-
     if not token:
         fail("INFRAHUB_API_TOKEN is required (set it in .env or pass --token).")
         raise typer.Exit(code=1)
 
+    host_addr = _env.host_address(address)
+    if host_addr != address:
+        note(f"INFRAHUB_ADDRESS rewritten to host-reachable {host_addr}")
+
     if not skip_schema:
-        nobs_schema.load(path=schema, address=address, token=token)
+        nobs_schema.load(path=schema, address=host_addr, token=token)
 
     if not lab_vars.exists():
         fail(f"lab_vars file not found: {lab_vars}")
         raise typer.Exit(code=1)
 
-    step(f"Loading [label]{lab_vars}[/] into Infrahub at [label]{address}[/]")
-    summary = _seed_lab_vars(address=address, token=token, lab_vars=lab_vars)
+    step(f"Loading [label]{lab_vars}[/] into Infrahub at [label]{host_addr}[/]")
+    summary = _seed_lab_vars(address=host_addr, token=token, lab_vars=lab_vars)
     _print_summary(summary)
 
 
@@ -81,7 +82,7 @@ def _seed_lab_vars(address: str, token: str, lab_vars: Path) -> dict[str, dict[s
     try:
         from infrahub_sdk import Config, InfrahubClientSync
     except ImportError:
-        fail("infrahub-sdk is not installed. Run `task setup` first.")
+        fail("infrahub-sdk is not installed. Run `nobs setup` first.")
         sys.exit(1)
 
     counts: dict[str, dict[str, int]] = {
@@ -219,4 +220,4 @@ def _print_summary(counts: dict[str, dict[str, int]]) -> None:
         )
     )
     if not counts["WorkshopDevice"]["created"] and not counts["WorkshopDevice"]["updated"]:
-        warn("No devices found in lab_vars.yml — did you point --lab-vars at the right file?")
+        warn("No devices found in lab_vars.yml - did you point --lab-vars at the right file?")

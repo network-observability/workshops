@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Callable
 from typing import Annotated
 
 import typer
@@ -9,6 +10,8 @@ from rich.table import Table
 
 from .._console import console, fail
 from ..clients import AlertmanagerClient
+from ..lifecycle import env as _env
+from ..workshops import Workshop
 
 
 def _parse_iso(s: str) -> dt.datetime | None:
@@ -115,3 +118,43 @@ def alerts(
 
     console.print()
     console.print(table)
+
+
+def alerts_for(ws: Workshop) -> Callable[..., None]:
+    """Return an `alerts` callable bound to the workshop's `.env` URLs.
+
+    Loads the workshop's `.env` once before delegating so the
+    `ALERTMANAGER_URL` envvar default reflects the workshop's stack.
+    """
+
+    def alerts_ws(
+        am_url: Annotated[
+            str,
+            typer.Option("--am-url", envvar="ALERTMANAGER_URL", help="Alertmanager URL."),
+        ] = "http://localhost:9093",
+        label: Annotated[
+            list[str] | None,
+            typer.Option(
+                "--label",
+                "-l",
+                help="Filter by label, e.g. -l alertname=BgpSessionNotUp. Can be repeated.",
+            ),
+        ] = None,
+        show_silenced: Annotated[
+            bool, typer.Option("--silenced/--no-silenced", help="Include silenced alerts.")
+        ] = True,
+        show_inhibited: Annotated[
+            bool, typer.Option("--inhibited/--no-inhibited", help="Include inhibited alerts.")
+        ] = True,
+    ) -> None:
+        _env.load_env(ws.dir)
+        alerts(
+            am_url=am_url,
+            label=label,
+            show_silenced=show_silenced,
+            show_inhibited=show_inhibited,
+        )
+
+    alerts_ws.__doc__ = f"List active Alertmanager alerts for the {ws.title} stack."
+    alerts_ws.__name__ = "alerts"
+    return alerts_ws

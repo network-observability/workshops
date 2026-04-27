@@ -9,7 +9,7 @@ If you just want to run the workshop, you don't need anything in here.
 
 - [`architecture.svg`](architecture.svg) — the visual the attendee README embeds.
   Useful as a standalone reference when you're tracing a path through compose.
-- [`env-lifecycle.md`](env-lifecycle.md) — who creates `.env`, who reads it, why three different consumers all need a copy, and the one nuance (`infrahub-server` vs `localhost`) that bites operators on the host.
+- [`env-lifecycle.md`](env-lifecycle.md) — who creates `.env`, who reads it, why two different consumers each need a copy, and the one nuance (`infrahub-server` vs `localhost`) that used to bite operators on the host.
 - [`repo-layout.md`](repo-layout.md) — what every directory under `workshops/autocon5/` contributes and which docs cover it.
 - [`troubleshooting.md`](troubleshooting.md) — the recurring failure modes, why they happen, and the exact recovery commands.
 - [`../infrahub/README.md`](../infrahub/README.md) — the source-of-truth schema walkthrough.

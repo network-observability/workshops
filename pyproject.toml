@@ -26,6 +26,8 @@ dependencies = []
 dev = [
   "ruff>=0.6,<1",
   "pyyaml>=6.0",   # used by the lint scripts
+  "pytest>=8.0,<9",
+  "pytest-mock>=3.12",
 ]
 
 [tool.uv]

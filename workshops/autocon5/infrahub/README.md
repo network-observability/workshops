@@ -28,17 +28,17 @@ Apply with:
 
 ```bash
 # Prereqs (one-time, from the repo root):
-task setup                 # uv sync — installs autocon5 + nobs CLIs
-task autocon5:up           # bring the stack online; wait ~60s for first boot
+nobs setup                 # uv sync + bootstrap workshops + preflight
+nobs autocon5 up           # bring the stack online; wait ~60s for first boot
 
 # Then:
-task autocon5:load-infrahub
+nobs autocon5 load-infrahub
 ```
 
-`autocon5 load-infrahub` (the Typer command behind that task) calls
-`nobs schema load infrahub/schema.yml` to apply the schema, then walks
-`lab_vars.yml` and idempotently upserts devices, interfaces, and BGP
-sessions. Both halves of the work print Rich-styled summary tables.
+`nobs autocon5 load-infrahub` calls `nobs schema load infrahub/schema.yml`
+to apply the schema, then walks `lab_vars.yml` and idempotently upserts
+devices, interfaces, and BGP sessions. Both halves of the work print
+Rich-styled summary tables.
 
 ## The model
 
@@ -50,7 +50,7 @@ A network device. Source of identity for everything else in the workshop.
 |-----------|------|----------------|
 | `name` | `Text`, unique | Joins to the `device` label sonda emits. Everything pivots on this. |
 | `asn` | `Number` | BGP autonomous system number (used by RCA prompts and dashboards). |
-| `maintenance` | `Boolean`, default `false` | The maintenance gate. Toggled by `task autocon5:set-maintenance`; the policy in `automation/workshop_sdk.py` skips action when this is true. |
+| `maintenance` | `Boolean`, default `false` | The maintenance gate. Toggled by `nobs autocon5 maintenance --device <name> --state` / `--clear`; the policy in `automation/workshop_sdk.py` skips action when this is true. |
 | `site_name` | `Text`, optional | Cosmetic — surfaced in evidence bundles and RCA prompts. |
 | `role` | `Text`, optional | Same — cosmetic enrichment. |
 
@@ -104,7 +104,7 @@ GraphQL queries readable.
 node.** A real SoT might model maintenance windows with start/end times,
 calendars, RBAC. For a 4-hour workshop the boolean is enough, and it makes
 the four canonical paths in Part 3 (quarantine / skip / maintenance-skip /
-audit) demoable in one `task autocon5:set-maintenance` call.
+audit) demoable in one `nobs autocon5 maintenance` call.
 
 **`expected_state` on `WorkshopBgpSession` is a `Dropdown`, not a
 boolean.** The original Nautobot model used a string like `"established"`
@@ -159,7 +159,7 @@ The two material simplifications:
 
 The `chapters/sonda-integration` scenario in
 `network-observability-lab` populated Nautobot from `lab_vars.yml`. The
-workshop's loader (`scripts/load_infrahub.py`) reads the same
+workshop's loader (`src/autocon5_workshop/load.py`) reads the same
 `lab_vars.yml`, so the two stay in sync if you ever want to compare
 behaviour.
 
@@ -263,14 +263,14 @@ right node, then re-apply:
 ```
 
 ```bash
-task autocon5:load-infrahub
+nobs autocon5 load-infrahub
 ```
 
 Schema reloads are non-destructive — Infrahub diffs the new schema
 against the live one and migrates in place.
 
 If the new attribute should be populated from `lab_vars.yml`, also extend
-[`scripts/load_infrahub.py`](../scripts/load_infrahub.py) — find the
+[`../src/autocon5_workshop/load.py`](../src/autocon5_workshop/load.py) — find the
 relevant `_upsert_*` function and add the field to the payload dict.
 
 ### Add a node type
@@ -296,8 +296,8 @@ example for an OSPF intent block would be:
       optional: false
 ```
 
-Then add an `_upsert_ospf_area` helper in `load_infrahub.py` and call it
-from `main()` for each device.
+Then add an `_upsert_ospf_area` helper in `src/autocon5_workshop/load.py` and call it
+from the loader entry point for each device.
 
 ### Add a new dropdown choice
 
@@ -313,7 +313,7 @@ new option.
   **`INFRAHUB_INITIAL_ADMIN_TOKEN`** (see the `infrahub-server` service
   in `docker-compose.yml`). That env var is only honoured on the *first*
   boot of `infrahub-server`. If you change the token after the first
-  boot, run `task autocon5:destroy && task autocon5:up`.
+  boot, run `nobs autocon5 destroy && nobs autocon5 up`.
 - All HTTP requests pass the token in the **`X-INFRAHUB-KEY`** header,
   not `Authorization`. Both the Grafana datasource and the
   `InfrahubClient` in the SDK use this header.
@@ -324,12 +324,11 @@ new option.
 |------|---------|
 | `infrahub/schema.yml` | The source of truth for the schema. |
 | `lab_vars.yml` | The data fed into the schema (devices, interfaces, BGP intent). |
-| `scripts/load-infrahub.sh` | Thin shell wrapper: waits for Infrahub to be reachable, then invokes `autocon5 load-infrahub`. |
-| `src/autocon5_cli/load.py` | Workshop loader. Idempotent upsert from `lab_vars.yml`. The schema apply step delegates to `nobs schema load`. |
-| `src/autocon5_cli/evidence.py` | `autocon5 evidence DEVICE PEER` — Rich panels of the SoT gate, metrics snapshot, log lines, and policy hint for a (device, peer) pair. |
-| `../../packages/nobs/src/nobs/clients/infrahub.py` | Generic Infrahub GraphQL client used by the workshop CLI and by future workshops. |
+| `src/autocon5_workshop/load.py` | Workshop loader behind `nobs autocon5 load-infrahub`. Idempotent upsert from `lab_vars.yml`; the schema apply step delegates to `nobs schema load`. |
+| `src/autocon5_workshop/evidence.py` | `nobs autocon5 evidence DEVICE PEER` — Rich panels of the SoT gate, metrics snapshot, log lines, and policy hint for a (device, peer) pair. |
+| `../../packages/nobs/src/nobs/clients/infrahub.py` | Generic Infrahub GraphQL client used by `nobs` and the workshop plugins. |
 | `../../packages/nobs/src/nobs/commands/schema.py` | `nobs schema load PATH` — generic schema apply (wraps `infrahubctl`). |
-| `../../packages/nobs/src/nobs/commands/maintenance.py` | `nobs maintenance` (re-exported as `autocon5 maintenance`) — generic over `--kind`, defaults to `WorkshopDevice`. |
+| `../../packages/nobs/src/nobs/commands/maintenance.py` | `nobs maintenance` (also exposed as `nobs autocon5 maintenance`) — generic over `--kind`, defaults to `WorkshopDevice`. |
 | `automation/workshop_sdk.py` | `InfrahubClient` + policy gate inside the Prefect container (kept standalone so the Prefect image stays small). |
 | `grafana/datasources.yml` | Provisioned `infrahub` GraphQL datasource for dashboards. |
 

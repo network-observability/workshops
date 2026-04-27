@@ -43,7 +43,7 @@ jobs:
             uv.lock
 
       - name: Install Python deps via uv
-        run: uv sync
+        run: uv sync --all-packages
 
       - name: Validate YAML
         run: |
@@ -164,17 +164,12 @@ jobs:
             uv.lock
 
       - name: uv sync
-        run: uv sync
-
-      - name: Install go-task
-        run: |
-          sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
+        run: uv sync --all-packages
 
       - name: Bring stack up
-        working-directory: workshops/autocon5
         run: |
-          cp .env.example .env
-          task up
+          uv run nobs autocon5 setup
+          uv run nobs autocon5 up
 
       - name: Wait for stack readiness
         run: |
@@ -199,8 +194,7 @@ jobs:
           done
 
       - name: Seed Infrahub
-        working-directory: workshops/autocon5
-        run: task load-infrahub
+        run: uv run nobs autocon5 load-infrahub
 
       - name: Wait for first BgpSessionNotUp alert (up to 2m)
         run: |
@@ -214,9 +208,8 @@ jobs:
             sleep 5
           done
 
-      - name: Walk the four Part 3 paths (autocon5 try-it --auto)
-        working-directory: workshops/autocon5
-        run: task try-it AUTO=1
+      - name: Walk the four Part 3 paths (try-it --auto)
+        run: uv run nobs autocon5 try-it --auto
 
       - name: Dump container logs on failure
         if: failure()
@@ -229,5 +222,4 @@ jobs:
 
       - name: Tear stack down
         if: always()
-        working-directory: workshops/autocon5
-        run: task destroy
+        run: uv run nobs autocon5 destroy

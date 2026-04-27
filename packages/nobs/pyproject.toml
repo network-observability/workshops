@@ -9,6 +9,12 @@ dependencies = [
   "typer[all]>=0.12,<1",       # brings Rich
   "infrahub-sdk[ctl]>=1.0,<2.0",
   "requests>=2.31",
+  "httpx>=0.27",
+  "pydantic>=2.6,<3",
+  "python-dotenv>=1.0",
+  "pyyaml>=6.0",
+  "psutil>=5.9",
+  "autocon5-workshop",
 ]
 
 [project.scripts]
@@ -23,3 +29,6 @@ packages = ["src/nobs"]
 
 [tool.uv]
 package = true
+
+[tool.uv.sources]
+autocon5-workshop = { workspace = true }
