@@ -47,12 +47,12 @@ def maintenance(
         raise typer.Exit(code=1)
 
     try:
-        from infrahub_sdk import InfrahubClientSync
+        from infrahub_sdk import Config, InfrahubClientSync
     except ImportError:
         fail("infrahub-sdk is not installed. Run `task setup` first.")
         sys.exit(1)
 
-    client = InfrahubClientSync(address=address, api_token=token)
+    client = InfrahubClientSync(address=address, config=Config(api_token=token))
     matches = client.filters(kind=kind, name__value=device)
     if not matches:
         fail(f"{kind} [label]{device}[/] not found in Infrahub.")
