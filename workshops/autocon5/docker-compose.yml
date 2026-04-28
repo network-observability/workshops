@@ -89,7 +89,8 @@ services:
       sonda-server:
         condition: service_started
 
-  # Logs for both devices — direct push to Loki.
+  # Both devices' logs run in one sonda process. srl1 streams push direct
+  # to Loki; srl2 streams emit RFC 5424 syslog UDP to Vector (vector:1514).
   sonda-logs:
     container_name: sonda-logs
     image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.2.2}
@@ -103,6 +104,8 @@ services:
       - ./sonda/packs:/packs:ro
     depends_on:
       loki:
+        condition: service_started
+      vector:
         condition: service_started
     restart: unless-stopped
 
@@ -130,6 +133,27 @@ services:
     depends_on:
       sonda-setup:
         condition: service_completed_successfully
+
+  # =========================================================================
+  # Vector — RFC 5424 syslog UDP -> Loki, for srl2's log leg.
+  # srl1 emits direct to Loki; srl2 sends syslog here so the curriculum
+  # has a side-by-side "shipper-side transforms vs no-shipper" comparison.
+  # =========================================================================
+
+  vector:
+    container_name: vector
+    image: ${VECTOR_IMAGE:-docker.io/timberio/vector:0.49.0-debian}
+    command: ["--config", "/etc/vector/vector.yaml"]
+    volumes:
+      - ./vector/vector.yaml:/etc/vector/vector.yaml:ro
+    ports:
+      - "8686:8686"
+    expose:
+      - "1514/udp"
+    depends_on:
+      loki:
+        condition: service_started
+    restart: unless-stopped
 
   # =========================================================================
   # Storage / querying
