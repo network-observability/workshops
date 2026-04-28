@@ -81,8 +81,7 @@ def maintenance(
         )
     )
 
-    # Annotate the state flip on the device-health dashboard. The
-    # `Device Config Push` annotation filters on these labels.
+    # Labels contracted with device-health.json's "Device Config Push" annotation.
     try:
         LokiClient(loki_url).annotate(
             labels={
