@@ -19,7 +19,6 @@ workshops/autocon5/
   alertmanager/        # routing config
   grafana/             # provisioning + the two dashboards
   telegraf/            # scrape config for sonda-server (the "srl2" pipeline)
-  vector/              # GELF -> Loki ingest for container stdout streams
   infrahub/            # schema YAML + design notes — see infrahub/README.md
   src/autocon5_workshop/   # workshop-specific commands; registers itself with `nobs`
   webhook/             # FastAPI receiver for Alertmanager

@@ -85,12 +85,6 @@
     <text x="130" y="490" class="box-sub"   text-anchor="middle">syslog + UPDOWN</text>
   </g>
 
-  <!-- vector (host containers' GELF logs) -->
-  <g>
-    <rect x="40" y="534" width="180" height="56" rx="8" class="box src"/>
-    <text x="130" y="558" class="box-title" text-anchor="middle">vector (GELF)</text>
-    <text x="130" y="576" class="box-sub"   text-anchor="middle">container logs</text>
-  </g>
 
   <!-- ============================================================== -->
   <!-- Storage column                                                  -->

@@ -43,7 +43,6 @@ workshops/
     alertmanager/        # routing config
     grafana/             # provisioning + dashboards
     telegraf/            # scrape config for sonda-server
-    vector/              # GELF -> Loki ingest
     infrahub/            # schema YAML
     webhook/             # FastAPI receiver for Alertmanager
     automation/          # Prefect flows (alert -> evidence -> decision -> action -> RCA)
