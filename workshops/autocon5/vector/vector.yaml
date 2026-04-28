@@ -1,0 +1,71 @@
+# Vector pipeline for the syslog leg of the workshop.
+#
+# Curriculum point: srl1 emits logs direct to Loki via sonda's `loki`
+# sink; srl2 emits RFC 5424 syslog over UDP into Vector, which decodes,
+# enriches, and pushes to the same Loki. Students compare the two paths
+# with the `pipeline` label.
+#
+# Vector's syslog codec splits each RFC 5424 SD-ID into a top-level key.
+# Sonda emits scenario `labels:` under SD-ID `sonda`, so labels arrive
+# under `.sonda.<key>` (NOT `.structured_data.sonda.*`).
+
+api:
+  enabled: true
+  address: 0.0.0.0:8686
+
+sources:
+  syslog_in:
+    type: socket
+    mode: udp
+    address: 0.0.0.0:1514
+    decoding:
+      codec: syslog
+
+transforms:
+  enrich:
+    type: remap
+    inputs:
+      - syslog_in
+    source: |
+      # Vector's syslog codec already maps the RFC 5424 severity int
+      # to its string name on `.severity`. Carry it through as `level`
+      # to match the Loki schema dashboards filter on.
+      .level = string(.severity) ?? "info"
+
+      sonda, _err = object(.sonda)
+      if sonda == null { sonda = {} }
+
+      .device                  = string(sonda.device)                  ?? string(.hostname) ?? "unknown"
+      .vendor_facility         = string(sonda.vendor_facility)         ?? "srlinux"
+      .vendor_facility_process = string(sonda.vendor_facility_process) ?? ""
+      .type                    = string(sonda.type)                    ?? "srlinux"
+      .interface               = string(sonda.interface)               ?? ""
+      .interface_status        = string(sonda.interface_status)        ?? ""
+      .peer                    = string(sonda.peer)                    ?? ""
+      .netpanda                = string(sonda.netpanda)                ?? "bethepacket"
+
+      .pipeline = "vector"
+
+sinks:
+  loki:
+    type: loki
+    inputs:
+      - enrich
+    endpoint: http://loki:3001
+    encoding:
+      # JSON keeps the body searchable by Loki line filters that look
+      # for fields like "up"/"down" — same as sonda's json_lines default.
+      codec: json
+    labels:
+      device: "{{ device }}"
+      level: "{{ level }}"
+      type: "{{ type }}"
+      vendor_facility: "{{ vendor_facility }}"
+      vendor_facility_process: "{{ vendor_facility_process }}"
+      interface: "{{ interface }}"
+      interface_status: "{{ interface_status }}"
+      peer: "{{ peer }}"
+      pipeline: "{{ pipeline }}"
+    structured_metadata:
+      netpanda: "{{ netpanda }}"
+    out_of_order_action: accept

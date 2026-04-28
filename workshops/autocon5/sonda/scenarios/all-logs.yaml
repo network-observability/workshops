@@ -1,17 +1,13 @@
-# Log scenarios for srl1 and srl2 — direct push to Loki.
+# Log scenarios for srl1 and srl2.
 #
-# Schema: sonda v2. Logs use `log_generator:` (NOT `generator:`); the
-# discriminator was renamed in v2.
+# srl1 — direct push to Loki via sonda's `loki` sink.
+# srl2 — RFC 5424 syslog over UDP into Vector (vector:1514). Vector
+# decodes the syslog frame, promotes the SD `[sonda ...]` payload to
+# Loki labels, and forwards to the same Loki. The curriculum point is
+# to show two valid pipelines side-by-side; the `pipeline` label
+# distinguishes them in dashboards.
 #
-# Three log streams per device:
-#   1. system_logs       — mgmt / aaa / chassis events; rotates vendor_facility_process
-#   2. updown_logs       — interface UPDOWN events (drives PeerInterfaceFlapping alert)
-#                          interface label rotates via dynamic_labels.
-#   3. bgp_logs          — BGP session state changes for the broken peer; gives a
-#                          log story that correlates with the bgp_oper_state metric.
-#
-# Stream labels mirror what webinar-completed's logstash pipeline produced
-# (see notes/sonda-audit-2026-04-27.md §4 for the side-by-side).
+# Schema: sonda v2. Logs use `log_generator:`.
 ---
 version: 2
 
@@ -40,9 +36,10 @@ scenarios:
     name: srl1_system_logs
     labels:
       device: srl1
-      type: srlinux            # matches webinar logstash input tag
+      pipeline: direct
+      type: srlinux
       vendor_facility: srlinux
-      netpanda: bethepacket    # structured-metadata demo (mirrors webinar)
+      netpanda: bethepacket
     dynamic_labels:
       - key: vendor_facility_process
         values: ["MGMT", "AAA", "CHASSIS"]
@@ -84,6 +81,7 @@ scenarios:
     rate: 0.05               # ~6 events / 2 min, exceeds the alert's threshold
     labels:
       device: srl1
+      pipeline: direct
       type: srlinux
       vendor_facility: srlinux
       vendor_facility_process: UPDOWN
@@ -114,6 +112,7 @@ scenarios:
     name: srl1_bgp_logs
     labels:
       device: srl1
+      pipeline: direct
       type: srlinux
       vendor_facility: srlinux
       vendor_facility_process: BGP
@@ -138,7 +137,9 @@ scenarios:
       batch_size: 10
 
   # =========================================================================
-  # srl2 — same three streams, different peers/values
+  # srl2 — same three streams, but emitted as RFC 5424 syslog over UDP
+  # to Vector. Vector decodes, promotes the SD payload to Loki labels,
+  # and ships to the same Loki srl1 pushes to directly.
   # =========================================================================
   - id: srl2_system_logs
     signal_type: logs
@@ -169,10 +170,13 @@ scenarios:
         info: 0.8
         warn: 0.15
         error: 0.05
+    encoder:
+      type: syslog
+      hostname: srl2
+      app_name: srlinux
     sink:
-      type: loki
-      url: "${LOKI_URL:-http://loki:3001}"
-      batch_size: 10
+      type: udp
+      address: "vector:1514"
 
   - id: srl2_updown_logs
     signal_type: logs
@@ -195,10 +199,13 @@ scenarios:
         - message: "Interface state transition observed (operational state changed)"
       severity_weights:
         warning: 1.0
+    encoder:
+      type: syslog
+      hostname: srl2
+      app_name: srlinux
     sink:
-      type: loki
-      url: "${LOKI_URL:-http://loki:3001}"
-      batch_size: 5
+      type: udp
+      address: "vector:1514"
 
   - id: srl2_bgp_logs
     signal_type: logs
@@ -223,7 +230,10 @@ scenarios:
         info: 0.7
         warning: 0.25
         error: 0.05
+    encoder:
+      type: syslog
+      hostname: srl2
+      app_name: srlinux
     sink:
-      type: loki
-      url: "${LOKI_URL:-http://loki:3001}"
-      batch_size: 10
+      type: udp
+      address: "vector:1514"

@@ -71,7 +71,7 @@ This is faster than a full `nobs autocon5 restart` and doesn't disturb the rest 
 ## Stack feels slow / runs out of memory
 
 **Why.** Infrahub alone runs a half-dozen containers (server, db, cache, mq, storage, ray-worker).
-Add Prometheus + Loki + Grafana + Prefect + sonda + telegraf + logstash + webhook and you're looking at ~25 containers and ~6 GB RSS at steady state.
+Add Prometheus + Loki + Grafana + Prefect + sonda + telegraf + webhook and you're looking at ~25 containers and ~6 GB RSS at steady state.
 
 **Recovery.** First check `docker stats` — usually one container is runaway (often Loki or Prefect).
 If you're tight on RAM:
