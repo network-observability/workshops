@@ -53,10 +53,10 @@ services:
       prometheus:
         condition: service_started
     restart: unless-stopped
-    # logging:                      # restore with the logstash service
-    #   driver: gelf
-    #   options:
-    #     gelf-address: "udp://127.0.0.1:12201"
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://127.0.0.1:12201"
 
   # srl2 pipeline: sonda-server holds the scenarios and exposes per-scenario
   # /metrics endpoints; telegraf-02 scrapes them.
@@ -72,10 +72,10 @@ services:
     ports:
       - "8085:8080"
     restart: unless-stopped
-    # logging:                      # restore with the logstash service
-    #   driver: gelf
-    #   options:
-    #     gelf-address: "udp://127.0.0.1:12201"
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://127.0.0.1:12201"
 
   # Init container: POSTs the srl2 scenario file (a v2 envelope) to
   # sonda-server, then reads back the registered scenario IDs and drops
@@ -113,10 +113,10 @@ services:
       loki:
         condition: service_started
     restart: unless-stopped
-    # logging:                      # restore with the logstash service
-    #   driver: gelf
-    #   options:
-    #     gelf-address: "udp://127.0.0.1:12201"
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://127.0.0.1:12201"
 
   # =========================================================================
   # Telegraf — collection (srl2 only)
@@ -142,33 +142,30 @@ services:
     depends_on:
       sonda-setup:
         condition: service_completed_successfully
-    # logging:                      # restore with the logstash service
-    #   driver: gelf
-    #   options:
-    #     gelf-address: "udp://127.0.0.1:12201"
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://127.0.0.1:12201"
 
   # =========================================================================
-  # Logstash — GELF -> Loki ingest (DISABLED — pending Vector replacement)
-  #
-  # The Meta-monitoring Grafana dashboard expects container stdout streams
-  # in Loki. Logstash carries those today via the `logging: driver: gelf`
-  # blocks on every service. The service + those gelf directives are
-  # commented out together; once Vector is wired in, restore both.
+  # Vector — GELF -> Loki for container stdout streams.
+  # Every service with a `logging: driver: gelf` block above ships its
+  # stdout here on UDP 12201. Config: ./vector/vector.yaml.
   # =========================================================================
 
-  # logstash:
-  #   container_name: logstash
-  #   image: ${LOGSTASH_LOKI_IMAGE:-docker.io/grafana/logstash-output-loki:3.1.1}
-  #   command: -f /home/logstash/logstash.cfg
-  #   volumes:
-  #     - ./logstash/logstash.cfg:/home/logstash/logstash.cfg
-  #   ports:
-  #     - "1515:1515"
-  #     - "1515:1515/udp"
-  #     - "9600:9600"
-  #     - "12201:12201/udp"
-  #   environment:
-  #     XPACK_MONITORING_ENABLED: "false"
+  vector:
+    container_name: vector
+    image: ${VECTOR_IMAGE:-docker.io/timberio/vector:0.49.0-debian}
+    command: ["--config", "/etc/vector/vector.yaml"]
+    volumes:
+      - ./vector/vector.yaml:/etc/vector/vector.yaml:ro
+    ports:
+      - "12201:12201/udp"
+      - "8686:8686"
+    depends_on:
+      loki:
+        condition: service_started
+    restart: unless-stopped
 
   # =========================================================================
   # Storage / querying
@@ -184,10 +181,10 @@ services:
       - ./loki/loki-config.yml:/etc/loki/loki-config.yml
       - ./loki/rules/:/rules/fake/
       - loki_data:/loki:rw
-    # logging:                      # restore with the logstash service
-    #   driver: gelf
-    #   options:
-    #     gelf-address: "udp://127.0.0.1:12201"
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://127.0.0.1:12201"
 
   prometheus:
     container_name: prometheus
@@ -203,10 +200,10 @@ services:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
       - ./prometheus/rules/:/etc/prometheus/rules/
       - prometheus_data:/prometheus
-    # logging:                      # restore with the logstash service
-    #   driver: gelf
-    #   options:
-    #     gelf-address: "udp://127.0.0.1:12201"
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://127.0.0.1:12201"
 
   # =========================================================================
   # Visualization & alerting
@@ -221,10 +218,10 @@ services:
     volumes:
       - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
       - alertmanager_data:/data
-    # logging:                      # restore with the logstash service
-    #   driver: gelf
-    #   options:
-    #     gelf-address: "udp://127.0.0.1:12201"
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://127.0.0.1:12201"
 
   grafana:
     container_name: grafana
@@ -242,10 +239,10 @@ services:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
       INFRAHUB_API_TOKEN: ${INFRAHUB_API_TOKEN}
-    # logging:                      # restore with the logstash service
-    #   driver: gelf
-    #   options:
-    #     gelf-address: "udp://127.0.0.1:12201"
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://127.0.0.1:12201"
 
   # =========================================================================
   # Source of truth — Infrahub
@@ -369,10 +366,10 @@ services:
     tty: true
     environment:
       PREFECT_API_URL: "http://prefect-server:4200/api"
-    # logging:                      # restore with the logstash service
-    #   driver: gelf
-    #   options:
-    #     gelf-address: "udp://127.0.0.1:12201"
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://127.0.0.1:12201"
 
   # =========================================================================
   # Prefect 3 — workflow orchestration for Part 3
@@ -487,7 +484,7 @@ services:
     # for the API to be listening; first `python /app/serve.py` can crash on
     # httpx.ConnectError before the server's `prefect.serve()` is reachable.
     restart: on-failure
-    # logging:                      # restore with the logstash service
-    #   driver: gelf
-    #   options:
-    #     gelf-address: "udp://127.0.0.1:12201"
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://127.0.0.1:12201"

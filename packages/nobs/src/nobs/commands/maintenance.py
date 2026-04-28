@@ -13,7 +13,8 @@ from typing import Annotated
 import typer
 from rich.panel import Panel
 
-from .._console import console, fail, note
+from .._console import console, fail, note, warn
+from ..clients.loki import LokiClient
 from ..lifecycle import env as _env
 from ..workshops import Workshop
 
@@ -39,6 +40,10 @@ def maintenance(
         str,
         typer.Option("--token", envvar="INFRAHUB_API_TOKEN"),
     ] = "",
+    loki_url: Annotated[
+        str,
+        typer.Option("--loki-url", envvar="LOKI_URL"),
+    ] = "http://localhost:3001",
 ) -> None:
     """Toggle a device's `maintenance` boolean attribute."""
     if not token:
@@ -76,6 +81,21 @@ def maintenance(
         )
     )
 
+    # Annotate the state flip on the device-health dashboard. The
+    # `Device Config Push` annotation filters on these labels.
+    try:
+        LokiClient(loki_url).annotate(
+            labels={
+                "device": device,
+                "source": "workshop-trigger",
+                "event": "config-push",
+                "level": "info",
+            },
+            message=f"Configured from CLI: {device}.maintenance = {state}",
+        )
+    except Exception as exc:  # noqa: BLE001
+        warn(f"Loki annotation skipped ({exc}); SoT update succeeded.")
+
     if state:
         note("The next alert for this device will be SKIPPED by the policy.")
     else:
@@ -108,6 +128,9 @@ def maintenance_for(ws: Workshop) -> Callable[..., None]:
         token: Annotated[
             str, typer.Option("--token", envvar="INFRAHUB_API_TOKEN")
         ] = "",
+        loki_url: Annotated[
+            str, typer.Option("--loki-url", envvar="LOKI_URL")
+        ] = "http://localhost:3001",
     ) -> None:
         _env.load_env(ws.dir)
         maintenance(
@@ -116,6 +139,7 @@ def maintenance_for(ws: Workshop) -> Callable[..., None]:
             kind=kind,
             address=address,
             token=token,
+            loki_url=loki_url,
         )
 
     maintenance_ws.__doc__ = f"Toggle a {ws.title} device's maintenance flag."

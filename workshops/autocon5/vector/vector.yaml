@@ -1,0 +1,56 @@
+# Vector — GELF -> Loki for container stdout streams.
+#
+# Every workshop service with a `logging: driver: gelf` block in
+# docker-compose.yml ships its stdout here on UDP 12201. Vector decodes
+# the GELF frame, normalises the level integer back into the Syslog
+# severity string, and pushes to Loki under the `source=container-stdout`
+# label set so dashboards can distinguish container logs from sonda's
+# direct-push streams (`source=sonda`) and the workshop CLI's
+# direct-push events (`source=workshop-trigger`).
+
+api:
+  enabled: true
+  address: 0.0.0.0:8686
+
+sources:
+  docker_gelf:
+    type: socket
+    mode: udp
+    address: 0.0.0.0:12201
+    decoding:
+      codec: gelf
+
+transforms:
+  enrich:
+    type: remap
+    inputs:
+      - docker_gelf
+    source: |
+      # GELF carries Syslog severity as an int 0..7. Logstash used to
+      # translate this back to a name; Loki dashboards filter on the
+      # string form (`level="info"`), so we do the same here.
+      level_map = {
+        "0": "emergency", "1": "alert",  "2": "critical", "3": "error",
+        "4": "warning",   "5": "notice", "6": "info",     "7": "debug",
+      }
+      lvl = to_string(.level || 6) ?? "6"
+      .level = get(level_map, [lvl]) ?? "info"
+      .service = to_string(.container_name || ._container_name || "unknown") ?? "unknown"
+      .source = "container-stdout"
+      .netpanda = "bethepacket"
+
+sinks:
+  loki:
+    type: loki
+    inputs:
+      - enrich
+    endpoint: http://loki:3001
+    encoding:
+      codec: text
+    labels:
+      service: "{{ service }}"
+      level: "{{ level }}"
+      source: "{{ source }}"
+    structured_metadata:
+      netpanda: "{{ netpanda }}"
+    out_of_order_action: accept

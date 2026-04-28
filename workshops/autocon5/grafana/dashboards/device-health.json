@@ -19,7 +19,7 @@
           "uid": "P982945308D3682D1"
         },
         "enable": true,
-        "expr": "{device=\"$device\"} |~ \"Enter configuration|Configured from\"",
+        "expr": "{device=\"$device\", source=\"workshop-trigger\", event=\"config-push\"}",
         "filter": {
           "exclude": false,
           "ids": [
@@ -40,7 +40,7 @@
           "uid": "P982945308D3682D1"
         },
         "enable": true,
-        "expr": "{device=\"$device\"} |~ \"Line protocol on Interface\"",
+        "expr": "{device=\"$device\", vendor_facility_process=\"UPDOWN\"} |~ \"Interface .* changed state\"",
         "filter": {
           "exclude": false,
           "ids": [
