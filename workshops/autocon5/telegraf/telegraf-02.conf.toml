@@ -5,15 +5,9 @@
 ###############################################################################
 #                            DATA COLLECTION                                  #
 ###############################################################################
-# Scrape sonda-server's per-scenario Prometheus text endpoints. The script
-# discovers running scenario IDs from a shared file written by sonda-setup
-# and curls each `/scenarios/{id}/metrics`.
-#
-# srl2 emits the **raw gNMI shape** via the `srlinux_gnmi_*_raw` packs:
-# `srl_bgp_*` / `srl_interface_*` measurement names with a `source` tag.
-# The processor chain below renames those into the canonical schema
-# (`bgp_*` / `interface_*` + `device` tag) before output. This mirrors
-# the webinar-completed lab's `inputs.gnmi` pipeline.
+# Scrape sonda-server's per-scenario Prometheus text endpoints. The
+# script reads scenario IDs from /shared/scenario-ids.txt (written by
+# sonda-setup) and curls each `/scenarios/{id}/metrics`.
 
 [[inputs.exec]]
   commands = ["/scripts/scrape-sonda-metrics.sh"]
@@ -28,12 +22,10 @@
 ###############################################################################
 #                            DATA NORMALIZATION                               #
 ###############################################################################
-# Strip the vendor `srl_` prefix from every field so srl2 series converge
-# with srl1's canonical names in Prometheus. The Prometheus parser keeps
-# measurement="prometheus" and uses the metric name as the field name; with
-# `metric_version=2` the field name becomes the published metric name.
-# Same harmonization you'd run when collecting from multiple gNMI YANG
-# models (SR Linux / Junos / IOS XR).
+# Strip the vendor `srl_` prefix to converge srl2 series with srl1's
+# canonical names. `field_rename` (not `metric_rename`) because the
+# Prometheus parser keeps measurement="prometheus" and uses the metric
+# name as the field; `metric_version=2` then publishes the field name.
 [[processors.regex]]
   order = 1
 
@@ -41,8 +33,7 @@
     pattern = "^srl_(.*)$"
     replacement = "${1}"
 
-# gNMI's default tag for the device identifier is `source`; the canonical
-# schema uses `device`. Mirrors the webinar's `processors.rename` block.
+# gNMI's device-identifier tag is `source`; canonical schema uses `device`.
 [[processors.rename]]
   order = 2
 
@@ -54,9 +45,9 @@
 ###############################################################################
 #                            DATA ENRICHMENT                                  #
 ###############################################################################
-# Derive `intf_role` from the interface `name` tag pattern. The regex
-# only sets `intf_role` when the pattern matches, so BGP metrics
-# (`name="default"`) and system metrics aren't affected.
+# Derive `intf_role` from the `name` tag. No namepass needed — the regex
+# only matches `ethernet*` / `mgmt*`, so BGP (`name="default"`) and
+# system metrics pass through unchanged.
 [[processors.regex]]
   order = 3
 

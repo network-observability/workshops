@@ -1,17 +1,9 @@
 # SR Linux gNMI BGP per-peer metrics — RAW shape, pre-Telegraf-normalization.
-#
-# Mirrors what Telegraf's `inputs.gnmi` would emit BEFORE the processor
-# chain runs against an SR Linux device:
-#   - measurement-prefixed names (`srl_bgp_*`) representing the vendor's
-#     YANG model — students see Telegraf's `processors.rename` rewrite
-#     these to the canonical schema.
-#   - `source` tag carries the device identifier (gNMI default); Telegraf
-#     renames `source` -> `device`.
-#
-# The numeric encodings match the post-normalization values, because
-# sonda metrics are f64 (no string fields). The webinar-completed lab's
-# `processors.enum` does the string->int step against a real device;
-# here Telegraf only does name + tag rewrites. See telegraf-02.conf.toml.
+# Mirrors what `inputs.gnmi` returns from a real device before the processor
+# chain runs: `srl_bgp_*` names (vendor YANG shape) and a `source` tag
+# (gNMI's device identifier). Sonda metrics are f64-only, so Telegraf's
+# string->int enum step (e.g. `oper_state="up"` -> 1) can't be demonstrated;
+# numeric values already match what Telegraf produces post-enum.
 
 name: srlinux_gnmi_bgp_raw
 description: "SR Linux gNMI BGP per-peer metrics (raw, pre-normalization)"
