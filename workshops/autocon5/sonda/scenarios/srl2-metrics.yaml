@@ -1,89 +1,88 @@
-# srl2 telemetry — POSTed to sonda-server, scraped by telegraf-02.
-# Broken-on-purpose: BGP peer 10.1.11.1 and interface ethernet-1/11.
+# srl2 telemetry — RAW gNMI shape (`srl_*` names + `source` tag).
+# Scraped by telegraf-02 from sonda-server; Telegraf normalizes to the
+# canonical schema. Broken-on-purpose: peer 10.1.11.1 and ethernet-1/11.
 ---
 version: 2
 
 scenario_name: autocon5-srl2-metrics
 category: network
-description: "AutoCon5 srl2 telemetry served by sonda-server (scraped by telegraf-02)."
+description: "AutoCon5 srl2 telemetry — raw gNMI shape, normalized by telegraf-02."
 
 defaults:
   rate: 0.1
 
 scenarios:
-  # BGP peers
   - id: bgp_peer_10_1_2_1
     signal_type: metrics
-    pack: srlinux_gnmi_bgp
+    pack: srlinux_gnmi_bgp_raw
     labels:
-      device: srl2
+      source: srl2
       peer_address: "10.1.2.1"
       neighbor_asn: "65101"
 
   - id: bgp_peer_10_1_7_1
     signal_type: metrics
-    pack: srlinux_gnmi_bgp
+    pack: srlinux_gnmi_bgp_raw
     labels:
-      device: srl2
+      source: srl2
       peer_address: "10.1.7.1"
       neighbor_asn: "65101"
 
   - id: bgp_peer_10_1_11_1_broken
     signal_type: metrics
-    pack: srlinux_gnmi_bgp
+    pack: srlinux_gnmi_bgp_raw
     labels:
-      device: srl2
+      source: srl2
       peer_address: "10.1.11.1"
       neighbor_asn: "65101"
     overrides:
-      bgp_neighbor_state:
+      srl_bgp_neighbor_state:
         generator:
           type: constant
           value: 4.0
-      bgp_oper_state:
+      srl_bgp_oper_state:
         generator:
           type: constant
           value: 5.0
-      bgp_received_routes:
+      srl_bgp_received_routes:
         generator:
           type: constant
           value: 0.0
-      bgp_prefixes_accepted:
+      srl_bgp_prefixes_accepted:
         generator:
           type: constant
           value: 0.0
 
-  # Interfaces
   - id: intf_ethernet_1_1
     signal_type: metrics
-    pack: srlinux_gnmi_interface
+    pack: srlinux_gnmi_interface_raw
     labels:
-      device: srl2
+      source: srl2
       name: "ethernet-1/1"
 
   - id: intf_ethernet_1_10
     signal_type: metrics
-    pack: srlinux_gnmi_interface
+    pack: srlinux_gnmi_interface_raw
     labels:
-      device: srl2
+      source: srl2
       name: "ethernet-1/10"
 
   - id: intf_ethernet_1_11_broken
     signal_type: metrics
-    pack: srlinux_gnmi_interface
+    pack: srlinux_gnmi_interface_raw
     labels:
-      device: srl2
+      source: srl2
       name: "ethernet-1/11"
     overrides:
-      interface_oper_state:
+      srl_interface_oper_state:
         generator:
           type: constant
           value: 2.0
-      interface_in_octets:
+      srl_interface_in_octets:
         generator:
           type: constant
           value: 0.0
-      interface_out_octets:
+      srl_interface_out_octets:
         generator:
           type: constant
           value: 0.0

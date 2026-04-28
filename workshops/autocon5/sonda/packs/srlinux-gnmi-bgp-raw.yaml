@@ -1,0 +1,54 @@
+# SR Linux gNMI BGP per-peer metrics — RAW shape, pre-Telegraf-normalization.
+# Mirrors what `inputs.gnmi` returns from a real device before the processor
+# chain runs: `srl_bgp_*` names (vendor YANG shape) and a `source` tag
+# (gNMI's device identifier). Sonda metrics are f64-only, so Telegraf's
+# string->int enum step (e.g. `oper_state="up"` -> 1) can't be demonstrated;
+# numeric values already match what Telegraf produces post-enum.
+
+name: srlinux_gnmi_bgp_raw
+description: "SR Linux gNMI BGP per-peer metrics (raw, pre-normalization)"
+category: network
+
+shared_labels:
+  source: ""             # Telegraf renames -> device
+  peer_address: ""
+  neighbor_asn: ""
+  afi_safi_name: ipv4-unicast
+  name: default
+  collection_type: gnmi
+
+metrics:
+  - name: srl_bgp_neighbor_state
+    generator:
+      type: constant
+      value: 1.0
+
+  - name: srl_bgp_admin_state
+    generator:
+      type: constant
+      value: 1.0
+
+  - name: srl_bgp_oper_state
+    generator:
+      type: constant
+      value: 1.0
+
+  - name: srl_bgp_received_routes
+    generator:
+      type: constant
+      value: 10.0
+
+  - name: srl_bgp_prefixes_accepted
+    generator:
+      type: constant
+      value: 10.0
+
+  - name: srl_bgp_sent_routes
+    generator:
+      type: constant
+      value: 10.0
+
+  - name: srl_bgp_active_routes
+    generator:
+      type: constant
+      value: 10.0
