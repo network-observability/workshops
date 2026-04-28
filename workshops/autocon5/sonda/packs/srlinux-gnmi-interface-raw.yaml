@@ -1,0 +1,40 @@
+# SR Linux gNMI per-interface metrics — RAW shape, pre-Telegraf-normalization.
+#
+# Mirrors `inputs.gnmi` output before processors run:
+#   - `srl_interface_*` names get renamed to `interface_*` by Telegraf's
+#     processors.rename block.
+#   - `source` tag gets renamed to `device`.
+#   - `intf_role` is NOT set here; Telegraf's processors.regex derives
+#     it from the `name` tag (ethernet* -> peer, mgmt* -> mgmt).
+
+name: srlinux_gnmi_interface_raw
+description: "SR Linux gNMI per-interface metrics (raw, pre-normalization)"
+category: network
+
+shared_labels:
+  source: ""             # Telegraf renames -> device
+  name: ""
+  collection_type: gnmi
+
+metrics:
+  - name: srl_interface_admin_state
+    generator:
+      type: constant
+      value: 1.0
+
+  - name: srl_interface_oper_state
+    generator:
+      type: constant
+      value: 1.0
+
+  - name: srl_interface_in_octets
+    generator:
+      type: step
+      start: 0.0
+      step_size: 125000.0
+
+  - name: srl_interface_out_octets
+    generator:
+      type: step
+      start: 0.0
+      step_size: 62500.0

@@ -22,6 +22,7 @@ scenarios:
     pack: srlinux_gnmi_bgp
     labels:
       device: srl1
+      pipeline: direct
       peer_address: "10.1.2.2"
       neighbor_asn: "65102"
 
@@ -30,6 +31,7 @@ scenarios:
     pack: srlinux_gnmi_bgp
     labels:
       device: srl1
+      pipeline: direct
       peer_address: "10.1.7.2"
       neighbor_asn: "65102"
 
@@ -38,6 +40,7 @@ scenarios:
     pack: srlinux_gnmi_bgp
     labels:
       device: srl1
+      pipeline: direct
       peer_address: "10.1.99.2"
       neighbor_asn: "65102"
     overrides:
@@ -64,6 +67,7 @@ scenarios:
     pack: srlinux_gnmi_interface
     labels:
       device: srl1
+      pipeline: direct
       name: "ethernet-1/1"
 
   - id: intf_ethernet_1_10
@@ -71,6 +75,7 @@ scenarios:
     pack: srlinux_gnmi_interface
     labels:
       device: srl1
+      pipeline: direct
       name: "ethernet-1/10"
 
   - id: intf_ethernet_1_11_broken
@@ -78,6 +83,7 @@ scenarios:
     pack: srlinux_gnmi_interface
     labels:
       device: srl1
+      pipeline: direct
       name: "ethernet-1/11"
     overrides:
       interface_oper_state:
@@ -99,6 +105,7 @@ scenarios:
     pack: srlinux_ping
     labels:
       device: srl1
+      pipeline: direct
 
   # System: CPU + memory + uptime
   - id: system_cpu_used
@@ -106,6 +113,7 @@ scenarios:
     name: cpu_used
     labels:
       device: srl1
+      pipeline: direct
       slot: A
       index: "0"
       collection_type: gnmi
@@ -121,6 +129,7 @@ scenarios:
     name: memory_utilization
     labels:
       device: srl1
+      pipeline: direct
       slot: A
       collection_type: gnmi
     generator:
@@ -137,6 +146,7 @@ scenarios:
     name: device_uptime
     labels:
       device: srl1
+      pipeline: direct
       collection_type: snmp
     generator:
       type: step
