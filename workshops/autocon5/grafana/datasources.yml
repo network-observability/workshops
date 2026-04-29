@@ -18,6 +18,9 @@ datasources:
   # the workshop's API token, which is seeded by INFRAHUB_INITIAL_ADMIN_TOKEN
   # on first boot of infrahub-server.
   - name: infrahub
+    # Pinned UID so the dashboard JSON's datasource references resolve
+    # regardless of Grafana's auto-derivation algorithm.
+    uid: workshop-infrahub-graphql
     type: fifemon-graphql-datasource
     url: http://infrahub-server:8000/graphql
     editable: true
