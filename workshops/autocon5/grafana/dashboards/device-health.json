@@ -65,7 +65,7 @@
   "panels": [
     {
       "datasource": {
-        "type": "fifemon-graphql-datasource",
+        "type": "yesoreyeram-infinity-datasource",
         "uid": "workshop-infrahub-graphql"
       },
       "description": "Device Detailed Information from Nautobot",
@@ -183,32 +183,61 @@
       "pluginVersion": "10.2.3",
       "targets": [
         {
-          "aliasBy": "",
-          "annotationTags": "",
-          "annotationText": "",
-          "annotationTitle": "",
-          "constant": 6.5,
-          "dataPath": "WorkshopDevice.edges",
           "datasource": {
-            "type": "fifemon-graphql-datasource",
+            "type": "yesoreyeram-infinity-datasource",
             "uid": "workshop-infrahub-graphql"
           },
-          "endTimePath": "endTime",
-          "groupBy": "",
-          "queryText": "{\n  WorkshopDevice(name__value: \"$device\") {\n    edges {\n      node {\n        id\n        name { value }\n        asn { value }\n        site_name { value }\n        role { value }\n        maintenance { value }\n      }\n    }\n  }\n}\n",
-          "refId": "A",
-          "timePath": ""
+          "type": "graphql",
+          "format": "table",
+          "source": "url",
+          "parser": "backend",
+          "root_selector": "data.WorkshopDevice.edges",
+          "url": "http://infrahub-server:8000/graphql",
+          "url_options": {
+            "method": "POST",
+            "body_type": "graphql",
+            "body_content_type": "application/json",
+            "body_graphql_query": "{\n  WorkshopDevice(name__value: \"$device\") {\n    edges {\n      node {\n        id\n        name { value }\n        asn { value }\n        site_name { value }\n        role { value }\n        maintenance { value }\n      }\n    }\n  }\n}\n"
+          },
+          "columns": [
+            {
+              "selector": "node.id",
+              "text": "id",
+              "type": "string"
+            },
+            {
+              "selector": "node.name.value",
+              "text": "name",
+              "type": "string"
+            },
+            {
+              "selector": "node.asn.value",
+              "text": "asn",
+              "type": "number"
+            },
+            {
+              "selector": "node.site_name.value",
+              "text": "site_name",
+              "type": "string"
+            },
+            {
+              "selector": "node.role.value",
+              "text": "role",
+              "type": "string"
+            },
+            {
+              "selector": "node.maintenance.value",
+              "text": "maintenance",
+              "type": "boolean"
+            }
+          ],
+          "filters": [],
+          "global_query_id": "",
+          "refId": "A"
         }
       ],
       "title": "Device Details",
       "transformations": [
-        {
-          "id": "renameByRegex",
-          "options": {
-            "regex": "node\\.([a-z_]+)\\.value",
-            "renamePattern": "$1"
-          }
-        },
         {
           "id": "organize",
           "options": {
@@ -220,7 +249,7 @@
               "asn": 2,
               "site_name": 3,
               "maintenance": 4,
-              "node.id": 5
+              "id": 5
             },
             "renameByName": {
               "name": "Hostname",
@@ -228,7 +257,7 @@
               "asn": "ASN",
               "site_name": "Site",
               "maintenance": "Maintenance",
-              "node.id": "id"
+              "id": "id"
             }
           }
         }
@@ -1253,33 +1282,52 @@
           "refId": "C"
         },
         {
-          "aliasBy": "",
-          "annotationTags": "",
-          "annotationText": "",
-          "annotationTitle": "",
-          "constant": 6.5,
-          "dataPath": "WorkshopInterface.edges",
           "datasource": {
-            "type": "fifemon-graphql-datasource",
+            "type": "yesoreyeram-infinity-datasource",
             "uid": "workshop-infrahub-graphql"
           },
-          "endTimePath": "endTime",
-          "groupBy": "",
-          "hide": false,
-          "queryText": "{\n  WorkshopInterface(role__values: [\"peer\", \"mgmt\"], device__name__value: \"$device\") {\n    edges {\n      node {\n        name { value }\n        role { value }\n        ip_address { value }\n        expected_state { value }\n      }\n    }\n  }\n}\n",
+          "type": "graphql",
+          "format": "table",
+          "source": "url",
+          "parser": "backend",
+          "root_selector": "data.WorkshopInterface.edges",
+          "url": "http://infrahub-server:8000/graphql",
+          "url_options": {
+            "method": "POST",
+            "body_type": "graphql",
+            "body_content_type": "application/json",
+            "body_graphql_query": "{\n  WorkshopInterface(role__values: [\"peer\", \"mgmt\"], device__name__value: \"$device\") {\n    edges {\n      node {\n        name { value }\n        role { value }\n        ip_address { value }\n        expected_state { value }\n      }\n    }\n  }\n}\n"
+          },
+          "columns": [
+            {
+              "selector": "node.name.value",
+              "text": "name",
+              "type": "string"
+            },
+            {
+              "selector": "node.role.value",
+              "text": "role",
+              "type": "string"
+            },
+            {
+              "selector": "node.ip_address.value",
+              "text": "ip_address",
+              "type": "string"
+            },
+            {
+              "selector": "node.expected_state.value",
+              "text": "expected_state",
+              "type": "string"
+            }
+          ],
+          "filters": [],
+          "global_query_id": "",
           "refId": "D",
-          "timePath": ""
+          "hide": false
         }
       ],
       "title": "Interfaces Detail",
       "transformations": [
-        {
-          "id": "renameByRegex",
-          "options": {
-            "regex": "node\\.([a-z_]+)\\.value",
-            "renamePattern": "$1"
-          }
-        },
         {
           "id": "groupBy",
           "options": {

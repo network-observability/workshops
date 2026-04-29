@@ -201,7 +201,7 @@ services:
 
   grafana:
     container_name: grafana
-    image: ${GRAFANA_IMAGE:-docker.io/grafana/grafana:10.4.4}
+    image: ${GRAFANA_IMAGE:-docker.io/grafana/grafana:13.0.1}
     ports:
       - "3000:3000"
     volumes:
@@ -211,7 +211,7 @@ services:
       - ./grafana/grafana.ini:/etc/grafana/grafana.ini
       - grafana_data:/grafana
     environment:
-      GF_INSTALL_PLUGINS: natel-discrete-panel,fifemon-graphql-datasource,yesoreyeram-infinity-datasource,volkovlabs-echarts-panel
+      GF_INSTALL_PLUGINS: natel-discrete-panel,yesoreyeram-infinity-datasource,volkovlabs-echarts-panel
       GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
       INFRAHUB_API_TOKEN: ${INFRAHUB_API_TOKEN}

@@ -170,8 +170,8 @@ behaviour.
 The provisioned `infrahub` datasource in
 [`grafana/datasources.yml`](../grafana/datasources.yml) talks to
 `http://infrahub-server:8000/graphql` with the `X-INFRAHUB-KEY` header.
-Build dashboards with the `fifemon-graphql-datasource` plugin and feed
-queries like this one:
+Build dashboards with the `yesoreyeram-infinity-datasource` plugin in
+GraphQL mode and feed queries like this one:
 
 ```graphql
 query {

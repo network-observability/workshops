@@ -2,8 +2,8 @@
 
 Captures one PNG per (dashboard, panel, device) tuple from Grafana's
 `d-solo` view and inspects the rendered DOM for `No data`, plugin
-errors, or stuck spinners. The truthful test for frontend-only Grafana
-plugins (fifemon-graphql) where Layer B's path doesn't apply.
+errors, or stuck spinners. The truthful test for any frontend-rendering
+issue Layer B's `/api/ds/query` path can't see.
 
 Playwright is imported lazily inside `main()` so `--skip-c` works
 without the dev dep installed.
