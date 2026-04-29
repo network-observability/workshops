@@ -19,7 +19,6 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
-import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -241,6 +240,9 @@ class LokiClient:
     def __init__(self, base_url: str, timeout: int = 10):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        self.sonda_url = os.environ.get("SONDA_SERVER_URL", "http://sonda-server:8080").rstrip("/")
+        self.sonda_api_key = os.environ.get("SONDA_API_KEY") or None
+        self.sonda_loki_sink_url = os.environ.get("SONDA_LOKI_SINK_URL", "http://loki:3001").rstrip("/")
 
     def query_range(self, query: str, minutes: int = 10, limit: int = 200) -> list[str]:
         end = now_utc()
@@ -261,9 +263,27 @@ class LokiClient:
         return out[:limit]
 
     def annotate(self, labels: dict[str, str], message: str) -> None:
-        ts = str(time.time_ns())
-        payload = {"streams": [{"stream": labels, "values": [[ts, message]]}]}
-        r = requests.post(f"{self.base_url}/loki/api/v1/push", json=payload, timeout=self.timeout)
+        headers = {"Authorization": f"Bearer {self.sonda_api_key}"} if self.sonda_api_key else {}
+        # Map common Loki/syslog level values to sonda's enum
+        # (trace|debug|info|warn|error|fatal).
+        sev = labels.get("level", "info").lower()
+        sev_map = {"warning": "warn", "notice": "info", "critical": "error",
+                   "alert": "fatal", "emergency": "fatal"}
+        sev = sev_map.get(sev, sev if sev in {"trace", "debug", "info", "warn", "error", "fatal"} else "info")
+        payload = {
+            "signal_type": "logs",
+            "labels": labels,
+            "log": {
+                "severity": sev,
+                "message": message,
+                "fields": {},
+            },
+            "encoder": {"type": "json_lines"},
+            "sink": {"type": "loki", "url": self.sonda_loki_sink_url},
+        }
+        r = requests.post(
+            f"{self.sonda_url}/events", json=payload, headers=headers, timeout=self.timeout,
+        )
         r.raise_for_status()
 
 

@@ -1,8 +1,8 @@
-"""`nobs autocon5 flap-interface` - push UPDOWN log events into Loki.
+"""`nobs autocon5 flap-interface` — emit UPDOWN log events via sonda /events.
 
-Python port of `scripts/sonda-trigger.sh flap-interface`. Sends N
-synthetic syslog events (alternating up / down) for a given device +
-interface tuple to trip the `PeerInterfaceFlapping` Loki rule (>3 in 2m).
+Synthetic interface flap. Posts N alternating up/down events to
+sonda-server's /events endpoint, which forwards to Loki. Trips the
+PeerInterfaceFlapping rule (>3 transitions in 2 min).
 """
 from __future__ import annotations
 
@@ -37,29 +37,47 @@ def flap_interface(
             "--count", "-n", help="Number of UPDOWN events to push (alternating up/down)."
         ),
     ] = 6,
+    sonda_url: Annotated[
+        str,
+        typer.Option(
+            "--sonda-url",
+            envvar="SONDA_SERVER_URL",
+            help="Base sonda-server URL (events go to /events).",
+        ),
+    ] = "http://localhost:8085",
     loki_url: Annotated[
         str,
         typer.Option(
             "--loki-url",
-            envvar="LOKI_URL",
-            help="Base Loki URL (push goes to /loki/api/v1/push).",
+            envvar="SONDA_LOKI_SINK_URL",
+            help="Loki URL passed as the sink in the /events payload "
+                 "(sonda's container-network view of Loki, not the host CLI's).",
         ),
-    ] = "http://localhost:3001",
+    ] = "http://loki:3001",
+    api_key: Annotated[
+        str,
+        typer.Option(
+            "--sonda-api-key",
+            envvar="SONDA_API_KEY",
+            help="Bearer token if sonda-server has SONDA_API_KEY set; empty otherwise.",
+        ),
+    ] = "",
     delay: Annotated[
         float,
         typer.Option("--delay", help="Seconds to sleep between events."),
     ] = 1.0,
 ) -> None:
-    """Push N UPDOWN log events into Loki to trip PeerInterfaceFlapping.
+    """Push N UPDOWN log events into Loki via sonda /events.
 
     Each event alternates between `up` and `down`. The receiver-side rule
     fires on >3 transitions in 2 minutes, so the default of 6 trips it
     with margin.
     """
-    push_url = f"{loki_url.rstrip('/')}/loki/api/v1/push"
+    events_url = f"{sonda_url.rstrip('/')}/events"
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     console.print(
         f"Pushing [label]{count}[/] UPDOWN events for "
-        f"[label]{device}:{interface}[/] to [muted]{push_url}[/]"
+        f"[label]{device}:{interface}[/] via [muted]{events_url}[/]"
     )
 
     with Progress(
@@ -73,29 +91,32 @@ def flap_interface(
         task = progress.add_task(f"flap {device}:{interface}", total=count)
         for i in range(1, count + 1):
             new_state = "down" if i % 2 == 0 else "up"
-            ts_ns = str(time.time_ns())
             payload = {
-                "streams": [
-                    {
-                        "stream": {
-                            "device": device,
-                            "interface": interface,
-                            "level": "warning",
-                            "vendor_facility_process": "UPDOWN",
-                            "type": "syslog",
-                            "source": "workshop-trigger",
-                        },
-                        "values": [
-                            [ts_ns, f"Interface {interface} changed state to {new_state}"]
-                        ],
-                    }
-                ]
+                "signal_type": "logs",
+                "labels": {
+                    "device": device,
+                    "interface": interface,
+                    "level": "warning",
+                    "vendor_facility_process": "UPDOWN",
+                    "type": "syslog",
+                    "source": "workshop-trigger",
+                },
+                "log": {
+                    # Sonda's enum uses `warn` (not `warning`); the `level`
+                    # label keeps the Loki-side value so dashboard filters
+                    # `{level="warning"}` still match.
+                    "severity": "warn",
+                    "message": f"Interface {interface} changed state to {new_state}",
+                    "fields": {},
+                },
+                "encoder": {"type": "json_lines"},
+                "sink": {"type": "loki", "url": loki_url},
             }
             try:
-                response = requests.post(push_url, json=payload, timeout=5)
+                response = requests.post(events_url, json=payload, headers=headers, timeout=5)
                 response.raise_for_status()
             except requests.RequestException as exc:
-                fail(f"Loki push failed on event {i}/{count}: {exc}")
+                fail(f"sonda /events post failed on event {i}/{count}: {exc}")
                 raise typer.Exit(code=1) from exc
 
             progress.update(task, completed=i, description=f"event {i}/{count} ({new_state})")
@@ -103,6 +124,6 @@ def flap_interface(
                 time.sleep(delay)
 
     ok(
-        f"pushed {count} UPDOWN events; "
+        f"pushed {count} UPDOWN events via /events; "
         "PeerInterfaceFlapping should fire within ~30s."
     )

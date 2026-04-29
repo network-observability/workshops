@@ -10,10 +10,11 @@ import sys
 from collections.abc import Callable
 from typing import Annotated
 
+import requests
 import typer
 from rich.panel import Panel
 
-from .._console import console, fail, note, warn
+from .._console import console, fail, note
 from ..clients.loki import LokiClient
 from ..lifecycle import env as _env
 from ..workshops import Workshop
@@ -82,6 +83,9 @@ def maintenance(
     )
 
     # Labels contracted with device-health.json's "Device Config Push" annotation.
+    # Routes through sonda /events; failure is loud — the SoT panel above
+    # confirms the maintenance flag was committed even if the annotation didn't
+    # land.
     try:
         LokiClient(loki_url).annotate(
             labels={
@@ -92,8 +96,9 @@ def maintenance(
             },
             message=f"Configured from CLI: {device}.maintenance = {state}",
         )
-    except Exception as exc:  # noqa: BLE001
-        warn(f"Loki annotation skipped ({exc}); SoT update succeeded.")
+    except requests.RequestException as exc:
+        fail(f"sonda /events post failed: {exc}")
+        raise typer.Exit(code=1) from exc
 
     if state:
         note("The next alert for this device will be SKIPPED by the policy.")
