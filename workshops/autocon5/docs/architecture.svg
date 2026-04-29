@@ -4,7 +4,7 @@
      role="img"
      aria-labelledby="title desc"
      font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
-  <title id="title">AutoCon5 workshop architecture</title>
+  <title id="title">Modern Network Observability workshop architecture</title>
   <desc id="desc">
     Synthetic telemetry from sonda flows into Prometheus and Loki, then through
     Alertmanager into a FastAPI webhook, which fans out to a Prefect flow that

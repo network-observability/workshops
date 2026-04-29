@@ -1,4 +1,4 @@
-# AutoCon5 — Modern Network Observability Workshop
+# Modern Network Observability Workshop
 
 A four-hour, laptop-friendly workshop.
 You bring a laptop with Docker; we bring a self-contained observability stack (Prometheus, Loki, Grafana, Alertmanager) plus a synthetic telemetry generator that stands in for a small network.
@@ -7,16 +7,75 @@ By lunchtime you'll have queried real-shaped telemetry, made a dashboard answer 
 > **Format:** ~20% framing and guided demos, ~80% hands-on.
 > The whole stack runs locally — no shared backend, no live network gear.
 
-## Agenda (Tuesday, 09:00 – 13:00)
+## FAQ
 
-| Time | Part | What |
-|------|------|------|
-| 09:00 – 09:30 | Framing | From monitoring to modern observability; lab tour |
-| 09:30 – 10:45 | **Part 1** | Network telemetry & queries — metrics + logs |
-| 10:45 – 11:15 | Break | ☕ |
-| 11:15 – 11:55 | **Part 2** | Making the data usable — dashboards |
-| 11:55 – 12:55 | **Part 3** | Alerts, automation, AI-assisted operations |
-| 12:55 – 13:00 | Close | Key takeaways |
+**Do I need network engineering experience?**
+Helpful, not required.
+The workshop frames every concept (BGP peering, interface state, syslog UPDOWN events) before you query it.
+If you've ever been on the receiving end of a "the dashboard says it's fine but the user says it's broken" page, you'll get the point.
+
+**Do I need to know Prometheus, Loki, or Grafana already?**
+A sketch-level idea of "metrics database" and "log database" is enough.
+Part 1 builds PromQL and LogQL from first principles against live data, so you'll write queries from scratch rather than read pre-baked ones.
+
+**What if I've never used Docker?**
+You need Docker installed and running, but you don't need to write a Dockerfile.
+The whole stack is `docker compose up` underneath, wrapped by the `nobs` CLI.
+If `docker ps` works on your laptop, you're set.
+
+**What if my laptop is on Windows?**
+Run everything inside WSL 2 with Docker Desktop's WSL backend enabled.
+Native Windows / PowerShell is not supported — paths and Compose volume semantics differ enough to bite you mid-workshop.
+
+**How big is the stack?**
+Around 25 containers, ~6 GB of RAM while running, and ~5 GB of disk for images and volumes.
+The first `nobs autocon5 up` pulls 3–5 GB of images, which is the slow step.
+After that, restarts are fast.
+
+**Can I run this offline?**
+Yes, once images are pulled.
+The only outbound calls during the workshop are the optional AI RCA step (which needs a provider key and internet) and any `docker pull` you trigger by changing image tags.
+If conference Wi-Fi melts, the lab keeps running.
+
+**Is anything sent to a remote service?**
+No, by default.
+All telemetry, alerts, and dashboards are local.
+The AI RCA step is opt-in (`ENABLE_AI_RCA=false` is the default) and only calls out to OpenAI or Anthropic if you set a key in `.env`.
+
+**Why two simulated devices instead of one?**
+`srl1` and `srl2` exercise two parallel telemetry pipelines so you can compare them side by side.
+`srl1` ships canonical metrics and logs straight to Prometheus and Loki.
+`srl2` ships raw vendor shapes through Telegraf (metrics) and Vector (syslog), which normalize them.
+Both converge on the same canonical schema, distinguishable by the `pipeline` label — see [`docs/data-pipelines.md`](docs/data-pipelines.md).
+
+**Why both Telegraf and Vector?**
+Different shipper for each signal type.
+Telegraf renames raw gNMI subscription paths into a canonical Prometheus schema; Vector decodes RFC 5424 syslog into Loki-shaped log events.
+Running both demonstrates the two patterns most production stacks end up using.
+
+**Why simulated devices instead of real SR Linux containers?**
+Two reasons.
+A real SR Linux container needs 4–6 GB of RAM each, which would price most laptops out of a multi-device lab.
+And the workshop is about observability, not lab orchestration — sonda emits the exact gNMI metric shapes and syslog events a real SR Linux device would, so the PromQL and LogQL you write here is the same query you'd run against production.
+
+**Why Infrahub?**
+The Prefect quarantine flow needs to know intent before it acts — is this peer supposed to be up, is this device in maintenance.
+Infrahub is the source of truth that answers those questions.
+Without an SoT, the workflow can't tell signal from noise and every alert looks the same.
+
+**What does the AI RCA step actually do?**
+It takes the same evidence bundle the deterministic flow uses (metrics window, recent logs, intent from Infrahub) and asks an LLM for a narrative explanation.
+The output is annotated into Loki next to the deterministic policy decision, not in place of it.
+Human judgement still owns whether to act.
+
+**A panel says "No data". What now?**
+Check `nobs autocon5 status` first — if any row isn't `ok`, the data simply hasn't arrived yet.
+If everything's `ok` and a specific panel is empty, [`docs/troubleshooting.md`](docs/troubleshooting.md) has the recurring failure modes and exact recovery commands.
+
+**Can I keep using this after the workshop?**
+Yes — fork the repo and the stack is yours.
+Tweak scenarios, change the synthetic topology, point dashboards at your own metrics.
+[`docs/env-lifecycle.md`](docs/env-lifecycle.md) covers `.env` mechanics, and `nobs autocon5 destroy` cleanly tears the whole stack down (volumes included) when you're finished.
 
 ## Before you arrive
 
@@ -73,7 +132,7 @@ If anything misbehaves during the workshop, ask the instructor — they have the
 
 ## What's actually running
 
-![AutoCon5 architecture](docs/architecture.svg)
+![Workshop architecture](docs/architecture.svg)
 
 In words: synthetic telemetry from sonda lands in Prometheus and Loki.
 Alerting rules in both stores route through Alertmanager into a FastAPI webhook, which fans out to a Prefect flow.
@@ -95,6 +154,11 @@ interface_oper_state{intf_role="peer"}
 (interface_admin_state{intf_role="peer"} == 1)
   and on (device, name)
 (interface_oper_state{intf_role="peer"} == 2)
+
+# Same canonical metric, two pipelines: `srl1` ships direct to Prometheus,
+# `srl2` ships raw via Telegraf which renames + normalizes. Both end up
+# under `bgp_oper_state` distinguished only by the `pipeline` label.
+count by (pipeline) (bgp_oper_state)
 ```
 
 Then switch to the `loki` datasource:
@@ -103,10 +167,16 @@ Then switch to the `loki` datasource:
 {device="srl1"}
 {vendor_facility_process="UPDOWN"} | line_format "{{.device}} {{.interface}} {{.message}}"
 sum by (device, interface) (count_over_time({vendor_facility_process="UPDOWN"}[2m]))
+
+# Two log paths: srl1 emits direct to Loki via sonda, srl2 ships RFC
+# 5424 syslog through Vector. Same labels arrive in Loki either way.
+sum by (pipeline) (count_over_time({vendor_facility_process="UPDOWN"}[5m]))
 ```
 
 The "broken" peers are wired in on purpose: `srl1 → 10.1.99.2` and `srl2 → 10.1.11.1`.
 Those drive the BGP alerts in Part 3.
+
+[`docs/data-pipelines.md`](docs/data-pipelines.md) walks through the direct-vs-shipper hybrid in detail with curl commands to inspect the raw vs normalized shapes at each hop.
 
 ## Part 2 — Dashboards
 
