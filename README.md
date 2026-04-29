@@ -92,9 +92,9 @@ Each workshop's own README walks through the agenda and the hands-on parts.
 
 ## Available workshops
 
-| Workshop | When | Outline |
-|----------|------|---------|
-| [`autocon5`](workshops/autocon5/README.md) | AutoCon5, Mon 4 May 2026 | Telemetry & queries → dashboards → alerts, automation, AI-assisted ops |
+| Workshop | Outline |
+|----------|---------|
+| [`autocon5`](workshops/autocon5/README.md) | Telemetry & queries → dashboards → alerts, automation, AI-assisted ops |
 
 ## License
 
