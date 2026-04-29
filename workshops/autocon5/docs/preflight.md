@@ -8,7 +8,7 @@ Three-layer end-to-end check against the live workshop stack. Run before every w
 |---|---|---|
 | **A** | Polls Prometheus + Loki until both pipelines (`direct` and `telegraf` / `vector`) deliver expected series counts; sleeps 130s for `[2m]` rate windows to fill; calls `flap-interface` + `maintenance` in-process to seed annotation producers. | Stack-up regressions; pipeline-label drift; missing producers behind windowed queries. |
 | **B** | For every panel in every dashboard JSON, runs each target through Grafana's `/api/ds/query` (the same path the frontend uses) with `$device` substituted to both `srl1` and `srl2`. Validates frame + row count per response. | Datasource UID drift; PromQL/LogQL templates that fail to render; missing label substitutions; broken series shape. |
-| **C** | Per-panel headless Chromium captures of Grafana's `d-solo` view, both devices. Inspects the rendered DOM for `No data` / `Datasource not found` / `Plugin unavailable` / spinner-stuck states. | Frontend-plugin issues that don't surface via `/api/ds/query` (e.g. fifemon-graphql), table-join transformations that drop rows when one target fails, panel-config bugs Layer B can't see. |
+| **C** | Per-panel headless Chromium captures of Grafana's `d-solo` view, both devices. Inspects the rendered DOM for `No data` / `Datasource not found` / `Plugin unavailable` / spinner-stuck states. | Frontend-rendering bugs that don't surface via `/api/ds/query`, table-join transformations that drop rows when one target fails, panel-config bugs Layer B can't see. |
 
 Each layer writes its own JSON manifest plus a log. The runner aggregates everything into `REPORT.md`.
 

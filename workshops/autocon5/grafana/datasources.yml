@@ -13,22 +13,16 @@ datasources:
     url: http://loki:3001
     access: proxy
 
-  # Infrahub source-of-truth — replaces the Nautobot GraphQL datasource from
-  # the webinar-completed scenario. Grafana queries Infrahub via GraphQL with
-  # the workshop's API token, which is seeded by INFRAHUB_INITIAL_ADMIN_TOKEN
-  # on first boot of infrahub-server.
+  # Infrahub source-of-truth via the Infinity datasource.
+  # Authoritative URL + custom header live here; panels reference the UID
+  # and post their GraphQL queries through Grafana's backend proxy with the
+  # token already attached.
   - name: infrahub
-    # Pinned UID so the dashboard JSON's datasource references resolve
-    # regardless of Grafana's auto-derivation algorithm.
     uid: workshop-infrahub-graphql
-    type: fifemon-graphql-datasource
+    type: yesoreyeram-infinity-datasource
     url: http://infrahub-server:8000/graphql
     editable: true
     jsonData:
       httpHeaderName1: X-INFRAHUB-KEY
     secureJsonData:
       httpHeaderValue1: ${INFRAHUB_API_TOKEN}
-
-  - name: infinity
-    type: yesoreyeram-infinity-datasource
-    editable: true

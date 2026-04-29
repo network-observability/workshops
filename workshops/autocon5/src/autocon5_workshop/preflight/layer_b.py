@@ -4,9 +4,8 @@ Iterates every panel in every dashboard JSON, runs the targets through
 Grafana's frontend-equivalent endpoint with $device substituted to both
 srl1 and srl2. Validates frame + row count.
 
-Caveat: frontend-only Grafana plugins (e.g. fifemon-graphql-datasource)
-return "plugin unavailable" via /api/ds/query because the plugin has no
-backend handler. Layer C is the truthful test for those panels.
+All datasources used by the workshop (prometheus, loki, infinity) are
+backend plugins, so /api/ds/query is the truthful test for every panel.
 """
 from __future__ import annotations
 
@@ -35,8 +34,19 @@ def render_template(s: str, device: str) -> str:
 
 
 def render_target(target: dict[str, Any], device: str) -> dict[str, Any]:
-    return {k: (render_template(v, device) if isinstance(v, str) else v)
-            for k, v in target.items()}
+    """Substitute $device recursively into all string values, including nested
+    dicts (e.g. Infinity's `url_options.body_graphql_query`)."""
+
+    def walk(v: Any) -> Any:
+        if isinstance(v, str):
+            return render_template(v, device)
+        if isinstance(v, dict):
+            return {k: walk(x) for k, x in v.items()}
+        if isinstance(v, list):
+            return [walk(x) for x in v]
+        return v
+
+    return walk(target)
 
 
 def grafana_ds_query(target: dict[str, Any]) -> dict[str, Any]:
@@ -131,23 +141,12 @@ def main() -> int:
                         "expr": (rendered.get("expr") or rendered.get("queryText") or "")[:200],
                     })
 
-                # Frontend-only Grafana plugins (e.g. fifemon-graphql) have no
-                # backend handler, so /api/ds/query returns "Plugin unavailable"
-                # regardless of correctness. Defer those to Layer C.
-                only_frontend = target_results and all(
-                    r["ds"] == "fifemon-graphql-datasource" or "plugin unavailable" in r["summary"].lower()
-                    for r in target_results if not r["ok"]
-                ) and not any(r["ok"] for r in target_results)
-
                 if not target_results:
                     status = "SKIP"
                     skip_count += 1
                 elif any(r["ok"] for r in target_results):
                     status = "PASS"
                     pass_count += 1
-                elif only_frontend:
-                    status = "SKIP"
-                    skip_count += 1
                 else:
                     status = "FAIL"
                     fail_count += 1
