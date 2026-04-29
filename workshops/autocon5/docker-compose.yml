@@ -37,7 +37,7 @@ services:
   # srl1 pipeline: sonda CLI -> remote_write directly into Prometheus.
   sonda-srl1:
     container_name: sonda-srl1
-    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.2.2}
+    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.3.0}
     entrypoint: ["/sonda"]
     command: ["run", "--scenario", "/scenarios/srl1-metrics.yaml"]
     environment:
@@ -58,7 +58,7 @@ services:
   # /metrics endpoints; telegraf-02 scrapes them.
   sonda-server:
     container_name: sonda-server
-    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.2.2}
+    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.3.0}
     command: ["--port", "8080", "--bind", "0.0.0.0"]
     environment:
       SONDA_PACK_PATH: "/packs:/sonda/packs"
@@ -93,7 +93,7 @@ services:
   # to Loki; srl2 streams emit RFC 5424 syslog UDP to Vector (vector:1514).
   sonda-logs:
     container_name: sonda-logs
-    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.2.2}
+    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.3.0}
     entrypoint: ["/sonda"]
     command: ["run", "--scenario", "/scenarios/all-logs.yaml"]
     environment:
@@ -438,6 +438,8 @@ services:
       PROMETHEUS_URL: http://prometheus:9090
       LOKI_URL: http://loki:3001
       ALERTMANAGER_URL: http://alertmanager:9093
+      SONDA_SERVER_URL: http://sonda-server:8080
+      SONDA_API_KEY: ${SONDA_API_KEY:-}
       ENABLE_AI_RCA: ${ENABLE_AI_RCA:-false}
       AI_RCA_PROVIDER: ${AI_RCA_PROVIDER:-openai}
       AI_RCA_MODEL: ${AI_RCA_MODEL:-gpt-4o-mini}
