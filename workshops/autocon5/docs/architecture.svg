@@ -82,7 +82,14 @@
   <g>
     <rect x="40" y="446" width="180" height="64" rx="8" class="box src"/>
     <text x="130" y="470" class="box-title" text-anchor="middle">sonda-logs</text>
-    <text x="130" y="490" class="box-sub"   text-anchor="middle">syslog + UPDOWN</text>
+    <text x="130" y="490" class="box-sub"   text-anchor="middle">srl1 direct · srl2 via Vector</text>
+  </g>
+
+  <!-- Vector — syslog UDP shipper for srl2 logs -->
+  <g>
+    <rect x="40" y="534" width="180" height="56" rx="8" class="box pipe"/>
+    <text x="130" y="558" class="box-title" text-anchor="middle">Vector</text>
+    <text x="130" y="576" class="box-sub"   text-anchor="middle">syslog UDP → Loki</text>
   </g>
 
 
@@ -113,9 +120,15 @@
   <text x="262" y="350" class="edge-label">scrape</text>
 
   <path d="M 220 478 L 280 478" class="arrow" marker-end="url(#arrowhead-faint)"/>
-  <text x="250" y="472" class="edge-label" text-anchor="middle">push</text>
+  <text x="250" y="472" class="edge-label" text-anchor="middle">srl1 push</text>
 
+  <!-- sonda-logs (srl2) -> Vector (down) -->
+  <path d="M 130 510 L 130 534" class="arrow" marker-end="url(#arrowhead-faint)"/>
+  <text x="148" y="528" class="edge-label">srl2 syslog UDP</text>
+
+  <!-- Vector -> Loki -->
   <path d="M 220 562 C 250 562, 250 510, 280 510" class="arrow" marker-end="url(#arrowhead-faint)"/>
+  <text x="252" y="540" class="edge-label">push</text>
 
   <!-- Loki recording rule remote_write back into Prom -->
   <path d="M 370 446 L 370 264" class="arrow" stroke-dasharray="4 3" marker-end="url(#arrowhead-faint)"/>
@@ -192,10 +205,10 @@
   <path d="M 930 314 L 980 398" class="arrow" marker-end="url(#arrowhead-faint)"/>
   <path d="M 930 326 L 980 452" class="arrow" marker-end="url(#arrowhead-faint)"/>
 
-  <!-- annotations all flow back to Loki -->
+  <!-- annotations all flow back to Loki via sonda /events -->
   <path d="M 1060 476 C 1060 600, 370 600, 370 530" class="arrow"
         stroke-dasharray="4 3" marker-end="url(#arrowhead-faint)"/>
-  <text x="700" y="615" class="edge-label" text-anchor="middle">annotate decisions back into Loki (audit trail)</text>
+  <text x="700" y="615" class="edge-label" text-anchor="middle">annotate decisions back into Loki via sonda POST /events (audit trail)</text>
 
   <!-- ============================================================== -->
   <!-- Source of truth (bottom)                                        -->

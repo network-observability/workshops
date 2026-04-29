@@ -44,8 +44,11 @@ The committed `.env.example` defines:
 | `AI_RCA_MODEL` | `gpt-4o-mini` | The model id; e.g. `claude-haiku-4-5-20251001` for anthropic. |
 | `OPENAI_API_KEY` | empty | Required when `AI_RCA_PROVIDER=openai` and `ENABLE_AI_RCA=true`. |
 | `ANTHROPIC_API_KEY` | empty | Required when `AI_RCA_PROVIDER=anthropic` and `ENABLE_AI_RCA=true`. |
+| `SONDA_SERVER_URL` | `http://localhost:8085` | Where the workshop CLI POSTs annotations via `/events`. Container-side callers use `http://sonda-server:8080` (set explicitly in `docker-compose.yml`). |
+| `SONDA_API_KEY` | empty | Bearer for sonda's `/events` and `/scenarios`. Empty disables auth (workshop default). |
+| `SONDA_LOKI_SINK_URL` | `http://loki:3001` | URL sonda's `/events` handler uses to forward to Loki — sonda's container-network view of Loki, distinct from `LOKI_URL`. |
 
-`.env.example` also ships commented `*_IMAGE` overrides (`SONDA_IMAGE`, `PROMETHEUS_IMAGE`, `LOKI_IMAGE`, `GRAFANA_IMAGE`, `ALERTMANAGER_IMAGE`, `LOGSTASH_LOKI_IMAGE`, `TELEGRAF_IMAGE`, `INFRAHUB_IMAGE`, `INFRAHUB_RAY_VERSION`).
+`.env.example` also ships commented `*_IMAGE` overrides (`SONDA_IMAGE`, `PROMETHEUS_IMAGE`, `LOKI_IMAGE`, `GRAFANA_IMAGE`, `ALERTMANAGER_IMAGE`, `TELEGRAF_IMAGE`, `INFRAHUB_IMAGE`).
 Uncomment one to pin or upgrade an image without editing `docker-compose.yml`.
 
 ## Two consumers, two loaders

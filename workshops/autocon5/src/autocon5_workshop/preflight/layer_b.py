@@ -131,12 +131,23 @@ def main() -> int:
                         "expr": (rendered.get("expr") or rendered.get("queryText") or "")[:200],
                     })
 
+                # Frontend-only Grafana plugins (e.g. fifemon-graphql) have no
+                # backend handler, so /api/ds/query returns "Plugin unavailable"
+                # regardless of correctness. Defer those to Layer C.
+                only_frontend = target_results and all(
+                    r["ds"] == "fifemon-graphql-datasource" or "plugin unavailable" in r["summary"].lower()
+                    for r in target_results if not r["ok"]
+                ) and not any(r["ok"] for r in target_results)
+
                 if not target_results:
                     status = "SKIP"
                     skip_count += 1
                 elif any(r["ok"] for r in target_results):
                     status = "PASS"
                     pass_count += 1
+                elif only_frontend:
+                    status = "SKIP"
+                    skip_count += 1
                 else:
                     status = "FAIL"
                     fail_count += 1
