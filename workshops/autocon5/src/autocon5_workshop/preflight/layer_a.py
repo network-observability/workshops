@@ -118,7 +118,9 @@ def main() -> int:
     from autocon5_workshop.flap import flap_interface
     flap_interface(
         device="srl1", interface="ethernet-1/1", count=6, delay=0.5,
-        loki_url=os.environ.get("LOKI_URL", "http://localhost:3001"),
+        sonda_url=os.environ.get("SONDA_SERVER_URL", "http://localhost:8085"),
+        loki_url=os.environ.get("SONDA_LOKI_SINK_URL", "http://loki:3001"),
+        api_key=os.environ.get("SONDA_API_KEY", ""),
     )
 
     print("Layer A — maintenance toggle (in-process)", flush=True)

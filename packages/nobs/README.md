@@ -46,7 +46,7 @@ src/nobs/
   _console.py          # shared Rich console + step/ok/warn/fail helpers
   clients/
     prom.py            # PromClient — instant + range queries
-    loki.py            # LokiClient — query_range + push (annotations)
+    loki.py            # LokiClient — query_range + annotate (via sonda /events)
     alertmanager.py    # AlertmanagerClient — silences, /api/v2/alerts
     infrahub.py        # InfrahubClient — generic GraphQL helper
   commands/
