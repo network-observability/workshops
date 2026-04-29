@@ -56,6 +56,21 @@ nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1
 
 The flap helper pushes a burst of UPDOWN log lines into `srl1`'s stream, which trips `PeerInterfaceFlapping` reliably within ~30 seconds.
 
+## `flap-interface` or `maintenance` fails with `sonda /events post failed`
+
+**Why.** Both commands route annotations through `sonda-server`'s `POST /events` endpoint.
+A `502 Bad Gateway` from `/events` means sonda received the request but couldn't push to its configured Loki sink.
+A connection error means sonda-server itself isn't reachable from where the CLI is running.
+
+**Recovery.**
+1. `nobs autocon5 status` — `Sonda server` should be `ok`. If not, check `nobs autocon5 logs sonda-server`.
+2. Verify Loki is healthy too: the `/events` payload's `sink.url` defaults to `http://loki:3001` (sonda's container view). If Loki is restarting, give it 30s.
+3. Probe `/events` directly: `curl http://localhost:8085/health` should return `{"status":"ok"}`.
+4. If sonda-server has been restarted, its scenarios are in-memory only — re-kick `sonda-setup`:
+   ```bash
+   docker compose --project-name autocon5 restart sonda-setup
+   ```
+
 ## Webhook errors trying to call Prefect
 
 **Why.** The `prefect-flows` container registers and serves the `alert-receiver` deployment as soon as it boots.
@@ -71,7 +86,7 @@ This is faster than a full `nobs autocon5 restart` and doesn't disturb the rest 
 ## Stack feels slow / runs out of memory
 
 **Why.** Infrahub alone runs a half-dozen containers (server, db, cache, mq, storage, ray-worker).
-Add Prometheus + Loki + Grafana + Prefect + sonda + telegraf + webhook and you're looking at ~25 containers and ~6 GB RSS at steady state.
+Add Prometheus + Loki + Grafana + Prefect + sonda + telegraf + vector + webhook and you're looking at ~25 containers and ~6 GB RSS at steady state.
 
 **Recovery.** First check `docker stats` — usually one container is runaway (often Loki or Prefect).
 If you're tight on RAM:

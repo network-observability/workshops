@@ -7,7 +7,7 @@ By lunchtime you'll have queried real-shaped telemetry, made a dashboard answer 
 > **Format:** ~20% framing and guided demos, ~80% hands-on.
 > The whole stack runs locally — no shared backend, no live network gear.
 
-## Agenda (Tuesday, 09:00 – 13:00)
+## Agenda (Monday 4 May 2026, 09:00 – 13:00)
 
 | Time | Part | What |
 |------|------|------|
@@ -95,6 +95,11 @@ interface_oper_state{intf_role="peer"}
 (interface_admin_state{intf_role="peer"} == 1)
   and on (device, name)
 (interface_oper_state{intf_role="peer"} == 2)
+
+# Same canonical metric, two pipelines: `srl1` ships direct to Prometheus,
+# `srl2` ships raw via Telegraf which renames + normalizes. Both end up
+# under `bgp_oper_state` distinguished only by the `pipeline` label.
+count by (pipeline) (bgp_oper_state)
 ```
 
 Then switch to the `loki` datasource:
@@ -103,10 +108,16 @@ Then switch to the `loki` datasource:
 {device="srl1"}
 {vendor_facility_process="UPDOWN"} | line_format "{{.device}} {{.interface}} {{.message}}"
 sum by (device, interface) (count_over_time({vendor_facility_process="UPDOWN"}[2m]))
+
+# Two log paths: srl1 emits direct to Loki via sonda, srl2 ships RFC
+# 5424 syslog through Vector. Same labels arrive in Loki either way.
+sum by (pipeline) (count_over_time({vendor_facility_process="UPDOWN"}[5m]))
 ```
 
 The "broken" peers are wired in on purpose: `srl1 → 10.1.99.2` and `srl2 → 10.1.11.1`.
 Those drive the BGP alerts in Part 3.
+
+[`docs/data-pipelines.md`](docs/data-pipelines.md) walks through the direct-vs-shipper hybrid in detail with curl commands to inspect the raw vs normalized shapes at each hop.
 
 ## Part 2 — Dashboards
 
