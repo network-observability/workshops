@@ -2,19 +2,23 @@
 
 ## What you'll do here
 
-Write PromQL and LogQL by hand against the running lab. You'll discover the metric schema, find the deliberately broken BGP peer with a single intent-vs-reality query, and correlate metrics to logs to explain *why* a session is down. By the end you'll know enough query syntax to read any dashboard in this workshop.
+It's Monday morning. You just rotated onto the on-call team for your company's network observability platform and today is your first deep day. You've got coffee. Your senior buddy is leaning on the desk next to you, laptop open. They're going to walk you through the lab over the next 75 minutes — what "normal" looks like, where the broken things hide, how to bridge from a metric anomaly to a log line that explains it. From tomorrow you'll be primary on the rotation, so today the goal is simple: build a baseline mental model of this network so every future triage has something to compare against.
+
+Write PromQL and LogQL by hand against the running lab. Discover the metric schema, find the deliberately broken BGP peer with a single intent-vs-reality query, and correlate metrics to logs to explain *why* a session is down. By the end you'll know enough query syntax to read any dashboard in this workshop.
 
 This part is the longest of the day on purpose — every later part depends on you being comfortable in the query bar.
 
 ## Setup check
 
-In a terminal, from the repo root:
+Your senior already has Grafana up on their screen. They've run `nobs autocon5 status` from the repo root and confirmed every row says `ok`. Your turn.
+
+In a terminal:
 
 ```bash
 nobs autocon5 status
 ```
 
-Every row should report `ok`. If `prometheus`, `loki`, or `sonda` is anything else, flag it before continuing.
+Every row should report `ok`. If `prometheus`, `loki`, or `sonda` is anything else, flag it before continuing — your senior wants to know about a degraded stack before you lean on it.
 
 Open Grafana at <http://localhost:3000> (login `admin` / `admin` unless you changed `.env`). Click the compass icon in the left rail to open **Explore**. The datasource picker at the top is how you switch between Prometheus and Loki. You'll bounce between them throughout this part.
 
@@ -23,6 +27,8 @@ Open the **Workshop Home** dashboard once (`/d/workshop-home`) so you've seen th
 ## The exercises
 
 ### Metrics — PromQL
+
+> Your senior taps the screen. *"Pull up Explore. Before we touch anything else this morning, you need to know what's even talking to us right now. Start with the metric name everything in this lab keys off of."*
 
 #### 1. Discover what's in the lab
 
@@ -72,6 +78,8 @@ You should get exactly two rows:
 
 - `device=srl1, peer_address=10.1.99.2`
 - `device=srl2, peer_address=10.1.11.1`
+
+> Your senior leans in. *"You just found a peer that's been in mismatch for weeks. The team has a runbook entry for this — an alert that's been firing the whole time and nobody's owned. Welcome to on-call. We're not going to fix it today; we're going to learn from it. The shape of the query you just ran is the shape of the alert that's been paging the rotation."*
 
 **Stop and notice.** `and on (device, peer_address)` is the intent-vs-reality pattern. Left side: where admin says `enabled`. Right side: where operational state isn't `up`. Match them on the labels they share. This single query is the core of how the `BgpSessionNotUp` alert fires later in Part 3 — same intent-vs-reality, just with `for: 30s` wrapped around it.
 
@@ -175,6 +183,8 @@ Returns rows for *both* devices, *both* pipelines. A dashboard panel querying `b
 
 ### Logs — LogQL
 
+> Your senior pushes back from the desk. *"OK, you've got a sense of the metric shape. Now: when something looks wrong in metrics, you need to find a log line that explains it. Logs are where the why lives. Same lab, different query language. Switch the datasource."*
+
 Switch the Explore datasource to `loki`.
 
 #### 7. Stream selection
@@ -259,6 +269,8 @@ You should see streams from both devices. The `device`, `vendor_facility_process
 
 ### The bridge — metric to log
 
+> Your senior looks over. *"This is the move that pays off most often under pressure. Find the broken thing in metrics, then jump to logs with the same labels and read the why. If you only remember one thing from this morning, remember this."*
+
 #### 12. Why is the peer down?
 
 This is the payoff exercise. Use the broken-peer query from #3 to find a mismatched peer, then jump to logs to find out *why*.
@@ -294,6 +306,7 @@ You'll see BGP-related lines for that specific peer. Add a filter to narrow:
 
 ## What you took away
 
+- You now know what "normal" looks like in this network. That baseline is what every triage in your future is going to compare against.
 - Every metric is `name + labels + value`. Aggregations collapse labels you don't list.
 - Counters need `rate()`. The window inside the brackets controls smoothness.
 - Intent-vs-reality is two clauses joined by `and on (...)` — the workshop's broken peers are caught by exactly that shape.
