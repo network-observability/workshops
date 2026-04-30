@@ -97,37 +97,52 @@ The lines smooth out. The window inside the brackets is how much history `rate()
 
 #### 5. Trigger something and watch the query react
 
-In a terminal:
+The lab generates synthetic data on a schedule, but you can also drive events into it yourself. The CLI command for that:
 
 ```bash
 nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1
 ```
 
-This pushes 6 alternating up/down events into the log stream, and the synthetic interface state metric flips along with them. Back in Explore, run:
+This pushes 6 UPDOWN events into Loki over about 6 seconds. It's a log-event injection by design — the canonical interface-state *metric* keeps its underlying schedule so the rest of the lab's queries stay stable for everyone in the room. The events you're injecting show up on the log side.
 
-```promql
-interface_oper_state{device="srl1", name="ethernet-1/1"}
+To watch it react, briefly switch your Explore datasource to `loki` and run:
+
+```logql
+{device="srl1", vendor_facility_process="UPDOWN", interface="ethernet-1/1"}
 ```
 
-Switch to `Time series` if you aren't already there. Within ~30 seconds you'll see the value bounce between `1` (up) and `2` (down).
+Click `Run query`. Then run the flap CLI again from your terminal. Watch new lines arrive in the log panel within ~5 seconds. Switch back to `prometheus` when you're done — you'll come back to `flap-interface` in Exercise 10 to see how this same event stream becomes a *metric* via `count_over_time`.
 
-**Stop and notice.** Synthetic data, real shapes. The query bar reacts to lab state in real time — there's no batch refresh, no caching layer hiding your changes.
+**Stop and notice.** Synthetic data, real shapes — and you can drive it. The query bar reacts to lab state in real time, no batch refresh, no caching layer hiding your changes. Live data is the whole point of running queries in the first place; if your dashboards lag, you're not observing, you're reading history.
 
-#### 6. Pipeline awareness
+#### 6. Pipeline awareness — the canonical schema
 
-The hybrid pipeline is the workshop's signature point: srl1 ships metrics straight to Prometheus; srl2 ships through Telegraf which renames vendor paths into the canonical schema. Same metric name comes out either way. Prove it:
+The two devices are deliberately wired through different metric pipelines. The point isn't *that* there are two pipelines — it's *what they exist for*.
 
-```promql
-count by (pipeline) (bgp_oper_state{device="srl2"})
-```
-
-Returns one row: `pipeline=telegraf`. Now:
+Run this twice, once per device:
 
 ```promql
 count by (pipeline) (bgp_oper_state{device="srl1"})
+count by (pipeline) (bgp_oper_state{device="srl2"})
 ```
 
-Returns: `pipeline=direct`. **Same metric name, two transports, one query.** That's the schema-as-contract pattern — every dashboard, alert rule, and Prefect flow you'll see today is written *only* against the canonical names. The pipeline label is for debugging which transport is healthy, not for branching query logic.
+`srl1` returns `pipeline=direct`. `srl2` returns `pipeline=telegraf`. Same metric name, same labels (apart from `pipeline`), same value semantics. Now click into a result on each side and compare the full label set — the *only* meaningful difference is the `pipeline` value. Everything else converged.
+
+That convergence is the lesson:
+
+- **`pipeline=direct` is the canonical reference shape.** It's what every dashboard, alert rule, and Prefect flow in this lab is written against. The metric *name*, the *label vocabulary*, and the *value semantics* are the contract.
+- **Every other pipeline is a normalization step that has to converge on that contract.** `pipeline=telegraf` ingests raw vendor metrics — different metric names, different label keys, different value scales — and runs them through Telegraf processors (renames, label copies, unit conversions) until what comes out the other end matches the canonical shape. The `pipeline` label is a tag that says *"I went through transformation X to get here."*
+- **Real networks need this.** Production fleets are heterogeneous: Nokia SR Linux via gNMI, Cisco IOS-XR via Model-Driven Telemetry, Juniper via OpenConfig, legacy boxes via SNMP. Each emits its own dialect. Without a normalization pipeline per source, every dashboard becomes a per-vendor copy and every alert rule fragments. With one, you write the dashboard once.
+
+Prove the contract holds end-to-end:
+
+```promql
+bgp_oper_state
+```
+
+Returns rows for *both* devices, *both* pipelines. A dashboard panel querying `bgp_oper_state{device="$device"}` doesn't know or care which transport delivered the data — it asks for the canonical name and gets it. That's the schema-as-contract pattern in action.
+
+**Stop and notice.** The `pipeline` label is for debugging *which transformation path* the data came through, not for branching query logic. If you find yourself writing `bgp_oper_state{pipeline="direct"}` in a dashboard, you've drilled into a specific transport — useful for triage, but the panel won't show data from the other half of your fleet. Default to schema-shaped queries; reach for the `pipeline` label when you're debugging the pipeline itself.
 
 ### Logs — LogQL
 
@@ -198,19 +213,20 @@ Within ~30 seconds the `srl1` line jumps. **Stop and notice.** This is exactly h
 
 #### 11. Pipeline awareness on logs
 
-Same hybrid story, this time on the log side. srl1 emits direct to Loki, srl2 ships RFC 5424 syslog through Vector which normalizes it.
-
-```logql
-count by (pipeline) (count_over_time({device="srl2"}[5m]))
-```
-
-Returns `pipeline=vector`. Compare:
+The same canonical-vs-normalized story applies on the log side. `srl1` emits structured logs directly to Loki — that's the reference shape, `pipeline=direct`. `srl2` emits raw RFC 5424 syslog, which Vector parses, extracts fields from, and normalizes into the same label vocabulary before pushing — `pipeline=vector`.
 
 ```logql
 count by (pipeline) (count_over_time({device="srl1"}[5m]))
+count by (pipeline) (count_over_time({device="srl2"}[5m]))
 ```
 
-Returns `pipeline=direct`. Different shipper, same labels arriving in Loki.
+Returns `pipeline=direct` and `pipeline=vector` respectively. Now run a query that doesn't pin the pipeline:
+
+```logql
+{vendor_facility_process="UPDOWN"}
+```
+
+You should see streams from both devices. The `device`, `vendor_facility_process`, `interface`, `severity` labels look identical — Vector did the work to make `srl2`'s raw syslog converge on the same label vocabulary `srl1` emits natively. Schema as a contract, on the log side too.
 
 ### The bridge — metric to log
 
@@ -255,4 +271,4 @@ You'll see BGP-related lines for that specific peer. Add a filter to narrow:
 - LogQL stream selectors look like PromQL but pick log streams. Line filters narrow inside those streams.
 - `count_over_time({...}[N])` turns a log query into a metric — same pattern any LogQL alert rule uses.
 - Same labels on metrics and logs means correlation is one query change away. Metric tells you *what*; log tells you *why*.
-- The `pipeline` label tells you which transport carried the data. Your queries don't care; your debugging does.
+- `pipeline=direct` is the canonical reference shape; every other pipeline is a normalization step that has to converge on it. Default to schema-shaped queries (no `pipeline=` filter); reach for the `pipeline` label when you're debugging the transformation itself.
