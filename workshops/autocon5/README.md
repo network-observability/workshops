@@ -144,103 +144,21 @@ That's why the queries, dashboards, and alerts you build look exactly like what 
 
 ## Part 1 — Network telemetry and queries
 
-Open Grafana → **Explore**, pick the `prometheus` datasource, and try:
+PromQL and LogQL against the running stack. You'll discover the metric schema, find the deliberately broken BGP peer with a single intent-vs-reality query, and correlate metrics to logs to explain *why* a session is down. By the end you'll be comfortable enough in the query bar to read any dashboard in this workshop.
 
-```promql
-interface_admin_state{intf_role="peer"}
-interface_oper_state{intf_role="peer"}
-
-# What links does intent say should be UP that aren't?
-(interface_admin_state{intf_role="peer"} == 1)
-  and on (device, name)
-(interface_oper_state{intf_role="peer"} == 2)
-
-# Same canonical metric, two pipelines: `srl1` ships direct to Prometheus,
-# `srl2` ships raw via Telegraf which renames + normalizes. Both end up
-# under `bgp_oper_state` distinguished only by the `pipeline` label.
-count by (pipeline) (bgp_oper_state)
-```
-
-Then switch to the `loki` datasource:
-
-```logql
-{device="srl1"}
-{vendor_facility_process="UPDOWN"} | line_format "{{.device}} {{.interface}} {{.message}}"
-sum by (device, interface) (count_over_time({vendor_facility_process="UPDOWN"}[2m]))
-
-# Two log paths: srl1 emits direct to Loki via sonda, srl2 ships RFC
-# 5424 syslog through Vector. Same labels arrive in Loki either way.
-sum by (pipeline) (count_over_time({vendor_facility_process="UPDOWN"}[5m]))
-```
-
-The "broken" peers are wired in on purpose: `srl1 → 10.1.99.2` and `srl2 → 10.1.11.1`.
-Those drive the BGP alerts in Part 3.
-
-[`docs/data-pipelines.md`](docs/data-pipelines.md) walks through the direct-vs-shipper hybrid in detail with curl commands to inspect the raw vs normalized shapes at each hop.
+Hands-on guide: [`guides/part-1-telemetry-and-queries.md`](guides/part-1-telemetry-and-queries.md).
 
 ## Part 2 — Dashboards
 
-Two dashboards ship pre-provisioned under `/var/lib/grafana/dashboards`:
+Add one panel to the **Workshop Lab 2026** dashboard that answers a real operational question — *is this interface flapping right now?* You'll wire it to the `device` template variable, set thresholds that match the actual alert rule, then drive a flap from the CLI and watch the panel react in real time.
 
-- **Workshop Lab 2026** — the attendee scratchpad. You'll add a panel here.
-- **Device Health** — the "one dashboard, one story" reference.
-
-The hands-on exercise is in the workshop slides; you'll add a panel to **Workshop Lab 2026** that uses a `device` variable so it works across both `srl1` and `srl2`.
+Hands-on guide: [`guides/part-2-dashboards.md`](guides/part-2-dashboards.md).
 
 ## Part 3 — Alerts, automation, AI-assisted ops
 
-Two alerts fire automatically against the running telemetry:
+Drive the four canonical alert paths by hand (mismatch → quarantine, healthy → skip, maintenance → skip, resolved → audit) and watch the Prefect workflow decide what to do with each. Then toggle the opt-in AI RCA step and compare its narrative against the deterministic policy on the same evidence bundle.
 
-- **`BgpSessionNotUp`** — `bgp_admin_state=1` and `bgp_oper_state≠1` for the intentionally broken peers (`srl1 → 10.1.99.2`, `srl2 → 10.1.11.1`).
-- **`PeerInterfaceFlapping`** — `count_over_time({vendor_facility_process="UPDOWN"}[2m]) > 3`.
-
-Alertmanager forwards both to a FastAPI webhook, which kicks off the Prefect `alert-receiver` flow.
-That flow runs the four canonical paths from the outline:
-
-| Path | When | What happens |
-|------|------|--------------|
-| **Actionable / mismatch → quarantine** | Intent says peer up, metrics disagree | Silence + annotation |
-| **Healthy → skip** | Intent and metrics agree | Audit annotation only |
-| **In-maintenance → skip** | Device's `maintenance` flag is true in Infrahub | Audit annotation only |
-| **Resolved → audit trail** | Alert resolves | Audit annotation only |
-
-You drive these by hand:
-
-```bash
-# Force an interface flap into the log stream — trips PeerInterfaceFlapping in ~30s.
-nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1
-
-# Toggle a device into maintenance and watch the next quarantine flow skip.
-nobs autocon5 maintenance --device srl1 --state
-nobs autocon5 maintenance --device srl1 --clear
-
-# Inspect what the Prefect flow would see for a given peer.
-nobs autocon5 evidence srl1 10.1.99.2
-
-# List what's currently firing.
-nobs autocon5 alerts
-
-# Walk all four canonical Part 3 paths in one go.
-nobs autocon5 try-it
-```
-
-### AI-assisted RCA toggle
-
-The Prefect flow runs an opt-in LLM RCA step against the same evidence bundle (metrics + logs + source-of-truth).
-When `ENABLE_AI_RCA=false` (the default), the step still runs but annotates a clear "AI RCA disabled" message into Loki — the workflow finishes end-to-end either way.
-
-Turn it on by editing `.env`:
-
-```bash
-ENABLE_AI_RCA=true
-AI_RCA_PROVIDER=openai          # or anthropic
-AI_RCA_MODEL=gpt-4o-mini        # or e.g. claude-haiku-4-5-20251001
-OPENAI_API_KEY=sk-...           # only the one matching AI_RCA_PROVIDER is required
-```
-
-Then `nobs autocon5 restart prefect-flows`.
-Honest framing: the LLM output is annotated next to the deterministic policy result, not in place of it.
-Human judgement still owns the call to act — the AI gives you a faster narrative around the evidence, not an autonomous decision.
+Hands-on guide: [`guides/part-3-alerts-automation-ai.md`](guides/part-3-alerts-automation-ai.md).
 
 ## Going deeper
 
