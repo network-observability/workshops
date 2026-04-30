@@ -71,6 +71,36 @@ A connection error means sonda-server itself isn't reachable from where the CLI 
    docker compose --project-name autocon5 restart sonda-setup
    ```
 
+## Grafana shows a "What's new" splash on first load
+
+**Why.** Grafana 13 ships a per-user "What's new" splash modal advertising
+Grafana Assistant and other 13.x features. It's gated through Grafana's
+internal user-storage API (`userstorage.grafana.app`), not through the
+plugin system or the news feed — so disabling those doesn't suppress it.
+
+**Recovery.** Press <kbd>Esc</kbd> once. Grafana records the dismissal
+under the current user (admin or anonymous viewer), and you won't see it
+again on that browser/session unless storage is cleared.
+
+The workshop's docker-compose disables the *plugins* the splash promotes
+(`grafana-assistant-app`, `grafana-pyroscope-app`, etc.) so they don't
+clutter the nav even if the modal links to them.
+
+## Annotation markers don't appear on the dashboard
+
+**Why.** Loki-backed annotations (Interface Flap, Device Config Push) only render markers within the dashboard's current time range.
+If you triggered `flap-interface` or `maintenance` just before navigating to the dashboard, you may be looking at a window that ends before the event timestamp.
+
+**Recovery.**
+- Refresh the dashboard (`R` keybind, or the refresh button).
+- Zoom the time range out to `Last 15 minutes` (the new default).
+- Verify the annotation source produced lines in Loki:
+  ```bash
+  curl -sG http://localhost:3001/loki/api/v1/query_range \
+    --data-urlencode 'query={source="workshop-trigger"}' \
+    --data-urlencode 'limit=5'
+  ```
+
 ## Webhook errors trying to call Prefect
 
 **Why.** The `prefect-flows` container registers and serves the `alert-receiver` deployment as soon as it boots.
