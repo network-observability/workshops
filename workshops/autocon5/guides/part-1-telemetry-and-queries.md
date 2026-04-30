@@ -115,9 +115,9 @@ Click `Run query`. Then run the flap CLI again from your terminal. Watch new lin
 
 **Stop and notice.** Synthetic data, real shapes — and you can drive it. The query bar reacts to lab state in real time, no batch refresh, no caching layer hiding your changes. Live data is the whole point of running queries in the first place; if your dashboards lag, you're not observing, you're reading history.
 
-#### 6. Pipeline awareness — the canonical schema
+#### 6. Pipeline awareness — metrics normalization
 
-The two devices are deliberately wired through different metric pipelines. The point isn't *that* there are two pipelines — it's *what they exist for*.
+The two devices are wired through different metric pipelines on purpose. What you're looking at is **the same metric in two places along a normalization journey**.
 
 Run this twice, once per device:
 
@@ -126,23 +126,23 @@ count by (pipeline) (bgp_oper_state{device="srl1"})
 count by (pipeline) (bgp_oper_state{device="srl2"})
 ```
 
-`srl1` returns `pipeline=direct`. `srl2` returns `pipeline=telegraf`. Same metric name, same labels (apart from `pipeline`), same value semantics. Now click into a result on each side and compare the full label set — the *only* meaningful difference is the `pipeline` value. Everything else converged.
+`srl1` returns `pipeline=direct`. `srl2` returns `pipeline=telegraf`. Now click into a result on each side and compare the full label set — `device`, `peer_address`, `neighbor_asn`, `name`, `afi_safi_name`. The *only* meaningful difference is the `pipeline` value. Everything else lines up.
 
-That convergence is the lesson:
+That alignment is what "normalization" actually buys you:
 
-- **`pipeline=direct` is the canonical reference shape.** It's what every dashboard, alert rule, and Prefect flow in this lab is written against. The metric *name*, the *label vocabulary*, and the *value semantics* are the contract.
-- **Every other pipeline is a normalization step that has to converge on that contract.** `pipeline=telegraf` ingests raw vendor metrics — different metric names, different label keys, different value scales — and runs them through Telegraf processors (renames, label copies, unit conversions) until what comes out the other end matches the canonical shape. The `pipeline` label is a tag that says *"I went through transformation X to get here."*
-- **Real networks need this.** Production fleets are heterogeneous: Nokia SR Linux via gNMI, Cisco IOS-XR via Model-Driven Telemetry, Juniper via OpenConfig, legacy boxes via SNMP. Each emits its own dialect. Without a normalization pipeline per source, every dashboard becomes a per-vendor copy and every alert rule fragments. With one, you write the dashboard once.
+- **`pipeline=direct` is the normalized metric** — it already has the metric name, label keys, and value semantics you want to query against. Sonda emits it that way directly because we control its shape.
+- **`pipeline=telegraf` is the same metric still being processed to *become* normalized.** The raw input is whatever the vendor emits — vendor-specific metric names, different label keys, sometimes different units or value encodings. Telegraf renames, relabels, and rescales until what comes out the other end matches the normalized shape. The `pipeline` label is a tag that records which normalization path the data took to get here.
+- **Real fleets are heterogeneous and this is why normalization exists.** Nokia SR Linux via gNMI, Cisco IOS-XR via Model-Driven Telemetry, Juniper via OpenConfig, legacy boxes via SNMP — each speaks its own dialect. Without normalization, every dashboard, alert rule, and runbook fragments per vendor. With it, the *query layer* doesn't see the dialects at all.
 
-Prove the contract holds end-to-end:
+Prove the normalization holds end-to-end:
 
 ```promql
 bgp_oper_state
 ```
 
-Returns rows for *both* devices, *both* pipelines. A dashboard panel querying `bgp_oper_state{device="$device"}` doesn't know or care which transport delivered the data — it asks for the canonical name and gets it. That's the schema-as-contract pattern in action.
+Returns rows for *both* devices, *both* pipelines. A dashboard panel querying `bgp_oper_state{device="$device"}` doesn't care which transport delivered the data — it asks for the normalized name and gets it.
 
-**Stop and notice.** The `pipeline` label is for debugging *which transformation path* the data came through, not for branching query logic. If you find yourself writing `bgp_oper_state{pipeline="direct"}` in a dashboard, you've drilled into a specific transport — useful for triage, but the panel won't show data from the other half of your fleet. Default to schema-shaped queries; reach for the `pipeline` label when you're debugging the pipeline itself.
+**Stop and notice.** The `pipeline` label is for inspecting the normalization itself: *"which path did this sample take, is that path healthy?"* It's not for branching your query logic. If you write `bgp_oper_state{pipeline="direct"}` into a dashboard, you've narrowed to one path — useful for debugging that path, but you'll miss every device whose data flows through any other pipeline. Default to pipeline-agnostic queries; reach for the `pipeline` label when you're debugging the normalization, not the network.
 
 ### Logs — LogQL
 
@@ -213,7 +213,7 @@ Within ~30 seconds the `srl1` line jumps. **Stop and notice.** This is exactly h
 
 #### 11. Pipeline awareness on logs
 
-The same canonical-vs-normalized story applies on the log side. `srl1` emits structured logs directly to Loki — that's the reference shape, `pipeline=direct`. `srl2` emits raw RFC 5424 syslog, which Vector parses, extracts fields from, and normalizes into the same label vocabulary before pushing — `pipeline=vector`.
+The same normalization story plays out on the log side. `srl1` emits structured logs directly to Loki — that's the **normalized log**, `pipeline=direct`. `srl2` emits raw RFC 5424 syslog; Vector parses it, extracts fields, and rewrites them into the same label vocabulary `srl1` already uses — that's the same log **still being processed to become normalized**, `pipeline=vector`.
 
 ```logql
 count by (pipeline) (count_over_time({device="srl1"}[5m]))
@@ -226,7 +226,7 @@ Returns `pipeline=direct` and `pipeline=vector` respectively. Now run a query th
 {vendor_facility_process="UPDOWN"}
 ```
 
-You should see streams from both devices. The `device`, `vendor_facility_process`, `interface`, `severity` labels look identical — Vector did the work to make `srl2`'s raw syslog converge on the same label vocabulary `srl1` emits natively. Schema as a contract, on the log side too.
+You should see streams from both devices. The `device`, `vendor_facility_process`, `interface`, `severity` labels look identical — Vector did the work to make `srl2`'s raw syslog land in Loki with the same shape `srl1`'s structured logs already have. Same normalization story, log edition.
 
 ### The bridge — metric to log
 
@@ -271,4 +271,4 @@ You'll see BGP-related lines for that specific peer. Add a filter to narrow:
 - LogQL stream selectors look like PromQL but pick log streams. Line filters narrow inside those streams.
 - `count_over_time({...}[N])` turns a log query into a metric — same pattern any LogQL alert rule uses.
 - Same labels on metrics and logs means correlation is one query change away. Metric tells you *what*; log tells you *why*.
-- `pipeline=direct` is the canonical reference shape; every other pipeline is a normalization step that has to converge on it. Default to schema-shaped queries (no `pipeline=` filter); reach for the `pipeline` label when you're debugging the transformation itself.
+- `pipeline=direct` is the normalized signal — already in the shape you want to query. `pipeline=telegraf` and `pipeline=vector` are the same signal still being processed to become normalized. Write your queries pipeline-agnostic; reach for the `pipeline` label only when you're debugging the normalization itself.
