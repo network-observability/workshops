@@ -28,9 +28,7 @@ Run everything inside WSL 2 with Docker Desktop's WSL backend enabled.
 Native Windows / PowerShell is not supported — paths and Compose volume semantics differ enough to bite you mid-workshop.
 
 **How big is the stack?**
-Around 25 containers, ~6 GB of RAM while running, and ~5 GB of disk for images and volumes.
-The first `nobs autocon5 up` pulls 3–5 GB of images, which is the slow step.
-After that, restarts are fast.
+Around 21 containers, ~5.5 GB of RAM at idle (Infrahub — graph DB, API server, message queue, task worker — accounts for roughly three-quarters of that), and ~5 GB of disk for images and volumes. CPU sits at low single-digit percent at idle. Driving a cascade with `nobs autocon5 flap-interface` or `nobs autocon5 incident` briefly pushes the stack to roughly one fully-saturated CPU core (Grafana refreshing dashboards and Prefect running the alert flow account for most of the spike); memory doesn't move with cascade activity. The first `nobs autocon5 up` pulls 3–5 GB of images, which is the slow step. After that, restarts are fast.
 
 **Can I run this offline?**
 Yes, once images are pulled.

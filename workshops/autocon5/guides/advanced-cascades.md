@@ -40,7 +40,7 @@ The CLI builds a v2 scenario in memory and POSTs it once. Before you fire it, lo
 
 All three signals carry `source="incident-cascade"` and `pipeline="direct"` plus the standard lab labels (`device`, `name`, `intf_role: peer`, `collection_type: gnmi`). The `source` label keeps these visually distinct from the lab's continuous emitters when you query.
 
-**Stop and notice.** In `flap-interface`, the timing lives in Python — the CLI sleeps between events, deciding when each phase fires. Here, the timing lives in YAML. Phase 2 doesn't say "wait 60 seconds"; it says "wait until Phase 1 drops below 1". The CLI doesn't decide when Phase 2 fires — sonda does, by watching what Phase 1 emits. That's the whole difference between an imperative cascade and a declarative one.
+**Stop and notice.** In `flap-interface`, the timing lives in Python — the CLI sleeps between events, deciding when each phase fires. Here, the timing lives in YAML. Phase 2 doesn't say "wait 60 seconds"; it says "wait until Phase 1 drops below 1". The CLI doesn't decide when Phase 2 fires — sonda does, by watching what Phase 1 emits. That's the whole difference between an imperative cascade and a declarative one. If you walked Part 1 Exercise 5 ([Telemetry and queries](part-1-telemetry-and-queries.md#5-trigger-something-and-watch-the-query-react)) and Part 3 Exercise 3 ([Alerts, automation, AI](part-3-alerts-automation-ai.md#3-drive-mismatch--quarantine-by-hand)), you watched `flap-interface` walk a cascade phase by phase, with the workshop CLI driving each step.
 
 If you want to see the exact body the CLI builds, read the `_build_link_failover` function in `workshops/autocon5/src/autocon5_workshop/incident.py`. The three `scenarios:` entries are what you'll see go through `POST /scenarios`.
 
@@ -65,6 +65,8 @@ incident_backup_link_utilization
 ```promql
 incident_latency_ms
 ```
+
+**Tip.** Every signal the cascade emits carries `source="incident-cascade"`. Use that label as a one-shot filter in any panel or Explore tab to scope a query to just the cascade output: `{source="incident-cascade"}` for Loki, `bgp_oper_state{source="incident-cascade"}` for Prometheus.
 
 Switch each panel to **Time series**. Watch them in turn:
 
@@ -128,9 +130,9 @@ Walk through it:
 
 - Phase 1 ends at t ≈ 90s.
 - Phase 2 starts at t ≈ 60s and runs for 90s, so ends at t ≈ 150s.
-- Phase 3 starts somewhere after Phase 2 hits 70% — call it t ≈ 90s — and runs for 90s, so ends at t ≈ 180s.
+- Phase 3 starts after Phase 2 crosses 70% — Phase 2 ramps from 20 to 85 over 2 minutes, so 70% (a value of ~59.5) lands roughly 40-50s into Phase 2's own ramp, i.e. wall-clock t ≈ 105-110s. Phase 3 runs for 90s from there, so ends at t ≈ 200s.
 
-The cascade's wall-clock end isn't 90 seconds. It's roughly 3 minutes, even though every individual scenario was "90 seconds long".
+The cascade's wall-clock end isn't 90 seconds. It's roughly 3 to 3.5 minutes, even though every individual scenario was "90 seconds long".
 
 **Stop and notice.** Scenario `duration` is per-scenario, measured from each scenario's own start time, not from the cascade's registration time. The end-to-end run time is the *longest path through the dependency graph*. With imperative cascades you decide when each phase starts, so the wall-clock duration is whatever your sleeps add up to. With declarative cascades the graph decides, and the duration semantics flow from that. Read a v2 scenario, find the longest causal chain, and you can predict the wall-clock duration before you ever hit the API.
 
@@ -139,6 +141,7 @@ The cascade's wall-clock end isn't 90 seconds. It's roughly 3 minutes, even thou
 - **Build your own cascade kind.** Copy `_build_link_failover` from `workshops/autocon5/src/autocon5_workshop/incident.py` into a scratch Python script. Change the metric names, swap `saturation` for `degradation`, change the `after:` thresholds. Save the body as `scenario.json` and POST it directly: `curl -X POST http://localhost:8085/scenarios -H 'Content-Type: application/json' -d @scenario.json`. Skip the workshop CLI entirely — talk straight to sonda. This is what writing a production scenario library looks like.
 - **Run two cascades concurrently.** Register one for `srl1`, then immediately a second for `srl2`. Confirm via `/scenarios` that both run side by side and emit independently. Notice the two cascades don't share state — each has its own dependency graph evaluation.
 - **Use `--follow` as a smoke test.** Wrap `nobs autocon5 incident --duration 60s --follow` in a shell script and check `$?` after it returns. The CLI exits zero when every scenario has reached a non-running state — that's a CI-grade "did the cascade finish?" gate. A non-zero exit means a poll error or the scenarios got stuck.
+- **Propose a `--dry-run` flag.** The CLI today builds the cascade body and POSTs it in one shot. Sketch (don't implement) what `nobs autocon5 incident --dry-run` would do: print the v2 scenario JSON to stdout without hitting `/scenarios`. Bonus: how would you make the dumped body re-postable verbatim with `curl`? This is the same shape as `terraform plan` versus `terraform apply` — the dry-run is the part of the workflow most CLIs forget.
 
 ## What you took away
 
