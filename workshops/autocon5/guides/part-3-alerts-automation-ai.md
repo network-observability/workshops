@@ -2,11 +2,15 @@
 
 ## What you'll do here
 
-Drive each of the four canonical alert paths by hand, watch the Prefect workflow decide what to do with each, then optionally turn on the AI RCA step and compare its narrative against the deterministic policy. By the end you'll know exactly what the automation will and won't do for you — and which calls still belong to a human.
+After lunch. You're back at the desk with your senior. The flap-rate panel from this morning is still pinned in a tab. You're both finishing coffee when a `BgpSessionNotUp` alert lands — a real one, on the lab. Your senior glances at the dashboard, then at you.
+
+> *"Watch what happens automatically. The flow's going to handle this without us. Then I'll walk you through the four cases it covers, and you can drive each one yourself. By the end of the hour you'll know exactly what the automation can and can't do for you — and which calls still belong to a human."*
+
+Drive each of the four canonical alert paths by hand, watch the Prefect workflow decide what to do with each, then optionally turn on the AI RCA step and compare its narrative against the deterministic policy.
 
 ## Setup check
 
-Two `BgpSessionNotUp` alerts should already be firing in the lab — the deliberately broken peers from Part 1.
+Two `BgpSessionNotUp` alerts should already be firing in the lab — the deliberately broken peers from this morning.
 
 ```bash
 nobs autocon5 alerts
@@ -33,6 +37,8 @@ Annotations land in Loki with `{source="workshop-trigger"}`. They're visible in 
 
 ### 1. Inspect what's already firing
 
+> *"Run this. We'll look at the raw alert state before we touch the workflow."*
+
 ```bash
 nobs autocon5 alerts
 ```
@@ -40,6 +46,8 @@ nobs autocon5 alerts
 Two `BgpSessionNotUp` rows. Each has `device` and `peer_address` labels. **Stop and notice.** Those labels are how the flow correlates the alert back to source-of-truth: it asks Infrahub "is this peer expected up? is this device in maintenance?" using exactly those keys.
 
 ### 2. Walk all four paths in one shot
+
+> *"This walks every path in one shot. Don't worry about following each one — just watch what fires and what gets annotated. We'll go slowly the second time around."*
 
 ```bash
 nobs autocon5 try-it
@@ -64,7 +72,9 @@ Open **Workshop Home** and look at the **Recent events** feed. You should see th
 
 ### 3. Drive mismatch → quarantine by hand
 
-Now do the path manually so you see the moving parts. A single `flap-interface` invocation now cascades through three signals automatically (interface metric flip → 10s hold-down → BGP collapse + prefix drop → restore), so even one call is enough to surface the mismatch path.
+> *"Now do it slowly so you see the moving parts. Same path, but you're driving."*
+
+A single `flap-interface` invocation now cascades through three signals automatically (interface metric flip → 10s hold-down → BGP collapse + prefix drop → restore), so even one call is enough to surface the mismatch path.
 
 ```bash
 nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1
@@ -92,6 +102,8 @@ done
 
 ### 4. Drive in-maintenance → skip
 
+> *"Same alert, completely different decision — because the flow consulted Infrahub before acting. This is what context-aware alerting actually means."*
+
 ```bash
 nobs autocon5 maintenance --device srl1 --state
 ```
@@ -108,7 +120,7 @@ Now re-trigger the flap:
 nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1
 ```
 
-Wait ~30 seconds. Re-check alerts and the **Recent events** feed. The flow should have written `skipped (maintenance)` instead of `quarantined`. **Stop and notice.** Same metric data, same alert payload, completely different decision — because the flow consulted Infrahub before acting. This is what "context-aware alerting" actually means.
+Wait ~30 seconds. Re-check alerts and the **Recent events** feed. The flow should have written `skipped (maintenance)` instead of `quarantined`. **Stop and notice.** Same metric data, same alert payload, completely different decision — because the flow consulted Infrahub before acting.
 
 Reset before moving on:
 
@@ -117,6 +129,8 @@ nobs autocon5 maintenance --device srl1 --clear
 ```
 
 ### 5. Inspect the evidence bundle
+
+> *"This bundle is the input to both the deterministic policy and the AI step. Same evidence, two consumers."*
 
 The flow doesn't decide blindly. It pulls a correlated bundle of evidence — recent metrics, recent logs, source-of-truth state — and decides on that. Look at what it sees:
 
@@ -133,6 +147,8 @@ You'll get a printed bundle with three sections:
 **Stop and notice.** This bundle is the input to *both* the deterministic policy *and* (when it's enabled) the AI RCA step. Same evidence, two consumers — one decides mechanically, one writes a narrative. Neither sees more than what the other sees.
 
 ### 6. Toggle the AI RCA step
+
+> *"Would the LLM narrative have helped you at 2am? Let's turn it on and find out."*
 
 By default, the AI step runs but writes a "AI RCA disabled" annotation — the flow finishes end-to-end either way.
 
@@ -159,7 +175,7 @@ If you don't have an API key handy, leave `ENABLE_AI_RCA=false`. Look at the dis
 
 ### 7. Reflection (no clicking — just think)
 
-Pick any of the paths you ran. Ask yourself:
+> Your senior leans back. *"Last one's a thinking exercise. Pick any of the paths you just ran and answer this for yourself."*
 
 > Which path would I trust the AI's narrative on without a second look? Which would I always double-check by hand? Why?
 
@@ -180,6 +196,8 @@ There's no single right answer. The point is that the same tool isn't equally va
 - **Watch a path's annotations in Loki directly.** `{source="workshop-trigger"} | json` in Explore. Filter by `workflow="alert-receiver"` (or whatever the JSON shows) and watch annotations land while you trigger paths.
 
 ## What you took away
+
+> Your senior signs off. *"You're ready to take primary tomorrow. If something fires, walk the same arc — triage, diagnose, contain, fix, document. The advanced guide is yours when you've finished today; you'll know what 02:14 looks like by the time you get to it."*
 
 - Alerts are an explicit operational decision, not a notification. The deterministic flow turns each alert into a *specific action* by enriching with source-of-truth.
 - The same alert payload routes to four different outcomes depending on context. Without enrichment, every alert looks the same.
