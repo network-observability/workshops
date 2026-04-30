@@ -67,7 +67,7 @@
         "type": "yesoreyeram-infinity-datasource",
         "uid": "workshop-infrahub-graphql"
       },
-      "description": "Device Detailed Information from Nautobot",
+      "description": "Source-of-truth metadata for `$device`, pulled live from Infrahub via the Infinity datasource. The Maintenance flag is toggled with `nobs autocon5 maintenance` and feeds the alert rules' inhibition logic.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -262,7 +262,7 @@
         "type": "prometheus",
         "uid": "P1809F7CD0C75ACF3"
       },
-      "description": "Device overall state from a ping result",
+      "description": "Up/down rollup of the device's reachability, derived from sonda's `ping_response` metric (~10s cadence). UP flips red if no successful ping has landed in the last minute.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -356,7 +356,7 @@
         "type": "prometheus",
         "uid": "P1809F7CD0C75ACF3"
       },
-      "description": "Device Uptime based on SNMP metric",
+      "description": "Time elapsed since the device's last reboot, from `device_uptime`. Resets to 0 when sonda restarts the scenario \u2014 uncommon, but worth knowing if you see an unexpected dip.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -425,7 +425,7 @@
         "type": "prometheus",
         "uid": "P1809F7CD0C75ACF3"
       },
-      "description": "Overall Memory average usage for the device",
+      "description": "Rolling memory utilisation across the device's memory banks. Synthetic but shaped like a real router \u2014 slow growth with occasional GC dips.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -509,7 +509,7 @@
         "type": "prometheus",
         "uid": "P1809F7CD0C75ACF3"
       },
-      "description": "Overall CPU average usage for the device",
+      "description": "Rolling CPU utilisation across the device's cores. The shape comes from sonda's sine-wave generator \u2014 realistic 'breathing' rather than flat data.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -593,7 +593,7 @@
         "type": "prometheus",
         "uid": "P1809F7CD0C75ACF3"
       },
-      "description": "Average Latency of a device",
+      "description": "Round-trip time from the synthetic prober. Healthy values are sub-millisecond on the lab network; spikes mean the scenario is modelling a degraded link or the host is loaded.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -663,7 +663,7 @@
         "type": "prometheus",
         "uid": "P1809F7CD0C75ACF3"
       },
-      "description": "CPU and Memory usage in average for available cores on the device",
+      "description": "CPU and memory plotted together so you can correlate workload bursts with memory growth. Both come from sonda's `cpu_used` and `mem_used` series.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -778,7 +778,7 @@
         "type": "prometheus",
         "uid": "P1809F7CD0C75ACF3"
       },
-      "description": "Total Inbound + Outbound traffic on a device",
+      "description": "Sum of all interface throughput on the device, both directions. A quick \"is this device busy?\" check before drilling into per-interface panels.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1053,7 +1053,7 @@
         "type": "prometheus",
         "uid": "P1809F7CD0C75ACF3"
       },
-      "description": "Interfaces State change over time",
+      "description": "Per-interface operational state over the dashboard's time range. Red bands are interface-down events; `nobs autocon5 flap-interface` flaps show up here within ~10s.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1176,7 +1176,7 @@
         "type": "prometheus",
         "uid": "P1809F7CD0C75ACF3"
       },
-      "description": "Total Interfaces Down",
+      "description": "Count of interfaces currently in operational state DOWN. Zero in steady state \u2014 a non-zero value usually means a flap exercise is in progress.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1242,7 +1242,7 @@
         "type": "mixed",
         "uid": "-- Mixed --"
       },
-      "description": "Interfaces Detail table collected from the device",
+      "description": "Per-interface roll-up: admin state, operational state, IP, and the intended state pulled from Infrahub. Sorted alphabetically so srl1 and srl2 line up consistently for the demo.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1640,7 +1640,7 @@
         "type": "prometheus",
         "uid": "P1809F7CD0C75ACF3"
       },
-      "description": "Total Interfaces Up",
+      "description": "Count of interfaces currently in operational state UP. Pairs with Down \u2014 together they should equal the device's total interface count.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1710,7 +1710,7 @@
         "type": "prometheus",
         "uid": "P1809F7CD0C75ACF3"
       },
-      "description": "Average Inbound Traffic",
+      "description": "Average inbound throughput across all interfaces, in bytes/s. Pairs with Outbound for a quick direction-shape read without scrolling to the timeseries.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1775,7 +1775,7 @@
         "type": "prometheus",
         "uid": "P1809F7CD0C75ACF3"
       },
-      "description": "Interfaces Traffic over time (negative values are outbound traffic)",
+      "description": "Per-interface traffic with the +inbound / -outbound mirror convention so you can read direction at a glance. Y-axis is bytes/s; absolute values are what matter.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1922,7 +1922,7 @@
         "type": "prometheus",
         "uid": "P1809F7CD0C75ACF3"
       },
-      "description": "Average Outbound Traffic",
+      "description": "Average outbound throughput across all interfaces, in bytes/s.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1999,7 +1999,7 @@
         "type": "prometheus",
         "uid": "P1809F7CD0C75ACF3"
       },
-      "description": "Total BGP Prefixes Accepted",
+      "description": "Number of routes the device's BGP peers have advertised that the device accepted into its RIB. Stable in normal operation; dips can mean a peer is flapping or filtering changed.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2063,7 +2063,7 @@
         "type": "prometheus",
         "uid": "P1809F7CD0C75ACF3"
       },
-      "description": "BGP State change over time",
+      "description": "Per-peer BGP session state over the time range. Look for ESTABLISHED bands; transitions to IDLE or ACTIVE are session resets, which the `BgpSessionNotUp` alert rule fires on after 30s.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2220,7 +2220,7 @@
         "type": "loki",
         "uid": "P982945308D3682D1"
       },
-      "description": "Device Logs Panel",
+      "description": "All log lines emitted for `$device`, regardless of pipeline. Format: `[severity] message`. The pipeline label (direct vs vector) is visible if you expand a line \u2014 same data, different transport.",
       "gridPos": {
         "h": 7,
         "w": 24,
