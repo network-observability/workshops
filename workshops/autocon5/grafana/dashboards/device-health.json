@@ -21,7 +21,6 @@
         "enable": true,
         "expr": "{device=\"$device\", source=\"workshop-trigger\", event=\"config-push\"}",
         "filter": {
-          "exclude": false,
           "ids": [
             5,
             20,
@@ -30,6 +29,7 @@
             17
           ]
         },
+        "hide": false,
         "iconColor": "blue",
         "instant": false,
         "name": "Device Config Push"
@@ -42,13 +42,13 @@
         "enable": true,
         "expr": "{device=\"$device\", vendor_facility_process=\"UPDOWN\"} |~ \"Interface .* changed state\"",
         "filter": {
-          "exclude": false,
           "ids": [
             20,
             11,
             17
           ]
         },
+        "hide": false,
         "iconColor": "red",
         "instant": false,
         "name": "Interface Flap"
@@ -59,8 +59,7 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
-  "id": 1,
-  "links": [],
+  "id": 561750761963520,
   "liveNow": false,
   "panels": [
     {
@@ -68,7 +67,7 @@
         "type": "yesoreyeram-infinity-datasource",
         "uid": "workshop-infrahub-graphql"
       },
-      "description": "Device Detailed Information from Nautobot",
+      "description": "Source-of-truth metadata for `$device`, pulled live from Infrahub via the Infinity datasource. The Maintenance flag is toggled with `nobs autocon5 maintenance` and feeds the alert rules' inhibition logic.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -80,15 +79,17 @@
               "type": "auto"
             },
             "filterable": false,
+            "footer": {
+              "reducers": []
+            },
             "inspect": false
           },
-          "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               }
             ]
           }
@@ -101,7 +102,7 @@
             },
             "properties": [
               {
-                "id": "custom.hidden",
+                "id": "custom.hideFrom.viz",
                 "value": true
               }
             ]
@@ -135,15 +136,15 @@
                 "value": [
                   {
                     "options": {
-                      "true": {
-                        "color": "light-orange",
-                        "index": 0,
-                        "text": "MAINTENANCE"
-                      },
                       "false": {
                         "color": "light-green",
                         "index": 1,
                         "text": "PRODUCTION"
+                      },
+                      "true": {
+                        "color": "light-orange",
+                        "index": 0,
+                        "text": "MAINTENANCE"
                       }
                     },
                     "type": "value"
@@ -170,35 +171,11 @@
       "id": 7,
       "options": {
         "cellHeight": "sm",
-        "footer": {
-          "countRows": false,
-          "fields": "",
-          "reducer": [
-            "sum"
-          ],
-          "show": false
-        },
         "showHeader": true
       },
-      "pluginVersion": "10.2.3",
+      "pluginVersion": "13.0.1",
       "targets": [
         {
-          "datasource": {
-            "type": "yesoreyeram-infinity-datasource",
-            "uid": "workshop-infrahub-graphql"
-          },
-          "type": "graphql",
-          "format": "table",
-          "source": "url",
-          "parser": "backend",
-          "root_selector": "data.WorkshopDevice.edges",
-          "url": "http://infrahub-server:8000/graphql",
-          "url_options": {
-            "method": "POST",
-            "body_type": "graphql",
-            "body_content_type": "application/json",
-            "body_graphql_query": "{\n  WorkshopDevice(name__value: \"$device\") {\n    edges {\n      node {\n        id\n        name { value }\n        asn { value }\n        site_name { value }\n        role { value }\n        maintenance { value }\n      }\n    }\n  }\n}\n"
-          },
           "columns": [
             {
               "selector": "node.id",
@@ -231,9 +208,25 @@
               "type": "boolean"
             }
           ],
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "workshop-infrahub-graphql"
+          },
           "filters": [],
+          "format": "table",
           "global_query_id": "",
-          "refId": "A"
+          "parser": "backend",
+          "refId": "A",
+          "root_selector": "data.WorkshopDevice.edges",
+          "source": "url",
+          "type": "graphql",
+          "url": "http://infrahub-server:8000/graphql",
+          "url_options": {
+            "body_content_type": "application/json",
+            "body_graphql_query": "{\n  WorkshopDevice(name__value: \"$device\") {\n    edges {\n      node {\n        id\n        name { value }\n        asn { value }\n        site_name { value }\n        role { value }\n        maintenance { value }\n      }\n    }\n  }\n}\n",
+            "body_type": "graphql",
+            "method": "POST"
+          }
         }
       ],
       "title": "Device Details",
@@ -244,20 +237,20 @@
             "excludeByName": {},
             "includeByName": {},
             "indexByName": {
+              "asn": 2,
+              "id": 5,
+              "maintenance": 4,
               "name": 0,
               "role": 1,
-              "asn": 2,
-              "site_name": 3,
-              "maintenance": 4,
-              "id": 5
+              "site_name": 3
             },
             "renameByName": {
+              "asn": "ASN",
+              "id": "id",
+              "maintenance": "Maintenance",
               "name": "Hostname",
               "role": "Role",
-              "asn": "ASN",
-              "site_name": "Site",
-              "maintenance": "Maintenance",
-              "id": "id"
+              "site_name": "Site"
             }
           }
         }
@@ -269,7 +262,7 @@
         "type": "prometheus",
         "uid": "P1809F7CD0C75ACF3"
       },
-      "description": "Device overall state from a ping result",
+      "description": "Up/down rollup of the device's reachability, derived from sonda's `ping_response` metric (~10s cadence). UP flips red if no successful ping has landed in the last minute.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -302,7 +295,7 @@
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               },
               {
                 "color": "red",
@@ -310,8 +303,7 @@
               }
             ]
           }
-        },
-        "overrides": []
+        }
       },
       "gridPos": {
         "h": 4,
@@ -325,6 +317,7 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -332,10 +325,11 @@
           "fields": "",
           "values": false
         },
+        "showPercentChange": false,
         "textMode": "auto",
         "wideLayout": true
       },
-      "pluginVersion": "10.2.3",
+      "pluginVersion": "13.0.1",
       "targets": [
         {
           "datasource": {
@@ -362,25 +356,23 @@
         "type": "prometheus",
         "uid": "P1809F7CD0C75ACF3"
       },
-      "description": "Device Uptime based on SNMP metric",
+      "description": "Time elapsed since the device's last reboot, from `device_uptime`. Resets to 0 when sonda restarts the scenario \u2014 uncommon, but worth knowing if you see an unexpected dip.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "thresholds"
           },
-          "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "light-blue",
-                "value": null
+                "value": 0
               }
             ]
           },
           "unit": "timeticks"
-        },
-        "overrides": []
+        }
       },
       "gridPos": {
         "h": 4,
@@ -394,6 +386,7 @@
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -401,10 +394,11 @@
           "fields": "",
           "values": false
         },
+        "showPercentChange": false,
         "textMode": "auto",
         "wideLayout": true
       },
-      "pluginVersion": "10.2.3",
+      "pluginVersion": "13.0.1",
       "targets": [
         {
           "datasource": {
@@ -431,19 +425,18 @@
         "type": "prometheus",
         "uid": "P1809F7CD0C75ACF3"
       },
-      "description": "Overall Memory average usage for the device",
+      "description": "Rolling memory utilisation across the device's memory banks. Synthetic but shaped like a real router \u2014 slow growth with occasional GC dips.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "thresholds"
           },
-          "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               },
               {
                 "color": "red",
@@ -452,8 +445,7 @@
             ]
           },
           "unit": "percent"
-        },
-        "overrides": []
+        }
       },
       "gridPos": {
         "h": 4,
@@ -463,8 +455,16 @@
       },
       "id": 4,
       "options": {
-        "minVizHeight": 200,
-        "minVizWidth": 200,
+        "barShape": "flat",
+        "barWidthFactor": 0.5,
+        "effects": {
+          "barGlow": false,
+          "centerGlow": false,
+          "gradient": false
+        },
+        "endpointMarker": "point",
+        "minVizHeight": 75,
+        "minVizWidth": 75,
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
@@ -473,11 +473,16 @@
           "fields": "",
           "values": false
         },
+        "segmentCount": 1,
+        "segmentSpacing": 0.3,
+        "shape": "gauge",
         "showThresholdLabels": false,
         "showThresholdMarkers": true,
-        "sizing": "auto"
+        "sizing": "auto",
+        "sparkline": false,
+        "textMode": "auto"
       },
-      "pluginVersion": "10.2.3",
+      "pluginVersion": "13.0.1",
       "targets": [
         {
           "datasource": {
@@ -504,19 +509,18 @@
         "type": "prometheus",
         "uid": "P1809F7CD0C75ACF3"
       },
-      "description": "Overall CPU average usage for the device",
+      "description": "Rolling CPU utilisation across the device's cores. The shape comes from sonda's sine-wave generator \u2014 realistic 'breathing' rather than flat data.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "thresholds"
           },
-          "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               },
               {
                 "color": "red",
@@ -525,8 +529,7 @@
             ]
           },
           "unit": "percent"
-        },
-        "overrides": []
+        }
       },
       "gridPos": {
         "h": 4,
@@ -536,8 +539,16 @@
       },
       "id": 3,
       "options": {
-        "minVizHeight": 200,
-        "minVizWidth": 200,
+        "barShape": "flat",
+        "barWidthFactor": 0.5,
+        "effects": {
+          "barGlow": false,
+          "centerGlow": false,
+          "gradient": false
+        },
+        "endpointMarker": "point",
+        "minVizHeight": 75,
+        "minVizWidth": 75,
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
@@ -546,11 +557,16 @@
           "fields": "",
           "values": false
         },
+        "segmentCount": 1,
+        "segmentSpacing": 0.3,
+        "shape": "gauge",
         "showThresholdLabels": false,
         "showThresholdMarkers": true,
-        "sizing": "auto"
+        "sizing": "auto",
+        "sparkline": false,
+        "textMode": "auto"
       },
-      "pluginVersion": "10.2.3",
+      "pluginVersion": "13.0.1",
       "targets": [
         {
           "datasource": {
@@ -577,19 +593,19 @@
         "type": "prometheus",
         "uid": "P1809F7CD0C75ACF3"
       },
-      "description": "Average Latency of a device",
+      "description": "Round-trip time from the synthetic prober. Healthy values are sub-millisecond on the lab network; spikes mean the scenario is modelling a degraded link or the host is loaded.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "thresholds"
           },
-          "mappings": [],
+          "decimals": 2,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               },
               {
                 "color": "red",
@@ -597,10 +613,8 @@
               }
             ]
           },
-          "unit": "ms",
-          "decimals": 2
-        },
-        "overrides": []
+          "unit": "ms"
+        }
       },
       "gridPos": {
         "h": 4,
@@ -614,6 +628,7 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -621,10 +636,11 @@
           "fields": "",
           "values": false
         },
+        "showPercentChange": false,
         "textMode": "auto",
         "wideLayout": true
       },
-      "pluginVersion": "10.2.3",
+      "pluginVersion": "13.0.1",
       "targets": [
         {
           "datasource": {
@@ -647,7 +663,7 @@
         "type": "prometheus",
         "uid": "P1809F7CD0C75ACF3"
       },
-      "description": "CPU and Memory usage in average for available cores on the device",
+      "description": "CPU and memory plotted together so you can correlate workload bursts with memory growth. Both come from sonda's `cpu_used` and `mem_used` series.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -660,6 +676,7 @@
             "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
+            "barWidthFactor": 0.6,
             "drawStyle": "line",
             "fillOpacity": 0,
             "gradientMode": "none",
@@ -676,6 +693,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
+            "showValues": false,
             "spanNulls": false,
             "stacking": {
               "group": "A",
@@ -685,13 +703,12 @@
               "mode": "off"
             }
           },
-          "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               },
               {
                 "color": "red",
@@ -700,8 +717,7 @@
             ]
           },
           "unit": "percent"
-        },
-        "overrides": []
+        }
       },
       "gridPos": {
         "h": 5,
@@ -711,6 +727,10 @@
       },
       "id": 10,
       "options": {
+        "annotations": {
+          "clustering": -1,
+          "multiLane": false
+        },
         "legend": {
           "calcs": [],
           "displayMode": "list",
@@ -718,10 +738,12 @@
           "showLegend": true
         },
         "tooltip": {
+          "hideZeros": false,
           "mode": "single",
           "sort": "none"
         }
       },
+      "pluginVersion": "13.0.1",
       "targets": [
         {
           "datasource": {
@@ -742,7 +764,6 @@
           },
           "editorMode": "code",
           "expr": "avg(memory_utilization{device=\"$device\"})",
-          "hide": false,
           "instant": false,
           "legendFormat": "Memory Usage",
           "range": true,
@@ -757,25 +778,23 @@
         "type": "prometheus",
         "uid": "P1809F7CD0C75ACF3"
       },
-      "description": "Total Inbound + Outbound traffic on a device",
+      "description": "Sum of all interface throughput on the device, both directions. A quick \"is this device busy?\" check before drilling into per-interface panels.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "thresholds"
           },
-          "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "light-blue",
-                "value": null
+                "value": 0
               }
             ]
           },
           "unit": "bps"
-        },
-        "overrides": []
+        }
       },
       "gridPos": {
         "h": 5,
@@ -789,6 +808,7 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -796,10 +816,11 @@
           "fields": "",
           "values": false
         },
+        "showPercentChange": false,
         "textMode": "auto",
         "wideLayout": true
       },
-      "pluginVersion": "10.2.3",
+      "pluginVersion": "13.0.1",
       "targets": [
         {
           "datasource": {
@@ -825,8 +846,205 @@
         "x": 0,
         "y": 13
       },
-      "id": 9,
-      "panels": [],
+      "id": 103,
+      "title": "Signal Pipelines",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P1809F7CD0C75ACF3"
+      },
+      "description": "Which pipeline currently delivers metrics for this device. srl1 is shipped directly by sonda (`pipeline=direct`); srl2 routes through Telegraf for normalization (`pipeline=telegraf`). Same metric schema, different paths \u2014 that's the workshop's hybrid story.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "options": {
+                "direct": {
+                  "color": "green",
+                  "index": 0
+                }
+              },
+              "type": "value"
+            },
+            {
+              "options": {
+                "telegraf": {
+                  "color": "blue",
+                  "index": 1
+                }
+              },
+              "type": "value"
+            },
+            {
+              "options": {
+                "vector": {
+                  "color": "orange",
+                  "index": 2
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "noValue": "no data",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": 0
+              }
+            ]
+          }
+        }
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 12,
+        "x": 0,
+        "y": 14
+      },
+      "id": 101,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "pluginVersion": "13.0.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P1809F7CD0C75ACF3"
+          },
+          "editorMode": "code",
+          "expr": "count by (pipeline) (bgp_oper_state{device=\"$device\"})",
+          "legendFormat": "{{pipeline}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Metrics Pipeline",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "P982945308D3682D1"
+      },
+      "description": "Which pipeline currently delivers logs for this device. srl1 logs are pushed directly by sonda (`pipeline=direct`); srl2 syslog is shipped via Vector (`pipeline=vector`). Number shown is log lines received in the last 5 minutes.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "options": {
+                "direct": {
+                  "color": "green",
+                  "index": 0
+                }
+              },
+              "type": "value"
+            },
+            {
+              "options": {
+                "telegraf": {
+                  "color": "blue",
+                  "index": 1
+                }
+              },
+              "type": "value"
+            },
+            {
+              "options": {
+                "vector": {
+                  "color": "orange",
+                  "index": 2
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "noValue": "no data",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": 0
+              }
+            ]
+          }
+        }
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 12,
+        "x": 12,
+        "y": 14
+      },
+      "id": 102,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "pluginVersion": "13.0.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "P982945308D3682D1"
+          },
+          "editorMode": "code",
+          "expr": "sum by (pipeline) (count_over_time({device=\"$device\", pipeline=~\".+\"}[5m]))",
+          "legendFormat": "{{pipeline}}",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Logs Pipeline",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 17
+      },
+      "id": 104,
       "title": "Interfaces Information",
       "type": "row"
     },
@@ -835,13 +1053,14 @@
         "type": "prometheus",
         "uid": "P1809F7CD0C75ACF3"
       },
-      "description": "Interfaces State change over time",
+      "description": "Per-interface operational state over the dashboard's time range. Red bands are interface-down events; `nobs autocon5 flap-interface` flaps show up here within ~10s.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "fixed"
           },
           "custom": {
+            "axisPlacement": "auto",
             "fillOpacity": 70,
             "hideFrom": {
               "legend": false,
@@ -899,22 +1118,25 @@
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               }
             ]
           }
-        },
-        "overrides": []
+        }
       },
       "gridPos": {
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 14
+        "y": 18
       },
       "id": 11,
       "options": {
         "alignValue": "left",
+        "annotations": {
+          "clustering": -1,
+          "multiLane": false
+        },
         "legend": {
           "displayMode": "list",
           "placement": "bottom",
@@ -924,10 +1146,12 @@
         "rowHeight": 0.9,
         "showValue": "auto",
         "tooltip": {
+          "hideZeros": false,
           "mode": "single",
           "sort": "none"
         }
       },
+      "pluginVersion": "13.0.1",
       "targets": [
         {
           "datasource": {
@@ -952,31 +1176,29 @@
         "type": "prometheus",
         "uid": "P1809F7CD0C75ACF3"
       },
-      "description": "Total Interfaces Down",
+      "description": "Count of interfaces currently in operational state DOWN. Zero in steady state \u2014 a non-zero value usually means a flap exercise is in progress.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "thresholds"
           },
-          "mappings": [],
           "noValue": "0",
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "light-red",
-                "value": null
+                "value": 0
               }
             ]
           }
-        },
-        "overrides": []
+        }
       },
       "gridPos": {
         "h": 3,
         "w": 4,
         "x": 0,
-        "y": 21
+        "y": 25
       },
       "id": 13,
       "options": {
@@ -984,6 +1206,7 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -991,10 +1214,11 @@
           "fields": "",
           "values": false
         },
+        "showPercentChange": false,
         "textMode": "auto",
         "wideLayout": true
       },
-      "pluginVersion": "10.2.3",
+      "pluginVersion": "13.0.1",
       "targets": [
         {
           "datasource": {
@@ -1015,10 +1239,10 @@
     },
     {
       "datasource": {
-        "type": "datasource",
+        "type": "mixed",
         "uid": "-- Mixed --"
       },
-      "description": "Interfaces Detail table collected from the device",
+      "description": "Per-interface roll-up: admin state, operational state, IP, and the intended state pulled from Infrahub. Sorted alphabetically so srl1 and srl2 line up consistently for the demo.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1029,15 +1253,17 @@
             "cellOptions": {
               "type": "auto"
             },
+            "footer": {
+              "reducers": []
+            },
             "inspect": false
           },
-          "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               },
               {
                 "color": "red",
@@ -1197,15 +1423,15 @@
                 "value": [
                   {
                     "options": {
-                      "up": {
-                        "color": "light-green",
-                        "index": 0,
-                        "text": "Up"
-                      },
                       "down": {
                         "color": "light-red",
                         "index": 1,
                         "text": "Down"
+                      },
+                      "up": {
+                        "color": "light-green",
+                        "index": 0,
+                        "text": "Up"
                       }
                     },
                     "type": "value"
@@ -1220,23 +1446,15 @@
         "h": 6,
         "w": 20,
         "x": 4,
-        "y": 21
+        "y": 25
       },
       "id": 14,
       "options": {
         "cellHeight": "sm",
-        "footer": {
-          "countRows": false,
-          "fields": "",
-          "reducer": [
-            "sum"
-          ],
-          "show": false
-        },
         "frameIndex": 1,
         "showHeader": true
       },
-      "pluginVersion": "10.2.3",
+      "pluginVersion": "13.0.1",
       "targets": [
         {
           "datasource": {
@@ -1261,7 +1479,6 @@
           "exemplar": false,
           "expr": "interface_oper_state{device=\"$device\"}",
           "format": "table",
-          "hide": false,
           "instant": true,
           "legendFormat": "__auto",
           "range": false,
@@ -1276,29 +1493,12 @@
           "exemplar": false,
           "expr": "interface_admin_state{device=\"$device\"}",
           "format": "table",
-          "hide": false,
           "instant": true,
           "legendFormat": "__auto",
           "range": false,
           "refId": "C"
         },
         {
-          "datasource": {
-            "type": "yesoreyeram-infinity-datasource",
-            "uid": "workshop-infrahub-graphql"
-          },
-          "type": "graphql",
-          "format": "table",
-          "source": "url",
-          "parser": "backend",
-          "root_selector": "data.WorkshopInterface.edges",
-          "url": "http://infrahub-server:8000/graphql",
-          "url_options": {
-            "method": "POST",
-            "body_type": "graphql",
-            "body_content_type": "application/json",
-            "body_graphql_query": "{\n  WorkshopInterface(role__values: [\"peer\", \"mgmt\"], device__name__value: \"$device\") {\n    edges {\n      node {\n        name { value }\n        role { value }\n        ip_address { value }\n        expected_state { value }\n      }\n    }\n  }\n}\n"
-          },
           "columns": [
             {
               "selector": "node.name.value",
@@ -1321,10 +1521,25 @@
               "type": "string"
             }
           ],
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "workshop-infrahub-graphql"
+          },
           "filters": [],
+          "format": "table",
           "global_query_id": "",
+          "parser": "backend",
           "refId": "D",
-          "hide": false
+          "root_selector": "data.WorkshopInterface.edges",
+          "source": "url",
+          "type": "graphql",
+          "url": "http://infrahub-server:8000/graphql",
+          "url_options": {
+            "body_content_type": "application/json",
+            "body_graphql_query": "{\n  WorkshopInterface(role__values: [\"peer\", \"mgmt\"], device__name__value: \"$device\") {\n    edges {\n      node {\n        name { value }\n        role { value }\n        ip_address { value }\n        expected_state { value }\n      }\n    }\n  }\n}\n",
+            "body_type": "graphql",
+            "method": "POST"
+          }
         }
       ],
       "title": "Interfaces Detail",
@@ -1354,18 +1569,18 @@
                 ],
                 "operation": "aggregate"
               },
-              "name": {
-                "aggregations": [],
-                "operation": "groupby"
-              },
               "device": {
                 "aggregations": []
+              },
+              "expected_state": {
+                "aggregations": [],
+                "operation": "groupby"
               },
               "ip_address": {
                 "aggregations": [],
                 "operation": "groupby"
               },
-              "expected_state": {
+              "name": {
                 "aggregations": [],
                 "operation": "groupby"
               },
@@ -1383,26 +1598,26 @@
           "id": "organize",
           "options": {
             "excludeByName": {
+              "Time": true,
               "device": true,
-              "role": true,
-              "Time": true
+              "role": true
             },
             "includeByName": {},
             "indexByName": {
-              "name": 0,
               "Value #A (lastNotNull)": 1,
               "Value #B (lastNotNull)": 2,
               "Value #C (lastNotNull)": 3,
+              "expected_state": 5,
               "ip_address": 4,
-              "expected_state": 5
+              "name": 0
             },
             "renameByName": {
-              "name": "Interface",
               "Value #A (lastNotNull)": "Traffic",
               "Value #B (lastNotNull)": "Oper State",
               "Value #C (lastNotNull)": "Enabled",
+              "expected_state": "Intended State",
               "ip_address": "IP",
-              "expected_state": "Intended State"
+              "name": "Interface"
             }
           }
         },
@@ -1411,8 +1626,8 @@
           "options": {
             "sort": [
               {
-                "field": "Interface",
-                "desc": false
+                "desc": false,
+                "field": "Interface"
               }
             ]
           }
@@ -1425,20 +1640,19 @@
         "type": "prometheus",
         "uid": "P1809F7CD0C75ACF3"
       },
-      "description": "Total Interfaces Up",
+      "description": "Count of interfaces currently in operational state UP. Pairs with Down \u2014 together they should equal the device's total interface count.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "thresholds"
           },
-          "mappings": [],
           "noValue": "0",
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               },
               {
                 "color": "red",
@@ -1446,14 +1660,13 @@
               }
             ]
           }
-        },
-        "overrides": []
+        }
       },
       "gridPos": {
         "h": 3,
         "w": 4,
         "x": 0,
-        "y": 24
+        "y": 28
       },
       "id": 12,
       "options": {
@@ -1461,6 +1674,7 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -1468,10 +1682,11 @@
           "fields": "",
           "values": false
         },
+        "showPercentChange": false,
         "textMode": "auto",
         "wideLayout": true
       },
-      "pluginVersion": "10.2.3",
+      "pluginVersion": "13.0.1",
       "targets": [
         {
           "datasource": {
@@ -1495,31 +1710,29 @@
         "type": "prometheus",
         "uid": "P1809F7CD0C75ACF3"
       },
-      "description": "Average Inbound Traffic",
+      "description": "Average inbound throughput across all interfaces, in bytes/s. Pairs with Outbound for a quick direction-shape read without scrolling to the timeseries.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "thresholds"
           },
-          "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "light-blue",
-                "value": null
+                "value": 0
               }
             ]
           },
           "unit": "bps"
-        },
-        "overrides": []
+        }
       },
       "gridPos": {
         "h": 3,
         "w": 4,
         "x": 0,
-        "y": 27
+        "y": 31
       },
       "id": 15,
       "options": {
@@ -1527,6 +1740,7 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -1534,10 +1748,11 @@
           "fields": "",
           "values": false
         },
+        "showPercentChange": false,
         "textMode": "auto",
         "wideLayout": true
       },
-      "pluginVersion": "10.2.3",
+      "pluginVersion": "13.0.1",
       "targets": [
         {
           "datasource": {
@@ -1560,7 +1775,7 @@
         "type": "prometheus",
         "uid": "P1809F7CD0C75ACF3"
       },
-      "description": "Interfaces Traffic over time (negative values are outbound traffic)",
+      "description": "Per-interface traffic with the +inbound / -outbound mirror convention so you can read direction at a glance. Y-axis is bytes/s; absolute values are what matter.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1573,6 +1788,7 @@
             "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
+            "barWidthFactor": 0.6,
             "drawStyle": "line",
             "fillOpacity": 23,
             "gradientMode": "none",
@@ -1589,6 +1805,7 @@
               "type": "linear"
             },
             "showPoints": "auto",
+            "showValues": false,
             "spanNulls": false,
             "stacking": {
               "group": "A",
@@ -1598,13 +1815,12 @@
               "mode": "off"
             }
           },
-          "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               }
             ]
           },
@@ -1647,10 +1863,14 @@
         "h": 6,
         "w": 20,
         "x": 4,
-        "y": 27
+        "y": 31
       },
       "id": 17,
       "options": {
+        "annotations": {
+          "clustering": -1,
+          "multiLane": false
+        },
         "legend": {
           "calcs": [],
           "displayMode": "list",
@@ -1658,11 +1878,12 @@
           "showLegend": true
         },
         "tooltip": {
+          "hideZeros": false,
           "mode": "single",
           "sort": "none"
         }
       },
-      "pluginVersion": "10.2.3",
+      "pluginVersion": "13.0.1",
       "targets": [
         {
           "datasource": {
@@ -1687,7 +1908,6 @@
           "exemplar": false,
           "expr": "sum(rate(interface_out_octets{device=\"$device\"}[2m]) * 8) * -1",
           "format": "time_series",
-          "hide": false,
           "instant": false,
           "legendFormat": "Sum(Outbound)",
           "range": true,
@@ -1695,7 +1915,6 @@
         }
       ],
       "title": "Traffic over time",
-      "transformations": [],
       "type": "timeseries"
     },
     {
@@ -1703,30 +1922,29 @@
         "type": "prometheus",
         "uid": "P1809F7CD0C75ACF3"
       },
-      "description": "Average Outbound Traffic",
+      "description": "Average outbound throughput across all interfaces, in bytes/s.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "thresholds"
           },
-          "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "light-purple"
+                "color": "light-purple",
+                "value": 0
               }
             ]
           },
           "unit": "bps"
-        },
-        "overrides": []
+        }
       },
       "gridPos": {
         "h": 3,
         "w": 4,
         "x": 0,
-        "y": 30
+        "y": 34
       },
       "id": 16,
       "options": {
@@ -1734,6 +1952,7 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -1741,10 +1960,11 @@
           "fields": "",
           "values": false
         },
+        "showPercentChange": false,
         "textMode": "auto",
         "wideLayout": true
       },
-      "pluginVersion": "10.2.3",
+      "pluginVersion": "13.0.1",
       "targets": [
         {
           "datasource": {
@@ -1763,284 +1983,295 @@
       "type": "stat"
     },
     {
-      "collapsed": true,
+      "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 33
+        "y": 37
       },
-      "id": 22,
-      "panels": [
+      "id": 105,
+      "title": "BGP & Logs",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P1809F7CD0C75ACF3"
+      },
+      "description": "Number of routes the device's BGP peers have advertised that the device accepted into its RIB. Stable in normal operation; dips can mean a peer is flapping or filtering changed.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          }
+        }
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 4,
+        "x": 0,
+        "y": 38
+      },
+      "id": 19,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "13.0.1",
+      "targets": [
         {
           "datasource": {
             "type": "prometheus",
             "uid": "P1809F7CD0C75ACF3"
           },
-          "description": "Total BGP Prefixes Accepted",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "thresholds"
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green"
-                  }
-                ]
-              }
+          "editorMode": "code",
+          "expr": "sum(bgp_prefixes_accepted{device=\"$device\"})",
+          "instant": false,
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Prefixes Accepted",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P1809F7CD0C75ACF3"
+      },
+      "description": "Per-peer BGP session state over the time range. Look for ESTABLISHED bands; transitions to IDLE or ACTIVE are session resets, which the `BgpSessionNotUp` alert rule fires on after 30s.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed"
+          },
+          "custom": {
+            "axisPlacement": "auto",
+            "fillOpacity": 70,
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
             },
-            "overrides": []
+            "insertNulls": false,
+            "lineWidth": 0,
+            "spanNulls": false
           },
-          "gridPos": {
-            "h": 6,
-            "w": 4,
-            "x": 0,
-            "y": 15
-          },
-          "id": 19,
-          "options": {
-            "colorMode": "value",
-            "graphMode": "area",
-            "justifyMode": "auto",
-            "orientation": "auto",
-            "reduceOptions": {
-              "calcs": [
-                "lastNotNull"
-              ],
-              "fields": "",
-              "values": false
-            },
-            "textMode": "auto",
-            "wideLayout": true
-          },
-          "pluginVersion": "10.2.3",
-          "targets": [
+          "mappings": [
             {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "P1809F7CD0C75ACF3"
+              "options": {
+                "1": {
+                  "color": "light-green",
+                  "index": 0,
+                  "text": "ESTABLISHED"
+                },
+                "2": {
+                  "color": "light-red",
+                  "index": 1,
+                  "text": "IDLE"
+                },
+                "3": {
+                  "color": "orange",
+                  "index": 2,
+                  "text": "CONNECT"
+                },
+                "4": {
+                  "color": "orange",
+                  "index": 3,
+                  "text": "ACTIVE"
+                },
+                "5": {
+                  "color": "orange",
+                  "index": 4,
+                  "text": "OPENSENT"
+                },
+                "6": {
+                  "color": "orange",
+                  "index": 5,
+                  "text": "OPENCONFIRM"
+                },
+                "7": {
+                  "color": "orange",
+                  "index": 6,
+                  "text": "NONEXISTENT"
+                }
               },
-              "editorMode": "code",
-              "expr": "sum(bgp_prefixes_accepted{device=\"$device\"})",
-              "instant": false,
-              "legendFormat": "__auto",
-              "range": true,
-              "refId": "A"
+              "type": "value"
             }
           ],
-          "title": "Prefixes Accepted",
-          "type": "stat"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "P1809F7CD0C75ACF3"
-          },
-          "description": "BGP State change over time",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "fixed"
-              },
-              "custom": {
-                "fillOpacity": 70,
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineWidth": 0,
-                "spanNulls": false
-              },
-              "mappings": [
-                {
-                  "options": {
-                    "1": {
-                      "color": "light-green",
-                      "index": 0,
-                      "text": "ESTABLISHED"
-                    },
-                    "2": {
-                      "color": "light-red",
-                      "index": 1,
-                      "text": "IDLE"
-                    },
-                    "3": {
-                      "color": "orange",
-                      "index": 2,
-                      "text": "CONNECT"
-                    },
-                    "4": {
-                      "color": "orange",
-                      "index": 3,
-                      "text": "ACTIVE"
-                    },
-                    "5": {
-                      "color": "orange",
-                      "index": 4,
-                      "text": "OPENSENT"
-                    },
-                    "6": {
-                      "color": "orange",
-                      "index": 5,
-                      "text": "OPENCONFIRM"
-                    },
-                    "7": {
-                      "color": "orange",
-                      "index": 6,
-                      "text": "NONEXISTENT"
-                    }
-                  },
-                  "type": "value"
-                }
-              ],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green"
-                  }
-                ]
-              },
-              "unit": "bps"
-            },
-            "overrides": [
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
               {
-                "matcher": {
-                  "id": "byFrameRefID",
-                  "options": "A"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "fixedColor": "light-blue",
-                      "mode": "fixed"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byFrameRefID",
-                  "options": "B"
-                },
-                "properties": [
-                  {
-                    "id": "color",
-                    "value": {
-                      "fixedColor": "light-purple",
-                      "mode": "fixed"
-                    }
-                  }
-                ]
+                "color": "green",
+                "value": 0
               }
             ]
           },
-          "gridPos": {
-            "h": 6,
-            "w": 20,
-            "x": 4,
-            "y": 15
-          },
-          "id": 20,
-          "options": {
-            "alignValue": "left",
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "mergeValues": true,
-            "rowHeight": 0.9,
-            "showValue": "auto",
-            "tooltip": {
-              "mode": "single",
-              "sort": "none"
-            }
-          },
-          "pluginVersion": "10.2.3",
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "P1809F7CD0C75ACF3"
-              },
-              "editorMode": "code",
-              "exemplar": false,
-              "expr": "bgp_neighbor_state{device=\"$device\"}",
-              "format": "time_series",
-              "instant": false,
-              "interval": "",
-              "legendFormat": "peer {{peer_address}} (AS {{neighbor_asn}})",
-              "range": true,
-              "refId": "A"
-            }
-          ],
-          "title": "BGP States",
-          "transformations": [],
-          "type": "state-timeline"
+          "unit": "bps"
         },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "light-blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "light-purple",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 20,
+        "x": 4,
+        "y": 38
+      },
+      "id": 20,
+      "options": {
+        "alignValue": "left",
+        "annotations": {
+          "clustering": -1,
+          "multiLane": false
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "mergeValues": true,
+        "rowHeight": 0.9,
+        "showValue": "auto",
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "13.0.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P1809F7CD0C75ACF3"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "bgp_neighbor_state{device=\"$device\"}",
+          "format": "time_series",
+          "instant": false,
+          "interval": "",
+          "legendFormat": "peer {{peer_address}} (AS {{neighbor_asn}})",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "BGP States",
+      "type": "state-timeline"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "P982945308D3682D1"
+      },
+      "description": "All log lines emitted for `$device`, regardless of pipeline. Format: `[severity] message`. The pipeline label (direct vs vector) is visible if you expand a line \u2014 same data, different transport.",
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 44
+      },
+      "id": 21,
+      "options": {
+        "dedupStrategy": "none",
+        "enableInfiniteScrolling": false,
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showControls": false,
+        "showFieldSelector": false,
+        "showLabels": false,
+        "showLevel": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "timestampResolution": "ms",
+        "unwrappedColumns": false,
+        "wrapLogMessage": true
+      },
+      "pluginVersion": "13.0.1",
+      "targets": [
         {
           "datasource": {
             "type": "loki",
             "uid": "P982945308D3682D1"
           },
-          "description": "Device Logs Panel",
-          "gridPos": {
-            "h": 7,
-            "w": 24,
-            "x": 0,
-            "y": 21
-          },
-          "id": 21,
-          "options": {
-            "dedupStrategy": "none",
-            "enableLogDetails": true,
-            "prettifyLogMessage": false,
-            "showCommonLabels": false,
-            "showLabels": false,
-            "showTime": true,
-            "sortOrder": "Descending",
-            "wrapLogMessage": true
-          },
-          "pluginVersion": "10.2.3",
-          "targets": [
-            {
-              "datasource": {
-                "type": "loki",
-                "uid": "P982945308D3682D1"
-              },
-              "editorMode": "builder",
-              "expr": "{device=\"$device\"} | json | line_format \"[{{ or .severity .level | upper }}] {{ .message }}\"",
-              "queryType": "range",
-              "refId": "A"
-            }
-          ],
-          "title": "Device Logs",
-          "transformations": [],
-          "type": "logs"
+          "editorMode": "builder",
+          "expr": "{device=\"$device\"} | json | line_format \"[{{ or .severity .level | upper }}] {{ .message }}\"",
+          "queryType": "range",
+          "refId": "A"
         }
       ],
-      "title": "BGP & Logs",
-      "type": "row"
+      "title": "Device Logs",
+      "type": "logs"
     }
   ],
+  "preload": false,
   "refresh": "",
-  "schemaVersion": 39,
+  "schemaVersion": 42,
   "tags": [
     "network"
   ],
   "templating": {
     "list": [
       {
+        "allowCustomValue": true,
         "current": {
-          "selected": false,
           "text": "ceos-02",
           "value": "ceos-02"
         },
@@ -2063,6 +2294,7 @@
         },
         "refresh": 1,
         "regex": "",
+        "regexApplyTo": "value",
         "skipUrlSync": false,
         "sort": 0,
         "type": "query"
@@ -2073,10 +2305,24 @@
     "from": "now-15m",
     "to": "now"
   },
-  "timepicker": {},
-  "timezone": "",
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m",
+      "15m",
+      "30m",
+      "1h",
+      "2h",
+      "1d"
+    ]
+  },
+  "timezone": "browser",
   "title": "Device Health",
   "uid": "c78e686b-138b-4deb-b6ae-3239dc10a162",
-  "version": 28,
+  "version": 4,
+  "links": [],
   "weekStart": ""
 }

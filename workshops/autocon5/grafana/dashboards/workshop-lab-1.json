@@ -108,7 +108,8 @@
         }
       ],
       "title": "Interface Admin State",
-      "type": "state-timeline"
+      "type": "state-timeline",
+      "description": "Per-interface administrative state \u2014 what the operator told the interface to be. Compare with the Operational Status panel below: the gap between intent and reality is where most ops issues live."
     },
     {
       "datasource": {
@@ -311,7 +312,8 @@
         }
       ],
       "title": "Interface Operational Status",
-      "type": "state-timeline"
+      "type": "state-timeline",
+      "description": "Per-interface operational state \u2014 what the device actually reports. Should track Admin State above; persistent disagreement (admin UP, oper DOWN) is the classic 'physical layer broken' signal."
     },
     {
       "datasource": {
@@ -349,7 +351,8 @@
         }
       ],
       "title": "Interface Logs",
-      "type": "logs"
+      "type": "logs",
+      "description": "Filtered log stream \u2014 only lines mentioning interface activity (admin-state changes, up/down events). Format: `[severity] facility | message`. License-related noise is excluded."
     }
   ],
   "refresh": "",
