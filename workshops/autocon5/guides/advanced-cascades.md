@@ -1,153 +1,124 @@
-# Advanced — sonda-native cascades
+# Advanced — walking an incident cascade
 
 ## What you'll do here
 
-Drive a cascade where sonda — not the workshop CLI — owns the timing. You've already used `flap-interface` in Parts 1 and 3: that command times each phase imperatively in Python, sleeping between `/events` POSTs. `incident` is the other shape — a v2 scenario with `after:` clauses that link signals into a dependency graph, POSTed once to `/scenarios`, scheduled entirely server-side. Same lab, same labels, completely different control model. The exercises below make the contrast concrete.
+An edge router's primary uplink starts flapping intermittently. Traffic shifts to the backup link, which gets pushed harder than designed. Latency on the backup path starts to climb. You're going to drive this incident on the lab and walk through what an on-call engineer would see, in the order they'd see it.
 
-This is a stretch primitive. The three core part-guides are the load-bearing arc. Reach for this one if you finished early or want to think about scenario design as code-as-config rather than ad-hoc CLI driving.
+One CLI command kicks off the whole shape. The exercises below take you through the dashboard, query by query, the way you'd read it during a real page.
 
 ## Setup check
 
-Confirm you're on a branch that has the command:
+Confirm the command is available:
 
 ```bash
 nobs autocon5 incident --help
 ```
 
-You should see options for `--device`, `--primary-interface`, `--backup-interface`, `--kind`, `--duration`, and `--follow / --no-follow`. If `incident` isn't a recognised subcommand, you're on the wrong branch or haven't synced — pull and re-run.
+You should see options for `--device` and `--duration` (among others). If `incident` isn't a recognised subcommand, pull and re-run.
 
-Confirm the stack is up:
+Confirm the stack is healthy:
 
 ```bash
 nobs autocon5 status
 ```
 
-Sonda-server should report `ok`. Every exercise below talks to it on `http://localhost:8085`.
-
-Open Grafana at <http://localhost:3000> and have **Explore** ready on the `prometheus` datasource — you'll be running queries against three new metric names that don't exist until the cascade registers.
+Every row should report `ok`. Open Grafana at <http://localhost:3000> and have **Explore** ready on the `prometheus` datasource — you'll be running three queries against it as the incident unfolds.
 
 ## The exercises
 
-### 1. Read the cascade body before you POST it
+### 1. Set the scene — what does "everything's fine" look like
 
-The CLI builds a v2 scenario in memory and POSTs it once. Before you fire it, look at the shape — three signals linked by `after:` clauses:
+Open the **Workshop Lab 2026** dashboard scoped to `srl1`. Set the time range to `Last 5 minutes`. Interfaces are all UP. Traffic looks ordinary. No alerts firing. Take a mental snapshot — this is the picture you'd be staring at the second before a page lands. The contrast with the next few exercises is the point.
 
-| Phase | Metric | Generator | Triggers when |
-|-------|--------|-----------|---------------|
-| 1 | `interface_oper_state` (on the primary interface) | `flap` (60s up / 30s down) | immediately at registration |
-| 2 | `incident_backup_link_utilization` (on the backup interface) | `saturation` (20% → 85% over 2m) | Phase 1 value drops below 1 |
-| 3 | `incident_latency_ms` (on the backup path) | `degradation` (5ms → 150ms over 3m) | Phase 2 value exceeds 70% |
-
-All three signals carry `source="incident-cascade"` and `pipeline="direct"` plus the standard lab labels (`device`, `name`, `intf_role: peer`, `collection_type: gnmi`). The `source` label keeps these visually distinct from the lab's continuous emitters when you query.
-
-**Stop and notice.** In `flap-interface`, the timing lives in Python — the CLI sleeps between events, deciding when each phase fires. Here, the timing lives in YAML. Phase 2 doesn't say "wait 60 seconds"; it says "wait until Phase 1 drops below 1". The CLI doesn't decide when Phase 2 fires — sonda does, by watching what Phase 1 emits. That's the whole difference between an imperative cascade and a declarative one. If you walked Part 1 Exercise 5 ([Telemetry and queries](part-1-telemetry-and-queries.md#5-trigger-something-and-watch-the-query-react)) and Part 3 Exercise 3 ([Alerts, automation, AI](part-3-alerts-automation-ai.md#3-drive-mismatch--quarantine-by-hand)), you watched `flap-interface` walk a cascade phase by phase, with the workshop CLI driving each step.
-
-If you want to see the exact body the CLI builds, read the `_build_link_failover` function in `workshops/autocon5/src/autocon5_workshop/incident.py`. The three `scenarios:` entries are what you'll see go through `POST /scenarios`.
-
-### 2. Run a short cascade and watch all three signals
+### 2. Drive the incident
 
 ```bash
-nobs autocon5 incident --duration 90s
+nobs autocon5 incident --device srl1 --duration 90s
 ```
 
-The CLI prints a table with three scenario IDs and exits — it doesn't block. Sonda is now running the cascade.
+You've simulated a real incident shape. The primary uplink is going to start flapping. Once the primary actually goes down, the backup absorbs the traffic. Once the backup is loaded enough, latency on its path starts to climb.
 
-Open three Explore tabs (or one tab and toggle through three queries):
+The CLI returns immediately and prints three IDs. That's fine — the incident is now unfolding in the lab. From here on, you're the on-call engineer reading the dashboards.
+
+### 3. The first thing that catches your eye — primary degrading
+
+This is what makes the on-call engineer sit up. The interface starts flipping. In Grafana → Explore → `prometheus`:
 
 ```promql
-interface_oper_state{source="incident-cascade"}
+interface_oper_state{device="srl1", source="incident-cascade"}
 ```
+
+Switch to **Time series**. Within seconds you'll see the line flip between `1` (up) and `0` (down). The rhythm is roughly 60s up, 30s down.
+
+**Stop and notice.** An interface flap is the classic *something physical is wrong* signal. In a real network this is what makes you walk to the rack. The synthetic data flips on the same shape — your eye should pick it up the same way it would in production.
+
+The `source="incident-cascade"` label is your scoping handle. Add it to any query and you're looking only at signals this incident is emitting, not the lab's steady-state noise.
+
+### 4. The next thing you check — did failover work
+
+Once the operator sees an interface degrading, the immediate next question is: did traffic actually move to the backup, and how hard is the backup working?
 
 ```promql
 incident_backup_link_utilization
 ```
 
+Empty for the first ~60 seconds — you'll see "no data" or a flat panel. Once the primary actually goes down for the first time, the metric appears and ramps from around 20% toward 85%.
+
+**Stop and notice.** The backup didn't start carrying traffic until the primary actually failed. That's failover working as intended. But notice the *direction* — utilisation is climbing past where the link is comfortable. This is the early-warning shape an experienced on-call reads as *we're going to have a latency problem in a couple of minutes if this doesn't recover*.
+
+The metric was empty for a minute. That's not a query bug — the lab only emits backup-utilisation samples once the primary failure is real. In production you'd see the same gap in your TSDB if the metric is conditional on the failover happening.
+
+### 5. The symptom your customers would actually feel — latency
+
 ```promql
 incident_latency_ms
 ```
 
-**Tip.** Every signal the cascade emits carries `source="incident-cascade"`. Use that label as a one-shot filter in any panel or Explore tab to scope a query to just the cascade output: `{source="incident-cascade"}` for Loki, `bgp_oper_state{source="incident-cascade"}` for Prometheus.
+Empty even longer. Only starts climbing once backup utilisation crosses ~70%. From there it ramps from ~5ms toward 150ms.
 
-Switch each panel to **Time series**. Watch them in turn:
+**Stop and notice.** By the time latency is the visible problem, the actual root cause — the primary uplink fault — happened minutes ago. This is why incident timelines matter. The latency spike is a *symptom*. The flapping interface was the *cause*. If your alert fires on latency, your runbook needs to walk back through the cascade to find the real failure.
 
-- Phase 1 starts immediately. The line flips between `1` (up) and `0` (down) on the 60s/30s rhythm.
-- Phase 2 is empty for the first ~60 seconds, then ramps from 20 to 85 once Phase 1 drops below 1 for the first time.
-- Phase 3 is empty even longer — only starts climbing once Phase 2 crosses 70%.
+The cascade is the story. The metrics are the chapters. Operators read incidents this way every day.
 
-**Stop and notice the gaps.** Phase 2 has *no data* for the first ~60 seconds. Phase 3 has *no data* for the first 2-3 minutes. The cascade enforces causal order at the emission layer. Sonda doesn't emit Phase 2 samples until Phase 1's threshold is crossed, full stop. This is the dependency graph doing real work — the metric series literally don't exist in Prometheus until their predecessor fires.
+### 6. Narrate the timeline
 
-### 3. Watch the runtime registry
+Now that the cascade has run, you should be able to tell the story from the metrics alone. Try answering these out loud:
 
-While the cascade is running, in another terminal:
+- At t=0, what was the symptom you'd page on?
+- At t=60s, what changed?
+- At t=2 minutes, what would the customer-facing impact be?
 
-```bash
-curl -s http://localhost:8085/scenarios | jq '.scenarios[] | select(.name == "interface_oper_state" or (.name | startswith("incident_"))) | {id, name, status}'
-```
+A sample narration:
 
-You should see three rows — one per signal — each with an `id` and a `status`. Pick one of those IDs and:
+> *"Primary uplink started flapping around t=30s — `interface_oper_state` hit 0 for the first time. Failover to the backup happened next; backup utilisation appeared and started climbing. Around t=2 minutes, latency started degrading on the backup path. By the time customers complained about latency, the original cause was three minutes in the rear-view mirror."*
 
-```bash
-curl -s http://localhost:8085/scenarios/<id>/stats | jq
-```
+**Stop and notice.** This narration is what good runbooks help you do. The cascade isn't unique to this lab — it's the shape of every interface-degradation incident you'll see in production. Practising the narration here means recognising it faster when the dashboard is your real one.
 
-You'll get `total_events`, `current_rate`, `uptime_secs`, `state`. Those are the same fields a `--follow` poll would surface.
+There's a wall-clock detail worth calling out. You passed `--duration 90s`, but the whole incident takes roughly three to three-and-a-half minutes end-to-end. Each phase has to wait for the previous one to escalate before it starts. That's exactly how real incidents unfold — the root cause leads the symptoms by minutes. The duration you passed is per-phase, not the lifetime of the cascade.
 
-**Stop and notice.** `/scenarios` is sonda's runtime registry — it lists *every* running scenario, including the lab's continuous emitters (`srl_bgp_oper_state`, `ping_result_code`, and others). It's not a per-cascade view. The filter above narrows by metric name because the cascade doesn't tag entries with a cascade ID. In production you'd either keep the IDs sonda returned at POST time, or POST cascades with a discriminator label and filter on that.
+### 7. Clean up
 
-### 4. `--follow` mode
-
-Re-run with `--follow` and a short duration:
-
-```bash
-nobs autocon5 incident --duration 60s --follow
-```
-
-The terminal blocks and polls every 5 seconds. Each poll prints a status line per scenario. The CLI returns when every scenario reports `stopped` (sonda's terminal state for a scenario that has run its full duration).
-
-**Stop and notice.** If you Ctrl-C out of `--follow`, the scenarios *keep running on sonda-server*. The CLI is a poll, not a lifecycle owner — it watches, it doesn't manage. The only way to actually stop a running scenario is `DELETE /scenarios/<id>`. This is intentional: the registration and the polling are independent calls, so a flaky terminal session can't accidentally tear down a cascade.
-
-### 5. Clean up explicitly
-
-Sonda doesn't auto-delete completed scenarios from the registry by default — and even if it did, you may want to stop a running cascade early. The recipe to DELETE just your cascade scenarios, leaving the lab's continuous ones alone:
+The cascade keeps running on the lab even after the CLI exits — each phase runs until its own duration is up. If you want to start fresh sooner, stop the active phases:
 
 ```bash
 for ID in $(curl -s http://localhost:8085/scenarios \
   | jq -r '.scenarios[] | select(.name | startswith("incident_") or . == "interface_oper_state") | .id'); do
   curl -s -X DELETE "http://localhost:8085/scenarios/$ID"
-  echo "  deleted $ID"
 done
 ```
 
-**Stop and notice.** The filter has to enumerate the cascade's metric names because the registry doesn't tag entries with the cascade they came from. That's a real ergonomics finding — if you were building production scenario libraries on top of `/scenarios`, you'd either capture the IDs from the POST response and store them, or include a discriminator label (e.g. `cascade_id: "link-failover-2026-04-30T14:00"`) in `defaults.labels` and filter on that. The exercise prompt: what would you change in the workshop CLI to make cleanup a one-liner?
-
-### 6. Predict the wall-clock duration
-
-Now the gotcha. The cascade was registered with `--duration 90s`. Phase 1 starts immediately. Phase 2 starts when Phase 1 first drops below 1 — roughly t=60s on the 60-up/30-down rhythm. Phase 3 starts ~30s after Phase 2 reaches 70%, which itself takes some time to ramp from 20 to 85.
-
-Question: if every entry inherits `--duration 90s`, when is the *whole cascade* done?
-
-Walk through it:
-
-- Phase 1 ends at t ≈ 90s.
-- Phase 2 starts at t ≈ 60s and runs for 90s, so ends at t ≈ 150s.
-- Phase 3 starts after Phase 2 crosses 70% — Phase 2 ramps from 20 to 85 over 2 minutes, so 70% (a value of ~59.5) lands roughly 40-50s into Phase 2's own ramp, i.e. wall-clock t ≈ 105-110s. Phase 3 runs for 90s from there, so ends at t ≈ 200s.
-
-The cascade's wall-clock end isn't 90 seconds. It's roughly 3 to 3.5 minutes, even though every individual scenario was "90 seconds long".
-
-**Stop and notice.** Scenario `duration` is per-scenario, measured from each scenario's own start time, not from the cascade's registration time. The end-to-end run time is the *longest path through the dependency graph*. With imperative cascades you decide when each phase starts, so the wall-clock duration is whatever your sleeps add up to. With declarative cascades the graph decides, and the duration semantics flow from that. Read a v2 scenario, find the longest causal chain, and you can predict the wall-clock duration before you ever hit the API.
+That's an operational note, not a teardown ritual — leave the cascade running if you want to keep watching the dashboards react.
 
 ## Stretch goals
 
-- **Build your own cascade kind.** Copy `_build_link_failover` from `workshops/autocon5/src/autocon5_workshop/incident.py` into a scratch Python script. Change the metric names, swap `saturation` for `degradation`, change the `after:` thresholds. Save the body as `scenario.json` and POST it directly: `curl -X POST http://localhost:8085/scenarios -H 'Content-Type: application/json' -d @scenario.json`. Skip the workshop CLI entirely — talk straight to sonda. This is what writing a production scenario library looks like.
-- **Run two cascades concurrently.** Register one for `srl1`, then immediately a second for `srl2`. Confirm via `/scenarios` that both run side by side and emit independently. Notice the two cascades don't share state — each has its own dependency graph evaluation.
-- **Use `--follow` as a smoke test.** Wrap `nobs autocon5 incident --duration 60s --follow` in a shell script and check `$?` after it returns. The CLI exits zero when every scenario has reached a non-running state — that's a CI-grade "did the cascade finish?" gate. A non-zero exit means a poll error or the scenarios got stuck.
-- **Propose a `--dry-run` flag.** The CLI today builds the cascade body and POSTs it in one shot. Sketch (don't implement) what `nobs autocon5 incident --dry-run` would do: print the v2 scenario JSON to stdout without hitting `/scenarios`. Bonus: how would you make the dumped body re-postable verbatim with `curl`? This is the same shape as `terraform plan` versus `terraform apply` — the dry-run is the part of the workflow most CLIs forget.
+- **Drive the same incident on srl2.** Re-run with `--device srl2` and contrast the dashboards. Same shape, different device labels — the on-call playbook doesn't change.
+- **Predict the customer-impact window.** Given the timing you just observed (primary starts flapping near t=30s, latency exceeds 100ms around t=3 min), at what point would a customer's response-time SLO break? Use the queries above to back the answer with data.
+- **Tie the incident to the alert rules.** While the cascade is running, run `nobs autocon5 alerts`. Does `BgpSessionNotUp` fire? Does `PeerInterfaceFlapping`? Explain why each one does or doesn't fire. (Hint: the cascade emits to canonical metric names, but with `source="incident-cascade"`. Existing alert rules use a different label set.)
 
 ## What you took away
 
-- Imperative cascades (`flap-interface`) put timing in CLI code with `time.sleep`. Declarative cascades (`incident`) put timing in the dependency graph and let sonda's compiler resolve order at registration time.
-- `after:` clauses watch *emitted values*, not wall-clock offsets. That's the contract — Phase 2 fires when Phase 1's value crosses a threshold, regardless of how long that takes.
-- `duration` is per-scenario and measured from each scenario's own start. Cascade wall-clock time is the longest path through the dependency graph, not the duration of any single entry.
-- `/scenarios` is sonda's runtime registry, listing every active scenario. It's not a per-cascade view — production consumers should track their own IDs or POST with a discriminator label.
-- `--follow` is a poll, not a lifecycle owner. Ctrl-C ends the watch; it doesn't end the cascade. `DELETE /scenarios/<id>` is the only way to actually stop one.
-- Sonda-native cascades are the right model for production scenario libraries — versioned YAML, declarative dependencies, server-side scheduling. CLI-timed cascades are the right model for ad-hoc workshop interactivity, where you want one keystroke to fire one shape on demand. Pick the model that matches the use case.
+- The shape of an interface-degradation incident — primary fault → failover → backup pressure → latency — is universal. Recognise the shape, and you've already started triaging.
+- An on-call engineer reads dashboards in causal order: the cause first (flap), then the mechanism (failover), then the symptom (latency). The query order in this guide mirrors that reading order on purpose.
+- Empty panels at the start of an incident aren't a bug. Some signals only exist once an upstream failure has happened, and that gap is information — it tells you when each stage of the cascade actually fired.
+- Latency is almost always a symptom, not a cause. When latency alerts fire, walk *back* through the cascade to find the real failure. The `source` label on synthetic incidents lets you scope a query to one cascade and read it in isolation.
+- The wall-clock lifetime of an incident is longer than the duration of any single phase. Root cause leads symptoms by minutes — your runbook timing should reflect that.

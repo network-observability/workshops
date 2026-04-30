@@ -7,7 +7,7 @@ Three guides, one per workshop part. Each is roughly 30–45 minutes of laptop t
 | 1 | [Telemetry and queries](part-1-telemetry-and-queries.md) | PromQL and LogQL against the running stack — discover the schema, find the broken peer, correlate metrics to logs |
 | 2 | [Dashboards](part-2-dashboards.md) | Add a panel to `Workshop Lab 2026` that answers an operational question, and watch it react in real time |
 | 3 | [Alerts, automation, AI](part-3-alerts-automation-ai.md) | Drive the four canonical alert paths (quarantine, healthy-skip, maintenance-skip, resolved) and see the workflow act |
-| Advanced | [sonda-native cascades](advanced-cascades.md) | Drive a declarative cascade where sonda owns the timing — contrast with the imperative `flap-interface` model |
+| Advanced | [Walking an incident cascade](advanced-cascades.md) | Drive a primary-uplink-flap → failover → latency-spike incident on the lab and read it the way an on-call engineer would |
 
 Before you start, run `nobs autocon5 status` from the repo root. Every row should say `ok`. If anything is yellow or red, ask the instructor — the guides assume the stack is healthy.
 
