@@ -143,7 +143,7 @@
                       "false": {
                         "color": "light-green",
                         "index": 1,
-                        "text": "ACTIVE"
+                        "text": "PRODUCTION"
                       }
                     },
                     "type": "value"
@@ -597,7 +597,8 @@
               }
             ]
           },
-          "unit": "s"
+          "unit": "ms",
+          "decimals": 2
         },
         "overrides": []
       },
@@ -1404,6 +1405,17 @@
               "expected_state": "Intended State"
             }
           }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Interface",
+                "desc": false
+              }
+            ]
+          }
         }
       ],
       "type": "table"
@@ -1965,7 +1977,7 @@
               "format": "time_series",
               "instant": false,
               "interval": "",
-              "legendFormat": "(ASN: {{neighbor_asn}}) - {{peer_address}}",
+              "legendFormat": "peer {{peer_address}} (AS {{neighbor_asn}})",
               "range": true,
               "refId": "A"
             }
@@ -2005,7 +2017,7 @@
                 "uid": "P982945308D3682D1"
               },
               "editorMode": "builder",
-              "expr": "{device=\"$device\"} |= ``",
+              "expr": "{device=\"$device\"} | json | line_format \"[{{ or .severity .level | upper }}] {{ .message }}\"",
               "queryType": "range",
               "refId": "A"
             }
@@ -2058,7 +2070,7 @@
     ]
   },
   "time": {
-    "from": "now-4h",
+    "from": "now-15m",
     "to": "now"
   },
   "timepicker": {},

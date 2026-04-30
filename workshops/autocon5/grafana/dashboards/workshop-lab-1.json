@@ -216,7 +216,8 @@
         }
       ],
       "title": "Interface Traffic",
-      "type": "timeseries"
+      "type": "timeseries",
+      "description": "Inbound traffic shown above the zero line, outbound mirrored below \u2014 a common networking convention. The y-axis range is bytes/sec; absolute values are what matter."
     },
     {
       "datasource": {
@@ -330,7 +331,7 @@
         "prettifyLogMessage": false,
         "showCommonLabels": false,
         "showLabels": false,
-        "showTime": false,
+        "showTime": true,
         "sortOrder": "Descending",
         "wrapLogMessage": true
       },
@@ -341,7 +342,7 @@
             "uid": "P982945308D3682D1"
           },
           "editorMode": "code",
-          "expr": "{device=\"$device\"} != \"license\"\n|= \"interface\"\n|~ \"down|up|admin-state\"\n| line_format \"{{.device}} {{.facility_label}} | {{__line__}}\"",
+          "expr": "{device=\"$device\"} != \"license\" |~ \"interface\" |~ \"down|up|admin-state\" | json | line_format \"[{{ or .severity .level | upper }}] {{ or .vendor_facility_process .facility \\\"-\\\" }} | {{ .message }}\"",
           "legendFormat": "",
           "queryType": "range",
           "refId": "A"
@@ -388,7 +389,7 @@
     ]
   },
   "time": {
-    "from": "now-30m",
+    "from": "now-15m",
     "to": "now"
   },
   "timepicker": {},

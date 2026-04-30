@@ -212,6 +212,17 @@ services:
       - grafana_data:/grafana
     environment:
       GF_INSTALL_PLUGINS: natel-discrete-panel,yesoreyeram-infinity-datasource,volkovlabs-echarts-panel
+      # Disable Grafana 13's bundled promo apps so the dashboards aren't
+      # cluttered with Pyroscope / DrillDown nav entries the workshop never uses.
+      # Note: this does NOT suppress the Grafana 13 "What's new" splash modal —
+      # that's gated per-user via the userstorage API, not the plugin system.
+      # See troubleshooting.md ("Grafana shows a 'What's new' splash on first load").
+      GF_PLUGINS_DISABLE_PLUGINS: grafana-assistant-app,grafana-pyroscope-app,grafana-exploretraces-app,grafana-metricsdrilldown-app
+      # Keep the workshop offline-friendly: don't poll grafana.com for news/version checks.
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
       INFRAHUB_API_TOKEN: ${INFRAHUB_API_TOKEN}
