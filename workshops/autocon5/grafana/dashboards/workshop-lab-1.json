@@ -19,8 +19,313 @@
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
   "id": 3,
-  "links": [],
+  "links": [
+    {
+      "title": "Workshop Home",
+      "url": "/d/workshop-home",
+      "type": "link",
+      "icon": "external link",
+      "tooltip": "Lab-wide overview, health, and recent events",
+      "targetBlank": false,
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "tags": []
+    },
+    {
+      "title": "Device Health",
+      "url": "/d/c78e686b-138b-4deb-b6ae-3239dc10a162",
+      "type": "link",
+      "icon": "external link",
+      "tooltip": "Per-device deep-dive \u2014 BGP, interfaces, logs, pipeline labels",
+      "targetBlank": false,
+      "asDropdown": false,
+      "includeVars": true,
+      "keepTime": true,
+      "tags": []
+    },
+    {
+      "title": "Runbook",
+      "url": "https://github.com/network-observability/workshops/blob/main/workshops/autocon5/docs/troubleshooting.md",
+      "type": "link",
+      "icon": "doc",
+      "tooltip": "Operator runbook \u2014 recovery steps for common failure modes",
+      "targetBlank": true,
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "tags": []
+    }
+  ],
   "panels": [
+    {
+      "id": 200,
+      "type": "stat",
+      "title": "Devices",
+      "description": "Number of devices currently emitting metrics across the lab. Should equal the topology size.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P1809F7CD0C75ACF3"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none",
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value",
+        "wideLayout": true,
+        "percentChangeColorMode": "standard",
+        "showPercentChange": false
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P1809F7CD0C75ACF3"
+          },
+          "editorMode": "code",
+          "expr": "count(group by (device)(bgp_oper_state))",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": true
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 3
+      },
+      "pluginVersion": "13.0.1"
+    },
+    {
+      "id": 201,
+      "type": "stat",
+      "title": "Interfaces",
+      "description": "Total interfaces being monitored across all devices. Reflects what the sonda scenarios are generating.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P1809F7CD0C75ACF3"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none",
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value",
+        "wideLayout": true,
+        "percentChangeColorMode": "standard",
+        "showPercentChange": false
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P1809F7CD0C75ACF3"
+          },
+          "editorMode": "code",
+          "expr": "count(group by (device, name)(interface_oper_state))",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": true
+        }
+      ],
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 3
+      },
+      "pluginVersion": "13.0.1"
+    },
+    {
+      "id": 202,
+      "type": "stat",
+      "title": "Firing alerts",
+      "description": "Count of Prometheus alert rules currently in `firing` state, lab-wide. Zero in steady state.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P1809F7CD0C75ACF3"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none",
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value",
+        "wideLayout": true,
+        "percentChangeColorMode": "standard",
+        "showPercentChange": false
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P1809F7CD0C75ACF3"
+          },
+          "editorMode": "code",
+          "expr": "sum(ALERTS{alertstate=\"firing\"}) OR vector(0)",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": true
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 3
+      },
+      "pluginVersion": "13.0.1"
+    },
+    {
+      "id": 203,
+      "type": "stat",
+      "title": "Log lines (5m)",
+      "description": "Total log lines received across all pipelines in the last 5 minutes. Quick liveness check \u2014 zero on a freshly-booted stack means sonda or Vector hasn't started emitting yet.",
+      "datasource": {
+        "type": "loki",
+        "uid": "P982945308D3682D1"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none",
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value",
+        "wideLayout": true,
+        "percentChangeColorMode": "standard",
+        "showPercentChange": false
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "P982945308D3682D1"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({pipeline=~\".+\"}[5m]))",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "queryType": "instant"
+        }
+      ],
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 3
+      },
+      "pluginVersion": "13.0.1"
+    },
     {
       "datasource": {
         "type": "prometheus",
@@ -75,7 +380,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 0
+        "y": 3
       },
       "id": 1,
       "options": {
@@ -174,7 +479,7 @@
         "h": 16,
         "w": 12,
         "x": 12,
-        "y": 0
+        "y": 3
       },
       "id": 4,
       "options": {
@@ -278,7 +583,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 8
+        "y": 11
       },
       "id": 2,
       "interval": "5m",
@@ -324,7 +629,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 16
+        "y": 19
       },
       "id": 3,
       "options": {

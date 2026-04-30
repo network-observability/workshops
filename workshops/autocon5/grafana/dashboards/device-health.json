@@ -63,6 +63,312 @@
   "liveNow": false,
   "panels": [
     {
+      "id": 200,
+      "type": "stat",
+      "title": "Devices",
+      "description": "Number of devices currently emitting metrics across the lab. Should equal the topology size.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P1809F7CD0C75ACF3"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none",
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value",
+        "wideLayout": true,
+        "percentChangeColorMode": "standard",
+        "showPercentChange": false
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P1809F7CD0C75ACF3"
+          },
+          "editorMode": "code",
+          "expr": "count(group by (device)(bgp_oper_state))",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": true
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 3
+      },
+      "pluginVersion": "13.0.1"
+    },
+    {
+      "id": 201,
+      "type": "stat",
+      "title": "Interfaces",
+      "description": "Total interfaces being monitored across all devices. Reflects what the sonda scenarios are generating.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P1809F7CD0C75ACF3"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none",
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value",
+        "wideLayout": true,
+        "percentChangeColorMode": "standard",
+        "showPercentChange": false
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P1809F7CD0C75ACF3"
+          },
+          "editorMode": "code",
+          "expr": "count(group by (device, name)(interface_oper_state))",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": true
+        }
+      ],
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 3
+      },
+      "pluginVersion": "13.0.1"
+    },
+    {
+      "id": 202,
+      "type": "stat",
+      "title": "Firing alerts",
+      "description": "Count of Prometheus alert rules currently in `firing` state, lab-wide. Zero in steady state.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P1809F7CD0C75ACF3"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none",
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value",
+        "wideLayout": true,
+        "percentChangeColorMode": "standard",
+        "showPercentChange": false
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P1809F7CD0C75ACF3"
+          },
+          "editorMode": "code",
+          "expr": "sum(ALERTS{alertstate=\"firing\"}) OR vector(0)",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "range": true
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 3
+      },
+      "pluginVersion": "13.0.1"
+    },
+    {
+      "id": 203,
+      "type": "stat",
+      "title": "Log lines (5m)",
+      "description": "Total log lines received across all pipelines in the last 5 minutes. Quick liveness check \u2014 zero on a freshly-booted stack means sonda or Vector hasn't started emitting yet.",
+      "datasource": {
+        "type": "loki",
+        "uid": "P982945308D3682D1"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none",
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value",
+        "wideLayout": true,
+        "percentChangeColorMode": "standard",
+        "showPercentChange": false
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "P982945308D3682D1"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({pipeline=~\".+\"}[5m]))",
+          "legendFormat": "__auto",
+          "refId": "A",
+          "queryType": "instant"
+        }
+      ],
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 3
+      },
+      "pluginVersion": "13.0.1"
+    },
+    {
+      "id": 204,
+      "type": "logs",
+      "title": "Recent events",
+      "description": "Live stream of interface flaps and config-push annotations for `$device`. Same lines that drive the dashboard annotation markers, surfaced as a feed so they're impossible to miss when something just happened.",
+      "datasource": {
+        "type": "loki",
+        "uid": "P982945308D3682D1"
+      },
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "P982945308D3682D1"
+          },
+          "editorMode": "code",
+          "expr": "{device=\"$device\"} |~ \"Interface .* changed state|Configured from\" | json | line_format \"[{{ or .severity .level | upper }}] {{ .message }}\"",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 3,
+        "w": 24,
+        "h": 4
+      }
+    },
+    {
       "datasource": {
         "type": "yesoreyeram-infinity-datasource",
         "uid": "workshop-infrahub-graphql"
@@ -166,7 +472,7 @@
         "h": 4,
         "w": 18,
         "x": 0,
-        "y": 0
+        "y": 7
       },
       "id": 7,
       "options": {
@@ -309,7 +615,7 @@
         "h": 4,
         "w": 3,
         "x": 18,
-        "y": 0
+        "y": 7
       },
       "id": 1,
       "options": {
@@ -378,7 +684,7 @@
         "h": 4,
         "w": 3,
         "x": 21,
-        "y": 0
+        "y": 7
       },
       "id": 2,
       "options": {
@@ -451,7 +757,7 @@
         "h": 4,
         "w": 6,
         "x": 0,
-        "y": 4
+        "y": 11
       },
       "id": 4,
       "options": {
@@ -535,7 +841,7 @@
         "h": 4,
         "w": 6,
         "x": 6,
-        "y": 4
+        "y": 11
       },
       "id": 3,
       "options": {
@@ -620,7 +926,7 @@
         "h": 4,
         "w": 12,
         "x": 12,
-        "y": 4
+        "y": 11
       },
       "id": 6,
       "options": {
@@ -723,7 +1029,7 @@
         "h": 5,
         "w": 12,
         "x": 0,
-        "y": 8
+        "y": 15
       },
       "id": 10,
       "options": {
@@ -800,7 +1106,7 @@
         "h": 5,
         "w": 12,
         "x": 12,
-        "y": 8
+        "y": 15
       },
       "id": 5,
       "options": {
@@ -844,7 +1150,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 13
+        "y": 20
       },
       "id": 103,
       "title": "Signal Pipelines",
@@ -906,7 +1212,7 @@
         "h": 3,
         "w": 12,
         "x": 0,
-        "y": 14
+        "y": 21
       },
       "id": 101,
       "options": {
@@ -999,7 +1305,7 @@
         "h": 3,
         "w": 12,
         "x": 12,
-        "y": 14
+        "y": 21
       },
       "id": 102,
       "options": {
@@ -1042,7 +1348,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 17
+        "y": 24
       },
       "id": 104,
       "title": "Interfaces Information",
@@ -1128,7 +1434,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 18
+        "y": 25
       },
       "id": 11,
       "options": {
@@ -1198,7 +1504,7 @@
         "h": 3,
         "w": 4,
         "x": 0,
-        "y": 25
+        "y": 32
       },
       "id": 13,
       "options": {
@@ -1446,7 +1752,7 @@
         "h": 6,
         "w": 20,
         "x": 4,
-        "y": 25
+        "y": 32
       },
       "id": 14,
       "options": {
@@ -1666,7 +1972,7 @@
         "h": 3,
         "w": 4,
         "x": 0,
-        "y": 28
+        "y": 35
       },
       "id": 12,
       "options": {
@@ -1732,7 +2038,7 @@
         "h": 3,
         "w": 4,
         "x": 0,
-        "y": 31
+        "y": 38
       },
       "id": 15,
       "options": {
@@ -1863,7 +2169,7 @@
         "h": 6,
         "w": 20,
         "x": 4,
-        "y": 31
+        "y": 38
       },
       "id": 17,
       "options": {
@@ -1944,7 +2250,7 @@
         "h": 3,
         "w": 4,
         "x": 0,
-        "y": 34
+        "y": 41
       },
       "id": 16,
       "options": {
@@ -1988,7 +2294,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 37
+        "y": 44
       },
       "id": 105,
       "title": "BGP & Logs",
@@ -2020,7 +2326,7 @@
         "h": 6,
         "w": 4,
         "x": 0,
-        "y": 38
+        "y": 45
       },
       "id": 19,
       "options": {
@@ -2171,7 +2477,7 @@
         "h": 6,
         "w": 20,
         "x": 4,
-        "y": 38
+        "y": 45
       },
       "id": 20,
       "options": {
@@ -2225,7 +2531,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 44
+        "y": 51
       },
       "id": 21,
       "options": {
@@ -2323,6 +2629,43 @@
   "title": "Device Health",
   "uid": "c78e686b-138b-4deb-b6ae-3239dc10a162",
   "version": 4,
-  "links": [],
+  "links": [
+    {
+      "title": "Workshop Home",
+      "url": "/d/workshop-home",
+      "type": "link",
+      "icon": "external link",
+      "tooltip": "Lab-wide overview, health, and recent events",
+      "targetBlank": false,
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "tags": []
+    },
+    {
+      "title": "Workshop Lab",
+      "url": "/d/dfb5dpyjbh2wwa",
+      "type": "link",
+      "icon": "external link",
+      "tooltip": "Attendee scratchpad \u2014 interface state, traffic, filtered logs",
+      "targetBlank": false,
+      "asDropdown": false,
+      "includeVars": true,
+      "keepTime": true,
+      "tags": []
+    },
+    {
+      "title": "Runbook",
+      "url": "https://github.com/network-observability/workshops/blob/main/workshops/autocon5/docs/troubleshooting.md",
+      "type": "link",
+      "icon": "doc",
+      "tooltip": "Operator runbook \u2014 recovery steps for common failure modes",
+      "targetBlank": true,
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "tags": []
+    }
+  ],
   "weekStart": ""
 }
