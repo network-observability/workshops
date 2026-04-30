@@ -818,12 +818,211 @@
       "type": "stat"
     },
     {
+      "id": 100,
+      "type": "row",
+      "title": "Signal Pipelines",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 101,
+      "type": "stat",
+      "title": "Metrics Pipeline",
+      "description": "Which pipeline currently delivers metrics for this device. srl1 is shipped directly by sonda (`pipeline=direct`); srl2 routes through Telegraf for normalization (`pipeline=telegraf`). Same metric schema, different paths \u2014 that's the workshop's hybrid story.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P1809F7CD0C75ACF3"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 12,
+        "h": 3
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "options": {
+                "direct": {
+                  "color": "green",
+                  "index": 0
+                }
+              },
+              "type": "value"
+            },
+            {
+              "options": {
+                "telegraf": {
+                  "color": "blue",
+                  "index": 1
+                }
+              },
+              "type": "value"
+            },
+            {
+              "options": {
+                "vector": {
+                  "color": "orange",
+                  "index": 2
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "no data"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P1809F7CD0C75ACF3"
+          },
+          "editorMode": "code",
+          "expr": "count by (pipeline) (bgp_oper_state{device=\"$device\"})",
+          "legendFormat": "{{pipeline}}",
+          "range": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 102,
+      "type": "stat",
+      "title": "Logs Pipeline",
+      "description": "Which pipeline currently delivers logs for this device. srl1 logs are pushed directly by sonda (`pipeline=direct`); srl2 syslog is shipped via Vector (`pipeline=vector`). Number shown is log lines received in the last 5 minutes.",
+      "datasource": {
+        "type": "loki",
+        "uid": "P982945308D3682D1"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 14,
+        "w": 12,
+        "h": 3
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "options": {
+                "direct": {
+                  "color": "green",
+                  "index": 0
+                }
+              },
+              "type": "value"
+            },
+            {
+              "options": {
+                "telegraf": {
+                  "color": "blue",
+                  "index": 1
+                }
+              },
+              "type": "value"
+            },
+            {
+              "options": {
+                "vector": {
+                  "color": "orange",
+                  "index": 2
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "no data"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "P982945308D3682D1"
+          },
+          "editorMode": "code",
+          "expr": "sum by (pipeline) (count_over_time({device=\"$device\", pipeline=~\".+\"}[5m]))",
+          "legendFormat": "{{pipeline}}",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ]
+    },
+    {
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 13
+        "y": 17
       },
       "id": 9,
       "panels": [],
@@ -910,7 +1109,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 14
+        "y": 18
       },
       "id": 11,
       "options": {
@@ -976,7 +1175,7 @@
         "h": 3,
         "w": 4,
         "x": 0,
-        "y": 21
+        "y": 25
       },
       "id": 13,
       "options": {
@@ -1220,7 +1419,7 @@
         "h": 6,
         "w": 20,
         "x": 4,
-        "y": 21
+        "y": 25
       },
       "id": 14,
       "options": {
@@ -1453,7 +1652,7 @@
         "h": 3,
         "w": 4,
         "x": 0,
-        "y": 24
+        "y": 28
       },
       "id": 12,
       "options": {
@@ -1519,7 +1718,7 @@
         "h": 3,
         "w": 4,
         "x": 0,
-        "y": 27
+        "y": 31
       },
       "id": 15,
       "options": {
@@ -1647,7 +1846,7 @@
         "h": 6,
         "w": 20,
         "x": 4,
-        "y": 27
+        "y": 31
       },
       "id": 17,
       "options": {
@@ -1726,7 +1925,7 @@
         "h": 3,
         "w": 4,
         "x": 0,
-        "y": 30
+        "y": 34
       },
       "id": 16,
       "options": {
@@ -1768,7 +1967,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 33
+        "y": 37
       },
       "id": 22,
       "panels": [
