@@ -64,23 +64,31 @@ Open **Workshop Home** and look at the **Recent events** feed. You should see th
 
 ### 3. Drive mismatch → quarantine by hand
 
-Now do the path manually so you see the moving parts.
+Now do the path manually so you see the moving parts. A single `flap-interface` invocation now cascades through three signals automatically (interface metric flip → 10s hold-down → BGP collapse + prefix drop → restore), so even one call is enough to surface the mismatch path.
 
 ```bash
 nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1
 ```
 
-Run it again immediately. And again. Four times in two minutes is enough to trip the rule (`> 3 transitions in 2 minutes`).
-
-Watch alerts roll in:
+The command runs for ~46 seconds end-to-end. While it's running, in another terminal:
 
 ```bash
 nobs autocon5 alerts
 ```
 
-After ~30 seconds you should see a `PeerInterfaceFlapping` row alongside the existing BGP ones. Open **Workshop Home** in your browser — the **Currently firing alerts** table populates. The webhook flow has already run by the time you look; check **Recent events** for the `quarantined` annotation.
+You should see a `PeerInterfaceFlapping` row appear within ~30 seconds (the rule fires on `> 3 UPDOWN events in a 2-minute window`, and Phase A pushes 6). Once the cascade enters Phase B, `BgpSessionNotUp` will *also* fire for `srl1 ↔ 10.1.2.2` because the BGP session's `bgp_oper_state` is now `2`.
 
-**Stop and notice.** From "press Enter on a CLI" to "alert fired, flow ran, action recorded" is under 60 seconds end-to-end. That's the path your real on-call alerts take, just shorter because the synthetic data lets you skip the BGP timeout.
+Open **Workshop Home** in your browser — the **Currently firing alerts** table populates with both alerts. The webhook flow has already run by the time you look; check **Recent events** for the `quarantined` annotation.
+
+If you want to trip *only* `PeerInterfaceFlapping` (without dragging BGP down), use `--no-cascade` and run the CLI four times in two minutes — the historical workshop path:
+
+```bash
+for i in 1 2 3 4; do
+  nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1 --no-cascade
+done
+```
+
+**Stop and notice.** From "press Enter on a CLI" to "alert fired, flow ran, action recorded" is under 60 seconds end-to-end. The cascade matches the shape of a real outage — interface degrades, BGP follows, prefixes drop — so the alert path you're exercising is the same one your on-call would face in production, just compressed in time.
 
 ### 4. Drive in-maintenance → skip
 

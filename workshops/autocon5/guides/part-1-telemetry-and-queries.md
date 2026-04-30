@@ -103,17 +103,46 @@ The lab generates synthetic data on a schedule, but you can also drive events in
 nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1
 ```
 
-This pushes 6 UPDOWN events into Loki over about 6 seconds. It's a log-event injection by design — the canonical interface-state *metric* keeps its underlying schedule so the rest of the lab's queries stay stable for everyone in the room. The events you're injecting show up on the log side.
+A single invocation cascades through three signals over ~46 seconds:
 
-To watch it react, briefly switch your Explore datasource to `loki` and run:
+1. **Phase A (~6s)**: 6 UPDOWN log events paired with `interface_oper_state` metric flips (1↔2), ending on `up`.
+2. **Phase B** (after a 10s hold-down): for the BGP peer attached to that interface, `bgp_oper_state` drops to `2`, `bgp_neighbor_state` drops to `1` (idle), and the prefix counters (`bgp_prefixes_accepted`, `bgp_received_routes`, `bgp_sent_routes`, `bgp_active_routes`) zero out. Sustained for 30 seconds by default.
+3. **Phase C**: BGP restored to established and prefix counters back to a nominal value, so the dashboard recovers when the lab's continuous generator resumes.
+
+The 10-second hold-down is deliberate. Real interface flaps don't take BGP down instantly — there's a damping window. The cascade reflects that.
+
+If you only want the log + metric flap (no BGP cascade), pass `--no-cascade`. That's the right knob for "I just want to trip `PeerInterfaceFlapping` four times in two minutes" exercises.
+
+To watch the cascade react, open three Explore tabs (or one tab and toggle):
+
+```promql
+interface_oper_state{device="srl1", name="ethernet-1/1"}
+```
+
+```promql
+bgp_oper_state{device="srl1", peer_address="10.1.2.2"}
+```
+
+```promql
+bgp_prefixes_accepted{device="srl1", peer_address="10.1.2.2"}
+```
+
+Switch all three to `Time series` view. Run `flap-interface` and watch each one in turn:
+
+- The interface metric flips between `1` and `2` during Phase A, then settles at `1`.
+- After ~10 seconds, `bgp_oper_state` drops from `1` to `2`. Stays there for 30 seconds.
+- At the same time, prefix counters drop to `0`.
+- ~30 seconds later, both restore.
+
+Then briefly switch one tab to the `loki` datasource:
 
 ```logql
 {device="srl1", vendor_facility_process="UPDOWN", interface="ethernet-1/1"}
 ```
 
-Click `Run query`. Then run the flap CLI again from your terminal. Watch new lines arrive in the log panel within ~5 seconds. Switch back to `prometheus` when you're done — you'll come back to `flap-interface` in Exercise 10 to see how this same event stream becomes a *metric* via `count_over_time`.
+The log lines that drove the metric flip are right there with the same timestamps. Same labels, same correlation pattern you'll lean on heavily later in the bridge exercise.
 
-**Stop and notice.** Synthetic data, real shapes — and you can drive it. The query bar reacts to lab state in real time, no batch refresh, no caching layer hiding your changes. Live data is the whole point of running queries in the first place; if your dashboards lag, you're not observing, you're reading history.
+**Stop and notice.** One CLI command, three signals reacting in causal order. Synthetic data with real shapes — and you can drive it. The query bar reacts to lab state in real time, no batch refresh, no caching layer hiding your changes. The shape of this cascade — interface degrades → BGP follows → prefixes drop — is what real outages look like in your network. Memorise the shape; it generalises.
 
 #### 6. Pipeline awareness — metrics normalization
 
