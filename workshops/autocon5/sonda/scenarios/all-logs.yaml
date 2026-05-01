@@ -67,13 +67,14 @@ scenarios:
     sink:
       type: loki
       url: "${LOKI_URL:-http://loki:3001}"
-      batch_size: 10
+      batch_size: 1
 
   # -------------------------------------------------------------------------
-  # srl1 — interface UPDOWN events
+  # srl1 — interface UPDOWN events for the HEALTHY interfaces (1/1, 1/10).
   # Triggers PeerInterfaceFlapping (loki/rules: count_over_time UPDOWN > 3 in 2m).
-  # interface rotates across three peer links so the alert can fire with
-  # different `(device, interface)` tuples — not always ethernet-1/1.
+  # The broken interface ethernet-1/11 has its own dedicated stream below
+  # so a student querying logs for the broken interface sees a coherent
+  # stuck-down story, not the same uniform rotation as the healthy links.
   # -------------------------------------------------------------------------
   - id: srl1_updown_logs
     signal_type: logs
@@ -88,7 +89,7 @@ scenarios:
       netpanda: bethepacket
     dynamic_labels:
       - key: interface
-        values: ["ethernet-1/1", "ethernet-1/10", "ethernet-1/11"]
+        values: ["ethernet-1/1", "ethernet-1/10"]
       - key: interface_status
         values: ["up", "down"]
     log_generator:
@@ -103,29 +104,58 @@ scenarios:
       batch_size: 5
 
   # -------------------------------------------------------------------------
-  # srl1 — BGP session events (correlates with bgp_oper_state metric)
-  # peer rotates over the three configured peers so the broken-peer story
-  # in metrics has a matching log story.
+  # srl1 — broken interface ethernet-1/11. Stuck-down story so the metric's
+  # interface_oper_state=2 has matching log evidence a student can find with
+  # the metric-to-log bridge query.
   # -------------------------------------------------------------------------
-  - id: srl1_bgp_logs
+  - id: srl1_broken_interface_logs
     signal_type: logs
-    name: srl1_bgp_logs
+    name: srl1_broken_interface_logs
+    rate: 0.02               # ~1 line every 50s — sustained but not spammy
+    labels:
+      device: srl1
+      pipeline: direct
+      type: srlinux
+      vendor_facility: srlinux
+      vendor_facility_process: UPDOWN
+      interface: "ethernet-1/11"
+      interface_status: "down"
+      netpanda: bethepacket
+    log_generator:
+      type: template
+      templates:
+        - message: "Interface ethernet-1/11: admin-up but operational down — no link partner detected"
+        - message: "Interface ethernet-1/11: still no link, last seen up: never since boot"
+        - message: "Interface ethernet-1/11: physical layer reports cable absent or far-end unresponsive"
+      severity_weights:
+        warning: 1.0
+    sink:
+      type: loki
+      url: "${LOKI_URL:-http://loki:3001}"
+      batch_size: 1
+
+  # -------------------------------------------------------------------------
+  # srl1 — BGP session events for the HEALTHY peers. Uniform state rotation
+  # is fine for these — they're not the broken thing the curriculum asks
+  # students to find. The broken peer 10.1.99.2 has its own dedicated stream
+  # below so the metric-to-log bridge has a coherent payoff.
+  # -------------------------------------------------------------------------
+  - id: srl1_bgp_logs_peer_10_1_2_2
+    signal_type: logs
+    name: srl1_bgp_logs_peer_10_1_2_2
     labels:
       device: srl1
       pipeline: direct
       type: srlinux
       vendor_facility: srlinux
       vendor_facility_process: BGP
+      peer_address: "10.1.2.2"
       netpanda: bethepacket
-    dynamic_labels:
-      - key: peer
-        values: ["10.1.2.2", "10.1.7.2", "10.1.99.2"]
     log_generator:
       type: template
       templates:
-        - message: "BGP neighbor {peer}: state changed to {state}"
+        - message: "BGP neighbor 10.1.2.2: state changed to {state}"
           field_pools:
-            peer: ["10.1.2.2", "10.1.7.2", "10.1.99.2"]
             state: ["established", "active", "open-confirm", "idle"]
       severity_weights:
         info: 0.7
@@ -134,7 +164,66 @@ scenarios:
     sink:
       type: loki
       url: "${LOKI_URL:-http://loki:3001}"
-      batch_size: 10
+      batch_size: 1
+
+  - id: srl1_bgp_logs_peer_10_1_7_2
+    signal_type: logs
+    name: srl1_bgp_logs_peer_10_1_7_2
+    labels:
+      device: srl1
+      pipeline: direct
+      type: srlinux
+      vendor_facility: srlinux
+      vendor_facility_process: BGP
+      peer_address: "10.1.7.2"
+      netpanda: bethepacket
+    log_generator:
+      type: template
+      templates:
+        - message: "BGP neighbor 10.1.7.2: state changed to {state}"
+          field_pools:
+            state: ["established", "active", "open-confirm", "idle"]
+      severity_weights:
+        info: 0.7
+        warning: 0.25
+        error: 0.05
+    sink:
+      type: loki
+      url: "${LOKI_URL:-http://loki:3001}"
+      batch_size: 1
+
+  # -------------------------------------------------------------------------
+  # srl1 — broken BGP peer 10.1.99.2. The intent-vs-reality story in metrics
+  # (configured remote-as 65102, oper state stuck at active/idle, prefixes 0)
+  # gets a matching log narrative a student can correlate to via labels.
+  # The configured IP doesn't sit on the interface's subnet — that's the
+  # actual misconfiguration this lab models.
+  # -------------------------------------------------------------------------
+  - id: srl1_broken_peer_logs
+    signal_type: logs
+    name: srl1_broken_peer_logs
+    rate: 0.02               # ~1 line every 50s — sustained, not spammy
+    labels:
+      device: srl1
+      pipeline: direct
+      type: srlinux
+      vendor_facility: srlinux
+      vendor_facility_process: BGP
+      peer_address: "10.1.99.2"
+      netpanda: bethepacket
+    log_generator:
+      type: template
+      templates:
+        - message: "BGP neighbor 10.1.99.2: connection refused — peer not reachable on configured subnet"
+        - message: "BGP neighbor 10.1.99.2: TCP session establishment failed (no route to host)"
+        - message: "BGP neighbor 10.1.99.2: configured remote-as 65102 but peer never responded; FSM stuck in active"
+      severity_weights:
+        warning: 0.5
+        error: 0.5
+    sink:
+      type: loki
+      url: "${LOKI_URL:-http://loki:3001}"
+      batch_size: 1
 
   # =========================================================================
   # srl2 — same three streams, but emitted as RFC 5424 syslog over UDP
@@ -190,13 +279,42 @@ scenarios:
       netpanda: bethepacket
     dynamic_labels:
       - key: interface
-        values: ["ethernet-1/1", "ethernet-1/10", "ethernet-1/11"]
+        values: ["ethernet-1/1", "ethernet-1/10"]
       - key: interface_status
         values: ["up", "down"]
     log_generator:
       type: template
       templates:
         - message: "Interface state transition observed (operational state changed)"
+      severity_weights:
+        warning: 1.0
+    encoder:
+      type: syslog
+      hostname: srl2
+      app_name: srlinux
+    sink:
+      type: udp
+      address: "vector:1514"
+
+  # srl2 — broken interface ethernet-1/11 stuck-down story (via Vector)
+  - id: srl2_broken_interface_logs
+    signal_type: logs
+    name: srl2_broken_interface_logs
+    rate: 0.02
+    labels:
+      device: srl2
+      type: srlinux
+      vendor_facility: srlinux
+      vendor_facility_process: UPDOWN
+      interface: "ethernet-1/11"
+      interface_status: "down"
+      netpanda: bethepacket
+    log_generator:
+      type: template
+      templates:
+        - message: "Interface ethernet-1/11: admin-up but operational down — no link partner detected"
+        - message: "Interface ethernet-1/11: still no link, last seen up: never since boot"
+        - message: "Interface ethernet-1/11: physical layer reports cable absent or far-end unresponsive"
       severity_weights:
         warning: 1.0
     encoder:
@@ -217,19 +335,49 @@ scenarios:
       vendor_facility_process: BGP
       netpanda: bethepacket
     dynamic_labels:
-      - key: peer
-        values: ["10.1.2.1", "10.1.7.1", "10.1.11.1"]
+      - key: peer_address
+        values: ["10.1.2.1", "10.1.7.1"]
     log_generator:
       type: template
       templates:
-        - message: "BGP neighbor {peer}: state changed to {state}"
+        - message: "BGP neighbor {peer_addr}: state changed to {state}"
           field_pools:
-            peer: ["10.1.2.1", "10.1.7.1", "10.1.11.1"]
+            peer_addr: ["10.1.2.1", "10.1.7.1"]
             state: ["established", "active", "open-confirm", "idle"]
       severity_weights:
         info: 0.7
         warning: 0.25
         error: 0.05
+    encoder:
+      type: syslog
+      hostname: srl2
+      app_name: srlinux
+    sink:
+      type: udp
+      address: "vector:1514"
+
+  # srl2 — broken BGP peer 10.1.11.1 (configured remote-as 65101, but peer
+  # IP is from a subnet that doesn't sit on the configured interface).
+  - id: srl2_broken_peer_logs
+    signal_type: logs
+    name: srl2_broken_peer_logs
+    rate: 0.02
+    labels:
+      device: srl2
+      type: srlinux
+      vendor_facility: srlinux
+      vendor_facility_process: BGP
+      peer_address: "10.1.11.1"
+      netpanda: bethepacket
+    log_generator:
+      type: template
+      templates:
+        - message: "BGP neighbor 10.1.11.1: connection refused — peer not reachable on configured subnet"
+        - message: "BGP neighbor 10.1.11.1: TCP session establishment failed (no route to host)"
+        - message: "BGP neighbor 10.1.11.1: configured remote-as 65101 but peer never responded; FSM stuck in active"
+      severity_weights:
+        warning: 0.5
+        error: 0.5
     encoder:
       type: syslog
       hostname: srl2

@@ -2,7 +2,7 @@
 
 ## What you'll do here
 
-After lunch. You're back at the desk with your senior. The flap-rate panel from this morning is still pinned in a tab. You're both finishing coffee when a `BgpSessionNotUp` alert lands — a real one, on the lab. Your senior glances at the dashboard, then at you.
+Late morning. The clock is creeping toward lunch. The flap-rate panel you built before the break is still pinned in a tab. You're both finishing coffee when a `BgpSessionNotUp` alert lands — a real one, on the lab. Your senior glances at the dashboard, then at you.
 
 > *"Watch what happens automatically. The flow's going to handle this without us. Then I'll walk you through the four cases it covers, and you can drive each one yourself. By the end of the hour you'll know exactly what the automation can and can't do for you — and which calls still belong to a human."*
 
@@ -179,6 +179,18 @@ If you don't have an API key handy, leave `ENABLE_AI_RCA=false`. Look at the dis
 
 **Stop and notice.** The LLM gets the same evidence bundle as the deterministic policy. It can't see the network, the runbooks, or last week's incident. Its output is annotated *next to* the policy result, not in place of it. The policy decided what action to take; the LLM wrote a paragraph about why the situation might exist. Two different jobs, both grounded in the same evidence.
 
+### Your turn — find what the flow actually did
+
+> Your senior gestures at the screen. *"You've watched the paths run. Now show me — without scrolling the dashboard — how many alert payloads the flow has handled in the last 30 minutes. One LogQL line. The annotations carry everything you need."*
+
+This is unguided. The flow writes its audit trail into Loki with `source="prefect"` and a few labels that distinguish which path each annotation belongs to (`workflow`, `decision`, others — explore them).
+
+Take a minute on it before you scroll. Two hints if you're stuck:
+- `count_over_time({...}[30m])` turns a Loki query into a metric just like in Part 1 Exercise 10.
+- `sum by (label) (...)` collapses everything except the label you list. Pick the label that gives the most informative breakdown — try `workflow` first, then try `decision` and see which one is more useful.
+
+You should be able to land an answer in one line that returns a small handful of rows. If you get a single row, you've collapsed too aggressively. If you get dozens of rows, you've left a high-cardinality label unaggregated.
+
 ### 7. Reflection (no clicking — just think)
 
 > Your senior leans back. *"Last one's a thinking exercise. Pick any of the paths you just ran and answer this for yourself."*
@@ -203,7 +215,7 @@ There's no single right answer. The point is that the same tool isn't equally va
 
 ## What you took away
 
-> Your senior signs off. *"You're ready to take primary tomorrow. If something fires, walk the same arc — triage, diagnose, contain, fix, document. The advanced guide is yours when you've finished today; you'll know what 02:14 looks like by the time you get to it."*
+> Your senior signs off as the lunch break lands. *"You're ready to take primary tomorrow. If something fires, walk the same arc — triage, diagnose, contain, fix, document. The advanced guide is yours when you've eaten; if you take it, you'll know what 02:14 looks like by the time you get to it."*
 
 - Alerts are an explicit operational decision, not a notification. The deterministic flow turns each alert into a *specific action* by enriching with source-of-truth.
 - The same alert payload routes to four different outcomes depending on context. Without enrichment, every alert looks the same.
