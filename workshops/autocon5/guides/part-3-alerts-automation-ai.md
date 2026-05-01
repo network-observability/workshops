@@ -10,7 +10,13 @@ Drive each of the four canonical alert paths by hand, watch the Prefect workflow
 
 ## Setup check
 
-Two `BgpSessionNotUp` alerts should already be firing in the lab — the deliberately broken peers from this morning.
+Reset to known-good baseline first — this expires any silences a prior `try-it` run might have created and clears any maintenance flags from earlier exercises:
+
+```bash
+nobs autocon5 reset
+```
+
+Two `BgpSessionNotUp` alerts should be firing in the lab — the deliberately broken peers from this morning.
 
 ```bash
 nobs autocon5 alerts
