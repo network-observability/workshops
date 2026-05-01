@@ -10,15 +10,16 @@ This part is the longest of the day on purpose — every later part depends on y
 
 ## Setup check
 
-Your senior already has Grafana up on their screen. They've run `nobs autocon5 status` from the repo root and confirmed every row says `ok`. Your turn.
+Your senior already has Grafana up on their screen. They've reset the lab to known-good baseline and confirmed every row says `ok`. Your turn.
 
 In a terminal:
 
 ```bash
+nobs autocon5 reset
 nobs autocon5 status
 ```
 
-Every row should report `ok`. If `prometheus`, `loki`, or `sonda` is anything else, flag it before continuing — your senior wants to know about a degraded stack before you lean on it.
+`reset` is idempotent — it clears any leftover maintenance flags, expires any silences from a prior workshop run, removes any cascade scenarios still hanging around, and restarts the log shipper if it has gone quiet. Safe to run at the start of every part. `status` then confirms every row reports `ok`. If `prometheus`, `loki`, or `sonda` is anything else, flag it before continuing — your senior wants to know about a degraded stack before you lean on it.
 
 Open Grafana at <http://localhost:3000> (login `admin` / `admin` unless you changed `.env`). Click the compass icon in the left rail to open **Explore**. The datasource picker at the top is how you switch between Prometheus and Loki. You'll bounce between them throughout this part.
 

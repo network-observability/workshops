@@ -24,9 +24,10 @@ A dashboard is an operational tool, not wall decor. One dashboard, one story. Th
 
 ## Setup check
 
-Confirm the stack is up:
+Reset to known-good baseline (idempotent — safe to skip if you ran it earlier this morning) and confirm the stack is healthy:
 
 ```bash
+nobs autocon5 reset
 nobs autocon5 status
 ```
 
