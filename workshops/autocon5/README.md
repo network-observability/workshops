@@ -154,7 +154,7 @@ Hands-on guide: [`guides/part-2-dashboards.md`](guides/part-2-dashboards.md).
 
 ## Part 3 — Alerts, automation, AI-assisted ops
 
-After lunch — a real alert lands while your senior narrates. Walk the four canonical paths the workflow handles, toggle the AI RCA step, and decide which paths you'd trust the LLM narrative on at 2am. By the end your senior signs off and you're ready to take primary on the rotation tomorrow.
+Late morning, before lunch — a real alert lands while your senior narrates. Walk the four canonical paths the workflow handles, toggle the AI RCA step, and decide which paths you'd trust the LLM narrative on at 2am. As the lunch break lands your senior signs off and you're ready to take primary on the rotation tomorrow.
 
 Hands-on guide: [`guides/part-3-alerts-automation-ai.md`](guides/part-3-alerts-automation-ai.md).
 

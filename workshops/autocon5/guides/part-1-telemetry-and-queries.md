@@ -182,6 +182,18 @@ Returns rows for *both* devices, *both* pipelines. A dashboard panel querying `b
 
 **Stop and notice.** The `pipeline` label is for inspecting the normalization itself: *"which path did this sample take, is that path healthy?"* It's not for branching your query logic. If you write `bgp_oper_state{pipeline="direct"}` into a dashboard, you've narrowed to one path — useful for debugging that path, but you'll miss every device whose data flows through any other pipeline. Default to pipeline-agnostic queries; reach for the `pipeline` label when you're debugging the normalization, not the network.
 
+#### Your turn — find the busiest interface
+
+> Your senior leans back. *"You've got the basic queries. Now answer one yourself, no scaffolding: which interface is moving the most bytes per second right now, across the whole lab? Get me the answer in one PromQL line."*
+
+This is the first unguided exercise. No copy-paste. The metric you need is `interface_in_octets` (or `interface_out_octets`), the operator that turns a counter into a rate is `rate()`, and the function that picks the top N results is `topk()`. Compose them.
+
+Take a minute on it before you scroll. Two quick hints if you're stuck:
+- Counters need `rate()` over a window (Exercise 4).
+- `topk(N, expression)` returns the N highest-valued series.
+
+You should be able to land an answer with a single query that returns one or two rows. If you get more than that, narrow further — your senior won't want a list of every interface, they want the one that matters.
+
 ### Logs — LogQL
 
 > Your senior pushes back from the desk. *"OK, you've got a sense of the metric shape. Now: when something looks wrong in metrics, you need to find a log line that explains it. Logs are where the why lives. Same lab, different query language. Switch the datasource."*

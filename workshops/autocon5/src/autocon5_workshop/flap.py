@@ -267,6 +267,27 @@ def _phase_a(
         )
         _post(events_url, metric_payload, headers, what=f"flap metric {i}/{count}")
 
+        # Counter coupling: when the interface is operationally down, no
+        # traffic flows. Push 0 on the byte counters so a student querying
+        # `rate(interface_in_octets[...])` for this interface during the
+        # flap sees the realistic shape — counters flatline while the link
+        # is down. When the interface comes back up we don't push; the
+        # lab's continuous emitter resumes its normal traffic pattern from
+        # the next scrape onward.
+        if new_state == "down":
+            for counter_name in ("interface_in_octets", "interface_out_octets"):
+                _post(
+                    events_url,
+                    _metric_payload(
+                        metric_name=counter_name,
+                        value=0.0,
+                        labels=intf_labels,
+                        prom_url=prom_url,
+                    ),
+                    headers,
+                    what=f"flap {counter_name} {i}/{count}",
+                )
+
         progress.update(task, completed=i, description=f"event {i}/{count} ({new_state})")
         if i < count:
             time.sleep(delay)
