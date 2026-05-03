@@ -55,8 +55,11 @@ def up_for(ws: Workshop) -> Callable[..., None]:
     def up(
         build: Annotated[
             bool,
-            typer.Option("--build/--no-build", help="Pass --build to docker compose up."),
-        ] = True,
+            typer.Option(
+                "--build/--no-build",
+                help="Force a rebuild of locally-built images. Off by default so cached images are reused (offline-friendly).",
+            ),
+        ] = False,
         services: Annotated[
             list[str] | None,
             typer.Argument(help="Specific services to bring up (default: all)."),
