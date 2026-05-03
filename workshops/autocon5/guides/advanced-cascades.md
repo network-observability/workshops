@@ -16,13 +16,14 @@ nobs autocon5 incident --help
 
 You should see options for `--device` and `--duration` (among others). If `incident` isn't a recognised subcommand, pull and re-run.
 
-Confirm the stack is healthy:
+Reset to known-good baseline and confirm the stack is healthy:
 
 ```bash
+nobs autocon5 reset
 nobs autocon5 status
 ```
 
-Every row should report `ok`. Open Grafana at <http://localhost:3000> and have **Explore** ready on the `prometheus` datasource — you'll be running three queries against it as the incident unfolds.
+`reset` is idempotent — clears any leftover maintenance flags, expires workshop-related silences, removes any cascade scenarios from a prior run, and restarts the log shipper if it has gone quiet. `status` should report every row `ok`. Open Grafana at <http://localhost:3000> and have **Explore** ready on the `prometheus` datasource — you'll be running three queries against it as the incident unfolds.
 
 ## The exercises
 

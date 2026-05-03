@@ -2,15 +2,32 @@
 
 ## What you'll do here
 
+You're back from the short break. The team standup is wrapping in the next room. Your senior slides their laptop across with an email open on it.
+
+```
+From: oncall@example.com
+Subject: Post-mortem action — flap-rate panel
+
+Yesterday's page was BgpSessionNotUp on srl1, 10.1.99.2.
+We could see BGP was wobbly but couldn't see WHY without
+scrolling. Standby lost about ten minutes recognising the
+flap shape. Need a flap-rate panel on Workshop Lab so the
+next page lands with the right view already on screen.
+Whoever's free, take it.
+```
+
+> Your senior taps the screen. *"Last night's page. Read it. Standby lost ten minutes because a flap-rate panel didn't exist yet. The post-mortem decided it should. Would you take this? You've got 40 minutes — the panel needs to be on Workshop Lab 2026 with thresholds matching the actual alert rule, so when someone gets paged on this shape next time, the view's already there."*
+
 Add one panel to the **Workshop Lab 2026** dashboard that answers a real operational question: *is this interface flapping right now?* You'll wire it to the dashboard's `device` variable so it works for either device, set thresholds that match the actual alert rule, then drive a flap from the CLI and watch the panel react.
 
 A dashboard is an operational tool, not wall decor. One dashboard, one story. The exercise is small on purpose — by the end you'll know enough to extend any panel in this lab.
 
 ## Setup check
 
-Confirm the stack is up:
+Reset to known-good baseline (idempotent — safe to skip if you ran it earlier this morning) and confirm the stack is healthy:
 
 ```bash
+nobs autocon5 reset
 nobs autocon5 status
 ```
 
@@ -79,6 +96,8 @@ In the right-hand options, scroll to **Thresholds**. Set:
 
 Then under **Graph styles** → **Show thresholds**, pick `As lines`. Now the panel has a horizontal red line at 3 — a flap rate above it means an alert is firing.
 
+> Your senior glances over. *"Thresholds matching the alert rule? Good. When the line crosses the orange one, the alert is firing. The panel should make the alert visible, not duplicate it."*
+
 ### 7. Save
 
 Top right, **Apply** to drop back to the dashboard, then **Save dashboard** (disk icon, top right of the dashboard).
@@ -106,6 +125,8 @@ nobs autocon5 flap-interface --device srl2 --interface ethernet-1/10
 Watch the spike land on `srl2`'s panel without you editing the query.
 
 **Stop and notice.** One panel, two devices. That's what the dashboard variable bought you. If you'd hard-coded `device="srl1"` in the query, you'd need a duplicate panel for every device you ever add.
+
+> Your senior nods at the screen. *"That's the panel. Six hours from now when somebody on the rotation gets paged on a similar shape, this view is on screen the moment they open the dashboard. Ten minutes saved off the next triage. That's the work."*
 
 ## Stretch goals
 
