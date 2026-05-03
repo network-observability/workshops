@@ -145,7 +145,7 @@ AI_RCA_MODEL=gpt-4o-mini        # or e.g. claude-haiku-4-5-20251001
 OPENAI_API_KEY=sk-...           # only the one matching AI_RCA_PROVIDER is required
 ```
 
-Then:
+`nobs autocon5 up` reuses the cached image, so the new env vars won't reach Prefect until you restart the flows container:
 
 ```bash
 nobs autocon5 restart prefect-flows
