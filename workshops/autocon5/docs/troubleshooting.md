@@ -126,12 +126,13 @@ If you're tight on RAM:
 ## I edited a config / scenario / dashboard and nothing changed
 
 **Why.** Most volume mounts are read-only at container start.
-Compose caches the build for services with a `Dockerfile` (webhook, prefect-flows, telegraf-02).
-And Grafana provisioning reloads on container restart, not on file change.
+Compose caches the build for services with a `Dockerfile` (webhook, prefect-flows, telegraf-02), and `nobs autocon5 up` defaults to `--no-build` — re-running `up` will reuse the cached image even if you've edited the Dockerfile or the code it copies in.
+Grafana provisioning reloads on container restart, not on file change.
 
 **Recovery.**
 - Config or YAML change for an existing service: `nobs autocon5 restart`.
-- Dockerfile change: `nobs autocon5 build <name>`.
+- Dockerfile or service-code change: `nobs autocon5 up --build <name>` (or `nobs autocon5 build <name>`).
+- `.env` change picked up by an already-built service (e.g. `ENABLE_AI_RCA=true` for `prefect-flows`): `nobs autocon5 restart prefect-flows`.
 - Grafana dashboard JSON: `docker compose restart grafana` (or `nobs autocon5 restart`).
 
 ## I want to capture an active session for handoff
