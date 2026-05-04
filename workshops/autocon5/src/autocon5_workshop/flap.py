@@ -1,46 +1,30 @@
-"""`nobs autocon5 flap-interface` — cascade interface + BGP signals via sonda /events.
+"""`nobs autocon5 flap-interface` — declarative BGP cascade via sonda /scenarios.
 
-Three-phase cascade:
-- Phase A: alternating UPDOWN log events paired with `interface_oper_state` metric flips.
-- Phase B (after a hold-down pause): for each BGP peer on the link, push
-  `bgp_oper_state=2`, `bgp_neighbor_state=1`, and zero out the prefix counters,
-  re-pushing every ~2s for the configured BGP-down duration.
-- Phase C: restore BGP to established and prefix counters to a nominal value
-  so the dashboard recovers when the lab's continuous generator resumes.
-
-`--no-cascade` runs Phase A only.
+Builds a v2 scenario body that flaps `interface_oper_state` and gates
+per-peer BGP metrics (and a UPDOWN log stream) behind a `while:` clause
+on the flap signal. Posts the body once to `/scenarios`; sonda's runtime
+drives the cascade. Restore is automatic via gate-close: when the flap
+returns to up, the gated entries pause and the lab's continuous emitters
+resume publishing baseline values via Prometheus latest-sample-wins.
 """
 
 from __future__ import annotations
 
+import contextlib
+import json
 import time
-from typing import Annotated
+from typing import Annotated, Any
 
 import requests
 import typer
 from nobs._console import console, fail, ok, warn
-from rich.progress import (
-    BarColumn,
-    Progress,
-    SpinnerColumn,
-    TaskID,
-    TextColumn,
-    TimeElapsedColumn,
-)
+from rich.table import Table
 
-from autocon5_workshop.flap_topology import (
-    Peer,
-    bgp_labels,
-    interface_labels,
-    peers_for,
-)
+from autocon5_workshop.flap_topology import Peer, bgp_labels, interface_labels, peers_for
 
-_BGP_RESTORE_TICK_SECS = 2.0
-_BGP_DOWN_PREFIXES = 0.0
 _BGP_DOWN_OPER = 2.0
 _BGP_DOWN_NEIGHBOR = 1.0
-_BGP_UP_OPER = 1.0
-_BGP_UP_NEIGHBOR = 6.0
+_BGP_DOWN_PREFIXES = 0.0
 _BGP_PREFIX_METRICS = (
     "bgp_prefixes_accepted",
     "bgp_received_routes",
@@ -57,40 +41,60 @@ def flap_interface(
         str,
         typer.Option("--interface", "-i", help="Interface name (e.g. ethernet-1/1)."),
     ] = "ethernet-1/1",
-    count: Annotated[
-        int,
+    duration: Annotated[
+        str,
         typer.Option(
-            "--count",
-            "-n",
-            help="Number of UPDOWN events to push (alternating up/down). Ends on `up`.",
+            "--duration",
+            help="Bounded lifetime for every entry in the cascade (sonda duration string).",
         ),
-    ] = 6,
+    ] = "4m",
+    up_duration: Annotated[
+        str,
+        typer.Option(
+            "--up-duration",
+            help="Time the interface stays up before each down phase (sonda duration string).",
+        ),
+    ] = "30s",
+    down_duration: Annotated[
+        str,
+        typer.Option(
+            "--down-duration",
+            help="Time the interface stays down per cycle. Long enough for "
+            "BgpSessionNotUp (for: 30s) to fire by default.",
+        ),
+    ] = "60s",
+    cascade_delay: Annotated[
+        str,
+        typer.Option(
+            "--cascade-delay",
+            help="Hold-down between interface down and BGP collapse "
+            "(maps to delay.open on the gated entries).",
+        ),
+    ] = "10s",
     sonda_url: Annotated[
         str,
         typer.Option(
             "--sonda-url",
             envvar="SONDA_SERVER_URL",
-            help="Base sonda-server URL (events go to /events).",
+            help="Base sonda-server URL (the cascade is posted to /scenarios).",
         ),
     ] = "http://localhost:8085",
-    loki_url: Annotated[
-        str,
-        typer.Option(
-            "--loki-url",
-            envvar="SONDA_LOKI_SINK_URL",
-            help="Loki URL passed as the sink in the /events payload "
-            "(sonda's container-network view of Loki, not the host CLI's).",
-        ),
-    ] = "http://loki:3001",
     prom_url: Annotated[
         str,
         typer.Option(
             "--prom-url",
             envvar="SONDA_PROM_REMOTE_WRITE_URL",
-            help="Prometheus remote_write URL passed as the metric sink "
-            "(sonda's container-network view of Prometheus).",
+            help="Prometheus remote_write URL the metric entries publish to.",
         ),
     ] = "http://prometheus:9090/api/v1/write",
+    loki_url: Annotated[
+        str,
+        typer.Option(
+            "--loki-url",
+            envvar="SONDA_LOKI_SINK_URL",
+            help="Loki URL the UPDOWN log entry publishes to.",
+        ),
+    ] = "http://loki:3001",
     api_key: Annotated[
         str,
         typer.Option(
@@ -99,316 +103,288 @@ def flap_interface(
             help="Bearer token if sonda-server has SONDA_API_KEY set; empty otherwise.",
         ),
     ] = "",
-    delay: Annotated[
-        float,
-        typer.Option("--delay", help="Seconds to sleep between Phase A events."),
-    ] = 1.0,
-    cascade: Annotated[
+    follow: Annotated[
         bool,
         typer.Option(
-            "--cascade/--no-cascade",
-            help="Run BGP collapse + restore after the interface flap. "
-            "`--no-cascade` runs Phase A only.",
+            "--follow/--no-follow",
+            help="Poll the running scenario(s) until completion. "
+            "`--no-follow` returns immediately after registration.",
         ),
-    ] = True,
-    cascade_delay: Annotated[
-        float,
-        typer.Option(
-            "--cascade-delay",
-            help="Seconds to wait between Phase A end and Phase B start "
-            "(simulates BGP hold-timer / damping).",
-        ),
-    ] = 10.0,
-    bgp_down_duration: Annotated[
-        float,
-        typer.Option(
-            "--bgp-down-duration",
-            help="Seconds to keep BGP in the down state during Phase B. "
-            "Long enough for `BgpSessionNotUp` (for: 30s) to fire by default.",
-        ),
-    ] = 30.0,
-    restored_prefixes: Annotated[
-        int,
-        typer.Option(
-            "--restored-prefixes",
-            help="Prefix counter value Phase C restores accepted/received/sent/active to.",
-        ),
-    ] = 5,
+    ] = False,
 ) -> None:
-    """Cascade interface flap → BGP collapse → BGP restore via sonda /events."""
-    events_url = f"{sonda_url.rstrip('/')}/events"
-    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    """Register a declarative BGP cascade scenario via `POST /scenarios`."""
+    peers = peers_for(device, interface)
+    if not peers:
+        warn(f"no BGP peers mapped to {device}:{interface}; running interface flap only.")
 
-    peers: list[Peer] = peers_for(device, interface) if cascade else []
-    if cascade and not peers:
-        warn(f"no BGP peers mapped to {device}:{interface}; running Phase A only (no cascade).")
+    body = _build_cascade(
+        device=device,
+        interface=interface,
+        peers=peers,
+        duration=duration,
+        up_duration=up_duration,
+        down_duration=down_duration,
+        cascade_delay=cascade_delay,
+        prom_url=prom_url,
+        loki_url=loki_url,
+    )
 
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    scenarios_url = f"{sonda_url.rstrip('/')}/scenarios"
+    peer_summary = ", ".join(p.address for p in peers) if peers else "no BGP peers"
     console.print(
-        f"Pushing [label]{count}[/] UPDOWN events for "
-        f"[label]{device}:{interface}[/] via [muted]{events_url}[/]"
+        f"Posting cascade for [label]{device}:{interface}[/] "
+        f"(peers: [label]{peer_summary}[/], hold-down [label]{cascade_delay}[/], "
+        f"down [label]{down_duration}[/]) to [muted]{scenarios_url}[/]"
     )
-    if peers:
-        peer_list = ", ".join(p.address for p in peers)
+
+    try:
+        response = requests.post(scenarios_url, json=body, headers=headers, timeout=10)
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        detail = ""
+        if exc.response is not None:
+            with contextlib.suppress(Exception):
+                detail = f" — {exc.response.text}"
+        fail(f"POST /scenarios failed: {exc}{detail}")
+        raise typer.Exit(code=1) from exc
+
+    payload = response.json()
+    created = _flatten_created(payload)
+    if not created:
+        fail(f"unexpected response shape: {json.dumps(payload)[:300]}")
+        raise typer.Exit(code=1)
+
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("id")
+    table.add_column("name")
+    table.add_column("state")
+    for item in created:
+        table.add_row(item.get("id", ""), item.get("name", ""), item.get("state", ""))
+    console.print(table)
+
+    for w in payload.get("warnings", []) or []:
+        console.print(f"  [yellow]warning:[/] {w}")
+
+    if not follow:
+        ids = ", ".join(item["id"] for item in created)
+        ok(f"registered {len(created)} scenario(s): {ids}")
         console.print(
-            f"Cascade peers: [label]{peer_list}[/] "
-            f"(hold-down [label]{cascade_delay:g}s[/], "
-            f"BGP down [label]{bgp_down_duration:g}s[/])"
-        )
-
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TimeElapsedColumn(),
-        console=console,
-        transient=True,
-    ) as progress:
-        flap_task = progress.add_task(f"flap {device}:{interface}", total=count)
-        _phase_a(
-            progress=progress,
-            task=flap_task,
-            events_url=events_url,
-            headers=headers,
-            loki_url=loki_url,
-            prom_url=prom_url,
-            device=device,
-            interface=interface,
-            count=count,
-            delay=delay,
-        )
-
-        if not peers:
-            ok(
-                f"pushed {count} UPDOWN events + interface_oper_state flips; "
-                "PeerInterfaceFlapping should fire within ~30s."
+            "  Inspect:  [muted]curl {url}/scenarios[/]\n"
+            "  Stop:     [muted]curl -X DELETE {url}/scenarios/<id>[/]".format(
+                url=sonda_url.rstrip("/")
             )
-            return
-
-        _hold_down(progress=progress, seconds=cascade_delay)
-
-        bgp_task = progress.add_task(
-            f"BGP collapse ({bgp_down_duration:g}s)", total=bgp_down_duration
         )
-        _phase_b(
-            progress=progress,
-            task=bgp_task,
-            events_url=events_url,
-            headers=headers,
-            prom_url=prom_url,
-            device=device,
-            peers=peers,
-            duration=bgp_down_duration,
-        )
+        return
 
-        restore_task = progress.add_task(
-            f"BGP restore ({len(peers)} peer{'s' if len(peers) != 1 else ''})",
-            total=len(peers),
-        )
-        _phase_c(
-            progress=progress,
-            task=restore_task,
-            events_url=events_url,
-            headers=headers,
-            prom_url=prom_url,
-            device=device,
-            peers=peers,
-            restored_prefixes=float(restored_prefixes),
-        )
-
-    ok(
-        f"pushed {count} UPDOWN events + interface flips; "
-        f"cascaded to {len(peers)} BGP peer(s) for {bgp_down_duration:g}s, then restored."
-    )
+    _follow_until_done(sonda_url, [item["id"] for item in created], headers)
+    ok("all scenarios completed")
 
 
-def _phase_a(
+def _build_cascade(
     *,
-    progress: Progress,
-    task: TaskID,
-    events_url: str,
-    headers: dict[str, str],
-    loki_url: str,
-    prom_url: str,
     device: str,
     interface: str,
-    count: int,
-    delay: float,
-) -> None:
-    intf_labels = interface_labels(device, interface)
-    for i in range(1, count + 1):
-        new_state = "down" if i % 2 == 0 else "up"
-        oper_value = 2.0 if new_state == "down" else 1.0
-
-        log_payload = {
-            "signal_type": "logs",
-            "labels": {
-                "device": device,
-                "interface": interface,
-                "level": "warning",
-                "vendor_facility_process": "UPDOWN",
-                "type": "syslog",
-                "source": "workshop-trigger",
-            },
-            "log": {
-                "severity": "warn",
-                "message": f"Interface {interface} changed state to {new_state}",
-                "fields": {},
-            },
-            "encoder": {"type": "json_lines"},
-            "sink": {"type": "loki", "url": loki_url},
-        }
-        _post(events_url, log_payload, headers, what=f"flap log {i}/{count}")
-
-        metric_payload = _metric_payload(
-            metric_name="interface_oper_state",
-            value=oper_value,
-            labels=intf_labels,
-            prom_url=prom_url,
-        )
-        _post(events_url, metric_payload, headers, what=f"flap metric {i}/{count}")
-
-        progress.update(task, completed=i, description=f"event {i}/{count} ({new_state})")
-        if i < count:
-            time.sleep(delay)
-
-
-def _hold_down(*, progress: Progress, seconds: float) -> None:
-    if seconds <= 0:
-        return
-    hold_task = progress.add_task(f"BGP hold-down (waiting {seconds:g}s)", total=seconds)
-    deadline = time.monotonic() + seconds
-    while True:
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            progress.update(hold_task, completed=seconds)
-            break
-        progress.update(hold_task, completed=seconds - remaining)
-        time.sleep(min(0.5, remaining))
-
-
-def _phase_b(
-    *,
-    progress: Progress,
-    task: TaskID,
-    events_url: str,
-    headers: dict[str, str],
-    prom_url: str,
-    device: str,
     peers: list[Peer],
-    duration: float,
-) -> None:
-    start = time.monotonic()
-    deadline = start + duration
-    tick = 0
-    while True:
-        now = time.monotonic()
-        if now >= deadline:
-            progress.update(task, completed=duration, description="BGP collapse complete")
-            break
-        tick += 1
-        for peer in peers:
-            _push_bgp_state(
-                events_url=events_url,
-                headers=headers,
-                prom_url=prom_url,
+    duration: str,
+    up_duration: str,
+    down_duration: str,
+    cascade_delay: str,
+    prom_url: str,
+    loki_url: str,
+) -> dict[str, Any]:
+    """Assemble the v2 scenario body for the interface→BGP cascade."""
+    intf_labels = interface_labels(device, interface)
+    primary_id = "primary_flap"
+
+    scenarios: list[dict[str, Any]] = [
+        {
+            "id": primary_id,
+            "signal_type": "metrics",
+            "name": "interface_oper_state",
+            "generator": {
+                "type": "flap",
+                "up_duration": up_duration,
+                "down_duration": down_duration,
+            },
+            "labels": {
+                "name": interface,
+                "intf_role": intf_labels.get("intf_role", "peer"),
+            },
+        }
+    ]
+
+    for peer in peers:
+        scenarios.extend(
+            _gated_bgp_entries(
                 device=device,
                 peer=peer,
-                oper_state=_BGP_DOWN_OPER,
-                neighbor_state=_BGP_DOWN_NEIGHBOR,
-                prefix_value=_BGP_DOWN_PREFIXES,
-                what=f"phase-b tick {tick}",
+                upstream_id=primary_id,
+                cascade_delay=cascade_delay,
             )
-        elapsed = now - start
-        progress.update(
-            task,
-            completed=elapsed,
-            description=f"BGP collapse tick {tick} ({len(peers)} peer{'s' if len(peers) != 1 else ''})",
         )
-        sleep_for = min(_BGP_RESTORE_TICK_SECS, max(0.0, deadline - time.monotonic()))
-        if sleep_for > 0:
-            time.sleep(sleep_for)
 
-
-def _phase_c(
-    *,
-    progress: Progress,
-    task: TaskID,
-    events_url: str,
-    headers: dict[str, str],
-    prom_url: str,
-    device: str,
-    peers: list[Peer],
-    restored_prefixes: float,
-) -> None:
-    for i, peer in enumerate(peers, start=1):
-        _push_bgp_state(
-            events_url=events_url,
-            headers=headers,
-            prom_url=prom_url,
-            device=device,
-            peer=peer,
-            oper_state=_BGP_UP_OPER,
-            neighbor_state=_BGP_UP_NEIGHBOR,
-            prefix_value=restored_prefixes,
-            what=f"phase-c restore {peer.address}",
+    scenarios.append(
+        _gated_updown_log_entry(
+            interface=interface,
+            upstream_id=primary_id,
+            cascade_delay=cascade_delay,
+            loki_url=loki_url,
         )
-        progress.update(task, completed=i, description=f"restored {peer.address}")
+    )
 
-
-def _push_bgp_state(
-    *,
-    events_url: str,
-    headers: dict[str, str],
-    prom_url: str,
-    device: str,
-    peer: Peer,
-    oper_state: float,
-    neighbor_state: float,
-    prefix_value: float,
-    what: str,
-) -> None:
-    labels = bgp_labels(device, peer.address, peer.asn)
-    samples: list[tuple[str, float]] = [
-        ("bgp_oper_state", oper_state),
-        ("bgp_neighbor_state", neighbor_state),
-    ]
-    samples.extend((m, prefix_value) for m in _BGP_PREFIX_METRICS)
-    for metric_name, value in samples:
-        payload = _metric_payload(
-            metric_name=metric_name,
-            value=value,
-            labels=labels,
-            prom_url=prom_url,
-        )
-        _post(events_url, payload, headers, what=f"{what} {metric_name}")
-
-
-def _metric_payload(
-    *,
-    metric_name: str,
-    value: float,
-    labels: dict[str, str],
-    prom_url: str,
-) -> dict:
     return {
-        "signal_type": "metrics",
-        "labels": labels,
-        "metric": {"name": metric_name, "value": value},
-        "encoder": {"type": "remote_write"},
-        "sink": {"type": "remote_write", "url": prom_url},
+        "version": 2,
+        "scenario_name": f"autocon5-cascade-{device}-{interface.replace('/', '-')}",
+        "category": "network",
+        "description": f"AutoCon5 BGP cascade — declarative while: gating on {device}:{interface}.",
+        "defaults": {
+            "rate": 1,
+            "duration": duration,
+            "encoder": {"type": "remote_write"},
+            "sink": {"type": "remote_write", "url": prom_url},
+            "labels": {
+                "device": device,
+                "pipeline": intf_labels.get("pipeline", "direct"),
+                "collection_type": "gnmi",
+                "source": "workshop-cascade",
+            },
+        },
+        "scenarios": scenarios,
     }
 
 
-def _post(
-    url: str,
-    payload: dict,
-    headers: dict[str, str],
+def _gated_bgp_entries(
     *,
-    what: str,
-) -> None:
-    try:
-        response = requests.post(url, json=payload, headers=headers, timeout=5)
-        response.raise_for_status()
-    except requests.RequestException as exc:
-        fail(f"sonda /events post failed ({what}): {exc}")
-        raise typer.Exit(code=1) from exc
+    device: str,
+    peer: Peer,
+    upstream_id: str,
+    cascade_delay: str,
+) -> list[dict[str, Any]]:
+    base_labels = _entry_only_bgp_labels(device, peer)
+    while_clause = {"ref": upstream_id, "op": "<", "value": 1}
+    delay_clause = {"open": cascade_delay, "close": "0s"}
+    safe_peer = peer.address.replace(".", "_")
+
+    entries: list[dict[str, Any]] = [
+        _gated_metric_entry(
+            entry_id=f"bgp_oper_state_{safe_peer}",
+            metric_name="bgp_oper_state",
+            value=_BGP_DOWN_OPER,
+            labels=base_labels,
+            while_clause=while_clause,
+            delay_clause=delay_clause,
+        ),
+        _gated_metric_entry(
+            entry_id=f"bgp_neighbor_state_{safe_peer}",
+            metric_name="bgp_neighbor_state",
+            value=_BGP_DOWN_NEIGHBOR,
+            labels=base_labels,
+            while_clause=while_clause,
+            delay_clause=delay_clause,
+        ),
+    ]
+    for metric in _BGP_PREFIX_METRICS:
+        entries.append(
+            _gated_metric_entry(
+                entry_id=f"{metric}_{safe_peer}",
+                metric_name=metric,
+                value=_BGP_DOWN_PREFIXES,
+                labels=base_labels,
+                while_clause=while_clause,
+                delay_clause=delay_clause,
+            )
+        )
+    return entries
+
+
+def _gated_metric_entry(
+    *,
+    entry_id: str,
+    metric_name: str,
+    value: float,
+    labels: dict[str, str],
+    while_clause: dict[str, Any],
+    delay_clause: dict[str, str],
+) -> dict[str, Any]:
+    return {
+        "id": entry_id,
+        "signal_type": "metrics",
+        "name": metric_name,
+        "generator": {"type": "constant", "value": value},
+        "while": while_clause,
+        "delay": delay_clause,
+        "labels": labels,
+    }
+
+
+def _gated_updown_log_entry(
+    *,
+    interface: str,
+    upstream_id: str,
+    cascade_delay: str,
+    loki_url: str,
+) -> dict[str, Any]:
+    return {
+        "id": "updown_logs_down",
+        "signal_type": "logs",
+        "name": "updown_logs_down",
+        "rate": 0.5,
+        "while": {"ref": upstream_id, "op": "<", "value": 1},
+        "delay": {"open": cascade_delay, "close": "0s"},
+        "labels": {
+            "type": "srlinux",
+            "vendor_facility": "srlinux",
+            "vendor_facility_process": "UPDOWN",
+            "interface": interface,
+            "interface_status": "down",
+        },
+        "log_generator": {
+            "type": "template",
+            "templates": [
+                {"message": f"Interface {interface} changed state to down"},
+            ],
+            "severity_weights": {"warning": 1.0},
+        },
+        "encoder": {"type": "json_lines"},
+        "sink": {"type": "loki", "url": loki_url},
+    }
+
+
+def _entry_only_bgp_labels(device: str, peer: Peer) -> dict[str, str]:
+    """Per-peer labels that should land on the entry, not in defaults."""
+    full = bgp_labels(device, peer.address, peer.asn)
+    # `device`, `pipeline`, `collection_type`, `source` come from defaults.labels.
+    # Strip them so the entry only carries per-peer specifics.
+    inherited = {"device", "pipeline", "collection_type", "source"}
+    return {k: v for k, v in full.items() if k not in inherited}
+
+
+def _flatten_created(payload: dict) -> list[dict]:
+    if isinstance(payload.get("scenarios"), list):
+        return list(payload["scenarios"])
+    if "id" in payload:
+        return [payload]
+    return []
+
+
+def _follow_until_done(sonda_url: str, ids: list[str], headers: dict[str, str]) -> None:
+    base = sonda_url.rstrip("/")
+    pending = set(ids)
+    while pending:
+        time.sleep(5)
+        for sid in list(pending):
+            try:
+                r = requests.get(f"{base}/scenarios/{sid}", headers=headers, timeout=5)
+                r.raise_for_status()
+            except requests.RequestException as exc:
+                console.print(f"  [yellow]poll error on {sid}: {exc}[/]")
+                continue
+            doc = r.json()
+            state = doc.get("state", "unknown")
+            console.print(f"  {sid[:8]} state={state}")
+            if state == "finished":
+                pending.discard(sid)

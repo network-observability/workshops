@@ -1,0 +1,189 @@
+# AutoCon5 BGP cascade — declarative `while:` gating on an interface flap.
+#
+# Reference target: srl1 ethernet-1/1 ↔ peer 10.1.2.2 (ASN 65102). When
+# the workshop CLI is invoked with a different device/interface,
+# `flap.py` rebuilds the body in memory using `flap_topology.peers_for()`.
+#
+# Pipeline:
+#   primary_flap (interface_oper_state: flap 1.0/0.0)
+#     └─ while < 1, delay open=10s close=0s ─► BGP per-peer metrics + UPDOWN logs
+#
+# Phase C restore is automatic: when `primary_flap` returns to 1.0 the
+# gate closes, the BGP entries pause, and the continuous emitters in
+# srl1-metrics.yaml resume publishing the established-state values via
+# Prometheus' latest-sample-wins.
+---
+version: 2
+
+scenario_name: autocon5-cascade-incident
+category: network
+description: "AutoCon5 BGP cascade — declarative while: gating on interface flap."
+
+defaults:
+  rate: 1
+  duration: 4m
+  encoder:
+    type: remote_write
+  sink:
+    type: remote_write
+    url: "${PROMETHEUS_REMOTE_WRITE_URL:-http://prometheus:9090/api/v1/write}"
+  labels:
+    device: srl1
+    pipeline: direct
+    collection_type: gnmi
+    source: workshop-cascade
+
+scenarios:
+  - id: primary_flap
+    signal_type: metrics
+    name: interface_oper_state
+    generator:
+      type: flap
+      up_duration: 30s
+      down_duration: 60s
+    labels:
+      name: ethernet-1/1
+      intf_role: peer
+
+  - id: bgp_oper_state_down
+    signal_type: metrics
+    name: bgp_oper_state
+    generator:
+      type: constant
+      value: 2.0
+    while:
+      ref: primary_flap
+      op: "<"
+      value: 1
+    delay:
+      open: 10s
+      close: 0s
+    labels:
+      peer_address: "10.1.2.2"
+      neighbor_asn: "65102"
+      name: default
+      afi_safi_name: ipv4-unicast
+
+  - id: bgp_neighbor_state_down
+    signal_type: metrics
+    name: bgp_neighbor_state
+    generator:
+      type: constant
+      value: 1.0
+    while:
+      ref: primary_flap
+      op: "<"
+      value: 1
+    delay:
+      open: 10s
+      close: 0s
+    labels:
+      peer_address: "10.1.2.2"
+      neighbor_asn: "65102"
+      name: default
+      afi_safi_name: ipv4-unicast
+
+  - id: bgp_prefixes_accepted_down
+    signal_type: metrics
+    name: bgp_prefixes_accepted
+    generator:
+      type: constant
+      value: 0.0
+    while:
+      ref: primary_flap
+      op: "<"
+      value: 1
+    delay:
+      open: 10s
+      close: 0s
+    labels:
+      peer_address: "10.1.2.2"
+      neighbor_asn: "65102"
+      name: default
+      afi_safi_name: ipv4-unicast
+
+  - id: bgp_received_routes_down
+    signal_type: metrics
+    name: bgp_received_routes
+    generator:
+      type: constant
+      value: 0.0
+    while:
+      ref: primary_flap
+      op: "<"
+      value: 1
+    delay:
+      open: 10s
+      close: 0s
+    labels:
+      peer_address: "10.1.2.2"
+      neighbor_asn: "65102"
+      name: default
+      afi_safi_name: ipv4-unicast
+
+  - id: bgp_sent_routes_down
+    signal_type: metrics
+    name: bgp_sent_routes
+    generator:
+      type: constant
+      value: 0.0
+    while:
+      ref: primary_flap
+      op: "<"
+      value: 1
+    delay:
+      open: 10s
+      close: 0s
+    labels:
+      peer_address: "10.1.2.2"
+      neighbor_asn: "65102"
+      name: default
+      afi_safi_name: ipv4-unicast
+
+  - id: bgp_active_routes_down
+    signal_type: metrics
+    name: bgp_active_routes
+    generator:
+      type: constant
+      value: 0.0
+    while:
+      ref: primary_flap
+      op: "<"
+      value: 1
+    delay:
+      open: 10s
+      close: 0s
+    labels:
+      peer_address: "10.1.2.2"
+      neighbor_asn: "65102"
+      name: default
+      afi_safi_name: ipv4-unicast
+
+  - id: updown_logs_down
+    signal_type: logs
+    name: updown_logs_down
+    rate: 0.5
+    while:
+      ref: primary_flap
+      op: "<"
+      value: 1
+    delay:
+      open: 10s
+      close: 0s
+    labels:
+      type: srlinux
+      vendor_facility: srlinux
+      vendor_facility_process: UPDOWN
+      interface: ethernet-1/1
+      interface_status: down
+    log_generator:
+      type: template
+      templates:
+        - message: "Interface ethernet-1/1 changed state to down"
+      severity_weights:
+        warning: 1.0
+    encoder:
+      type: json_lines
+    sink:
+      type: loki
+      url: "${LOKI_URL:-http://loki:3001}"
