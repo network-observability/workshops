@@ -161,9 +161,9 @@ def flap_interface(
     table = Table(show_header=True, header_style="bold")
     table.add_column("id")
     table.add_column("name")
-    table.add_column("status")
+    table.add_column("state")
     for item in created:
-        table.add_row(item.get("id", ""), item.get("name", ""), item.get("status", ""))
+        table.add_row(item.get("id", ""), item.get("name", ""), item.get("state", ""))
     console.print(table)
 
     for w in payload.get("warnings", []) or []:
@@ -384,7 +384,7 @@ def _follow_until_done(sonda_url: str, ids: list[str], headers: dict[str, str]) 
                 console.print(f"  [yellow]poll error on {sid}: {exc}[/]")
                 continue
             doc = r.json()
-            status = doc.get("status", "unknown")
-            console.print(f"  {sid[:8]} status={status}")
-            if status == "finished":
+            state = doc.get("state", "unknown")
+            console.print(f"  {sid[:8]} state={state}")
+            if state == "finished":
                 pending.discard(sid)
