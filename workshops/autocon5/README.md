@@ -140,6 +140,12 @@ Every decision is annotated back into Loki for the audit trail.
 The telemetry shape (metric names, labels, log streams) is real — sonda emits the same patterns a Nokia SR Linux device would.
 That's why the queries, dashboards, and alerts you build look exactly like what you'd write against a production network.
 
+## Driving the BGP cascade (`flap-interface`)
+
+`nobs autocon5 flap-interface` posts a single declarative cascade scenario to sonda's `/scenarios` endpoint. The interface flap drives `interface_oper_state` between 1.0 (up) and 0.0 (down); the BGP per-peer metrics and a UPDOWN log stream are gated by a `while: { ref: primary_flap, op: "<", value: 1 }` clause with `delay.open: 10s` (the BGP hold-down). When the gate closes, the lab's continuous emitters in `sonda/scenarios/srl1-metrics.yaml` resume publishing the established-state baseline and Prometheus' latest-sample-wins recovers the dashboards automatically — no imperative restore phase. The static reference YAML for the default demo target (`srl1:ethernet-1/1`, peer `10.1.2.2`) lives at [`sonda/scenarios/cascade-incident.yaml`](sonda/scenarios/cascade-incident.yaml); the CLI rebuilds the body in memory whenever a different `--device`/`--interface` is requested.
+
+Two semantic shifts from the previous imperative cascade are worth flagging. The UPDOWN log stream now emits at a steady cadence during the down window (~30 events across a 60s default down phase) instead of one log per state transition — the alert query (`count_over_time UPDOWN > 3 in 2m`) still fires, but the per-line content is a single down-state template rather than alternating up/down events. And counter-zeroing for `interface_in_octets` / `interface_out_octets` is intentionally out of scope here; sonda v2's `gated_by:` clause will replace it once it lands. The legacy `--count`, `--delay`, and `--restored-prefixes` flags are gone — the YAML structure encodes those parameters declaratively.
+
 ## Part 1 — Network telemetry and queries
 
 PromQL and LogQL against the running stack. You'll discover the metric schema, find the deliberately broken BGP peer with a single intent-vs-reality query, and correlate metrics to logs to explain *why* a session is down. By the end you'll be comfortable enough in the query bar to read any dashboard in this workshop.
