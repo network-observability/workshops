@@ -114,13 +114,21 @@ def main() -> int:
     # In-process triggers — call the workshop's command functions directly
     # rather than re-spawning `nobs`. Both functions are Typer-decorated but
     # callable as plain Python with explicit kwargs.
-    print("Layer A — flap-interface (in-process)", flush=True)
+    print("Layer A — flap-interface (in-process, --no-cascade)", flush=True)
     from autocon5_workshop.flap import flap_interface
     flap_interface(
-        device="srl1", interface="ethernet-1/1", count=6, delay=0.5,
+        device="srl1", interface="ethernet-1/1",
+        no_cascade=True,
+        duration="30s", up_duration="3s", down_duration="3s",
+        cascade_delay="10s",
         sonda_url=os.environ.get("SONDA_SERVER_URL", "http://localhost:8085"),
+        prom_url=os.environ.get(
+            "SONDA_PROM_REMOTE_WRITE_URL",
+            "http://prometheus:9090/api/v1/write",
+        ),
         loki_url=os.environ.get("SONDA_LOKI_SINK_URL", "http://loki:3001"),
         api_key=os.environ.get("SONDA_API_KEY", ""),
+        follow=False,
     )
 
     print("Layer A — maintenance toggle (in-process)", flush=True)
