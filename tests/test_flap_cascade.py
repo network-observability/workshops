@@ -40,6 +40,7 @@ def test_cascade_has_primary_flap_and_one_log_entry(two_peers: list[Peer]) -> No
         "type": "flap",
         "up_duration": "30s",
         "down_duration": "60s",
+        "enum": "oper_state",
     }
     assert "while" not in primary
     assert "delay" not in primary
@@ -88,7 +89,7 @@ def test_gated_entries_carry_while_and_delay_clauses(two_peers: list[Peer]) -> N
     gated = [e for e in body["scenarios"] if e["id"] != "primary_flap"]
     assert gated, "expected at least one gated entry"
     for entry in gated:
-        assert entry["while"] == {"ref": "primary_flap", "op": "<", "value": 1}
+        assert entry["while"] == {"ref": "primary_flap", "op": ">", "value": 1}
         assert entry["delay"] == {"open": "10s", "close": "0s"}
 
 

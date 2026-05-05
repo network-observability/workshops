@@ -5,13 +5,14 @@
 # `flap.py` rebuilds the body in memory using `flap_topology.peers_for()`.
 #
 # Pipeline:
-#   primary_flap (interface_oper_state: flap 1.0/0.0)
-#     └─ while < 1, delay open=10s close=0s ─► BGP per-peer metrics + UPDOWN logs
+#   primary_flap (interface_oper_state via `enum: oper_state` — UP=1, DOWN=2)
+#     └─ while > 1, delay open=10s close=0s ─► BGP per-peer metrics + UPDOWN logs
 #
-# Phase C restore is automatic: when `primary_flap` returns to 1.0 the
-# gate closes, the BGP entries pause, and the continuous emitters in
-# srl1-metrics.yaml resume publishing the established-state values via
-# Prometheus' latest-sample-wins.
+# Restore is automatic on gate close: sonda emits Prometheus stale markers
+# for the gated series (default behavior on `remote_write` sinks since
+# v1.6), so `BgpSessionNotUp` resolves on the next scrape cycle and the
+# baseline emitters in `srl1-metrics.yaml` keep publishing established-state
+# values through the whole run.
 ---
 version: 2
 
@@ -41,6 +42,7 @@ scenarios:
       type: flap
       up_duration: 30s
       down_duration: 60s
+      enum: oper_state
     labels:
       name: ethernet-1/1
       intf_role: peer
@@ -53,7 +55,7 @@ scenarios:
       value: 2.0
     while:
       ref: primary_flap
-      op: "<"
+      op: ">"
       value: 1
     delay:
       open: 10s
@@ -72,7 +74,7 @@ scenarios:
       value: 1.0
     while:
       ref: primary_flap
-      op: "<"
+      op: ">"
       value: 1
     delay:
       open: 10s
@@ -91,7 +93,7 @@ scenarios:
       value: 0.0
     while:
       ref: primary_flap
-      op: "<"
+      op: ">"
       value: 1
     delay:
       open: 10s
@@ -110,7 +112,7 @@ scenarios:
       value: 0.0
     while:
       ref: primary_flap
-      op: "<"
+      op: ">"
       value: 1
     delay:
       open: 10s
@@ -129,7 +131,7 @@ scenarios:
       value: 0.0
     while:
       ref: primary_flap
-      op: "<"
+      op: ">"
       value: 1
     delay:
       open: 10s
@@ -148,7 +150,7 @@ scenarios:
       value: 0.0
     while:
       ref: primary_flap
-      op: "<"
+      op: ">"
       value: 1
     delay:
       open: 10s
@@ -165,7 +167,7 @@ scenarios:
     rate: 0.5
     while:
       ref: primary_flap
-      op: "<"
+      op: ">"
       value: 1
     delay:
       open: 10s

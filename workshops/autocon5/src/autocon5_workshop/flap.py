@@ -71,6 +71,15 @@ def flap_interface(
             "(maps to delay.open on the gated entries).",
         ),
     ] = "10s",
+    no_cascade: Annotated[
+        bool,
+        typer.Option(
+            "--no-cascade",
+            help="Skip the BGP cascade — emit the interface flap and UPDOWN "
+            "log stream only. Use to trip PeerInterfaceFlapping without "
+            "bringing BGP down.",
+        ),
+    ] = False,
     sonda_url: Annotated[
         str,
         typer.Option(
@@ -113,8 +122,8 @@ def flap_interface(
     ] = False,
 ) -> None:
     """Register a declarative BGP cascade scenario via `POST /scenarios`."""
-    peers = peers_for(device, interface)
-    if not peers:
+    peers = [] if no_cascade else peers_for(device, interface)
+    if not peers and not no_cascade:
         warn(f"no BGP peers mapped to {device}:{interface}; running interface flap only.")
 
     body = _build_cascade(
@@ -209,6 +218,7 @@ def _build_cascade(
                 "type": "flap",
                 "up_duration": up_duration,
                 "down_duration": down_duration,
+                "enum": "oper_state",
             },
             "labels": {
                 "name": interface,
@@ -265,7 +275,7 @@ def _gated_bgp_entries(
     cascade_delay: str,
 ) -> list[dict[str, Any]]:
     base_labels = _entry_only_bgp_labels(device, peer)
-    while_clause = {"ref": upstream_id, "op": "<", "value": 1}
+    while_clause = {"ref": upstream_id, "op": ">", "value": 1}
     delay_clause = {"open": cascade_delay, "close": "0s"}
     safe_peer = peer.address.replace(".", "_")
 
@@ -333,7 +343,7 @@ def _gated_updown_log_entry(
         "signal_type": "logs",
         "name": "updown_logs_down",
         "rate": 0.5,
-        "while": {"ref": upstream_id, "op": "<", "value": 1},
+        "while": {"ref": upstream_id, "op": ">", "value": 1},
         "delay": {"open": cascade_delay, "close": "0s"},
         "labels": {
             "type": "srlinux",
