@@ -45,13 +45,9 @@ def flap_interface(
         str,
         typer.Option(
             "--duration",
-            help="Bounded lifetime for every entry in the cascade (sonda duration "
-            "string). The default lands the cascade in an UP phase so gated "
-            "series go through their `running -> paused` close transition before "
-            "the scenario terminates — that's where sonda's stale-marker emit "
-            "fires for `remote_write` sinks.",
+            help="Bounded lifetime for every entry in the cascade (sonda duration string).",
         ),
-    ] = "2m",
+    ] = "4m",
     up_duration: Annotated[
         str,
         typer.Option(

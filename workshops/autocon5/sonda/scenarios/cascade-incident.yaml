@@ -22,7 +22,7 @@ description: "AutoCon5 BGP cascade — declarative while: gating on interface fl
 
 defaults:
   rate: 1
-  duration: 2m
+  duration: 4m
   encoder:
     type: remote_write
   sink:
