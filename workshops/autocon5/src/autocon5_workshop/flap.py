@@ -25,6 +25,16 @@ from autocon5_workshop.flap_topology import Peer, bgp_labels, interface_labels, 
 _BGP_DOWN_OPER = 2.0
 _BGP_DOWN_NEIGHBOR = 1.0
 _BGP_DOWN_PREFIXES = 0.0
+
+# `delay.close.snap_to` recovery values, matching the established-state
+# defaults in `sonda/packs/srlinux-gnmi-bgp.yaml`. On gate close sonda
+# writes one sample at this value before pausing, so the alert resolves
+# on the next scrape without depending on stale-NaN handling at the
+# receiver.
+_BGP_UP_OPER = 1.0
+_BGP_UP_NEIGHBOR = 1.0
+_BGP_UP_PREFIXES = 10.0
+
 _BGP_PREFIX_METRICS = (
     "bgp_prefixes_accepted",
     "bgp_received_routes",
@@ -276,7 +286,6 @@ def _gated_bgp_entries(
 ) -> list[dict[str, Any]]:
     base_labels = _entry_only_bgp_labels(device, peer)
     while_clause = {"ref": upstream_id, "op": ">", "value": 1}
-    delay_clause = {"open": cascade_delay, "close": "0s"}
     safe_peer = peer.address.replace(".", "_")
 
     entries: list[dict[str, Any]] = [
@@ -284,17 +293,19 @@ def _gated_bgp_entries(
             entry_id=f"bgp_oper_state_{safe_peer}",
             metric_name="bgp_oper_state",
             value=_BGP_DOWN_OPER,
+            snap_to=_BGP_UP_OPER,
             labels=base_labels,
             while_clause=while_clause,
-            delay_clause=delay_clause,
+            cascade_delay=cascade_delay,
         ),
         _gated_metric_entry(
             entry_id=f"bgp_neighbor_state_{safe_peer}",
             metric_name="bgp_neighbor_state",
             value=_BGP_DOWN_NEIGHBOR,
+            snap_to=_BGP_UP_NEIGHBOR,
             labels=base_labels,
             while_clause=while_clause,
-            delay_clause=delay_clause,
+            cascade_delay=cascade_delay,
         ),
     ]
     for metric in _BGP_PREFIX_METRICS:
@@ -303,9 +314,10 @@ def _gated_bgp_entries(
                 entry_id=f"{metric}_{safe_peer}",
                 metric_name=metric,
                 value=_BGP_DOWN_PREFIXES,
+                snap_to=_BGP_UP_PREFIXES,
                 labels=base_labels,
                 while_clause=while_clause,
-                delay_clause=delay_clause,
+                cascade_delay=cascade_delay,
             )
         )
     return entries
@@ -316,9 +328,10 @@ def _gated_metric_entry(
     entry_id: str,
     metric_name: str,
     value: float,
+    snap_to: float,
     labels: dict[str, str],
     while_clause: dict[str, Any],
-    delay_clause: dict[str, str],
+    cascade_delay: str,
 ) -> dict[str, Any]:
     return {
         "id": entry_id,
@@ -326,7 +339,10 @@ def _gated_metric_entry(
         "name": metric_name,
         "generator": {"type": "constant", "value": value},
         "while": while_clause,
-        "delay": delay_clause,
+        "delay": {
+            "open": cascade_delay,
+            "close": {"duration": "0s", "snap_to": snap_to},
+        },
         "labels": labels,
     }
 

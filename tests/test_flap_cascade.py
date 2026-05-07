@@ -90,7 +90,53 @@ def test_gated_entries_carry_while_and_delay_clauses(two_peers: list[Peer]) -> N
     assert gated, "expected at least one gated entry"
     for entry in gated:
         assert entry["while"] == {"ref": "primary_flap", "op": ">", "value": 1}
-        assert entry["delay"] == {"open": "10s", "close": "0s"}
+        assert entry["delay"]["open"] == "10s"
+
+
+def test_gated_bgp_entries_snap_to_established_baseline(two_peers: list[Peer]) -> None:
+    body = _build_cascade(
+        device="srl1",
+        interface="ethernet-1/1",
+        peers=two_peers,
+        duration="4m",
+        up_duration="30s",
+        down_duration="60s",
+        cascade_delay="10s",
+        prom_url="http://prom:9090/api/v1/write",
+        loki_url="http://loki:3001",
+    )
+    expected_snap_to = {
+        "bgp_oper_state": 1.0,
+        "bgp_neighbor_state": 1.0,
+        "bgp_prefixes_accepted": 10.0,
+        "bgp_received_routes": 10.0,
+        "bgp_sent_routes": 10.0,
+        "bgp_active_routes": 10.0,
+    }
+    bgp_entries = [
+        e for e in body["scenarios"] if e["name"].startswith("bgp_")
+    ]
+    assert bgp_entries, "expected at least one BGP entry"
+    for entry in bgp_entries:
+        close = entry["delay"]["close"]
+        assert close["duration"] == "0s"
+        assert close["snap_to"] == expected_snap_to[entry["name"]]
+
+
+def test_log_entry_keeps_bare_close_duration(two_peers: list[Peer]) -> None:
+    body = _build_cascade(
+        device="srl1",
+        interface="ethernet-1/1",
+        peers=two_peers,
+        duration="4m",
+        up_duration="30s",
+        down_duration="60s",
+        cascade_delay="10s",
+        prom_url="http://prom:9090/api/v1/write",
+        loki_url="http://loki:3001",
+    )
+    log_entry = next(e for e in body["scenarios"] if e["id"] == "updown_logs_down")
+    assert log_entry["delay"]["close"] == "0s"
 
 
 def test_no_peers_drops_bgp_entries_but_keeps_flap_and_log() -> None:
