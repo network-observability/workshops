@@ -14,7 +14,7 @@ Confirm the command is available:
 nobs autocon5 incident --help
 ```
 
-You should see options for `--device` and `--duration` (among others). If `incident` isn't a recognised subcommand, pull and re-run.
+You should see options for `--device`, `--primary-interface`, `--backup-interface`, `--duration`, and `--kind` (default `link-failover`). If `incident` isn't a recognised subcommand, pull and re-run.
 
 Reset to known-good baseline and confirm the stack is healthy. The investigation will leave the lab in a non-default state mid-flight (a cascade running, a device flagged in maintenance) so the reset matters more here than in the part guides:
 
@@ -53,7 +53,7 @@ First move from the couch: confirm the page is real and the alert is still firin
 nobs autocon5 alerts
 ```
 
-You should see `BgpSessionNotUp` for `srl1 ↔ 10.1.99.2` in the output. **Stop and notice.** This isn't an alert a cascade we just kicked off invented — it's the alert that's been firing since the lab booted, because the topology has a deliberately broken peer wired in. The page is real in lab terms. So: what do you do next?
+You should see `BgpSessionNotUp` with `srl1 → 10.1.99.2` in the **Device / target** column. **Stop and notice.** This isn't an alert a cascade we just kicked off invented — it's the alert that's been firing since the lab booted, because the topology has a deliberately broken peer wired in. The page is real in lab terms. So: what do you do next?
 
 ### Act 2 — Triage with PromQL and LogQL
 
@@ -77,7 +77,7 @@ Both should sit in normal range. **Conclusion:** the device is fine. This isn't 
 interface_oper_state{device="srl1"}
 ```
 
-Every interface should be UP (value 1). **Conclusion:** no interface fault. Whatever is going on, it isn't on the wire — the link to the broken peer's network is intact. This is BGP-only.
+Every interface should read UP (value `1` in the gNMI enum convention you saw in Part 1; `2` would be DOWN). **Conclusion:** no interface fault. Whatever is going on, it isn't on the wire — the link to the broken peer's network is intact. This is BGP-only.
 
 **Is the peer reachable at the BGP layer?** Check intent and reality on this specific peer:
 
@@ -106,10 +106,10 @@ You'll see BGP-related lines for that specific peer — fsm transitions, retry a
 While you were triaging, things escalated. A different problem started developing on the same device — the kind of cascade that starts with a flap and ends with customers complaining about latency. Time to drive it and read it as it unfolds:
 
 ```bash
-nobs autocon5 incident --device srl1 --duration 90s
+nobs autocon5 incident --device srl1
 ```
 
-The CLI returns immediately and prints three IDs. The cascade is now unfolding in the lab. Open the **Workshop Lab 2026** dashboard — you'll be running three queries against the `prometheus` datasource in Explore as the incident develops. The Workshop Home dashboard's **Recent events** feed is also reflecting it; switch tabs occasionally to keep both in view.
+The CLI returns immediately and prints three IDs (one per cascade stage). The cascade is now unfolding in the lab — three minutes of total runtime by default. Open the **Workshop Lab 2026** dashboard — you'll be running three queries against the `prometheus` datasource in Explore as the incident develops. The Workshop Home dashboard's **Recent events** feed is also reflecting it; switch tabs occasionally to keep both in view.
 
 **The first thing that catches your eye — primary degrading.** The interface starts flipping:
 
@@ -119,31 +119,33 @@ interface_oper_state{device="srl1", source="incident-cascade"}
 
 Switch to **Time series**. Within seconds you'll see the line flip between `1` (up) and `0` (down). Roughly 60s up, 30s down. An interface flap is the classic *something physical is wrong* signal — in a real network this is what makes you walk to the rack. The `source="incident-cascade"` label scopes the query to the signals this incident is emitting, leaving the lab's steady-state noise out of view.
 
+**Stop and notice.** The values are `0` and `1`, not the `1`/`2` gNMI-enum pair you saw in Parts 1–3. This cascade is a different shape of incident — generic up/down rather than the BGP-coupled interface story — so it emits with the simpler `0`/`1` scheme and the unique `source=incident-cascade` label. That's also why the existing `BgpSessionNotUp` alert doesn't trip on this incident: the alert rule matches on `bgp_oper_state`, and this cascade emits its own three signals, none of them `bgp_oper_state`. Different incidents, different signal shapes, different alerts. The label is the scoping handle that keeps them separable.
+
 **Did failover work?**
 
 ```promql
-incident_backup_link_utilization
+incident_backup_link_utilization{source="incident-cascade"}
 ```
 
-Empty for the first ~60 seconds — you'll see "no data" or a flat panel. Once the primary actually goes down for the first time, the metric appears and ramps from around 20% toward 85%.
+Empty for the first ~60 seconds — you'll see "no data" or a flat panel. Once the primary drops to `0` for the first time, the metric appears and ramps from around 20% toward 85% over the next two minutes.
 
 **Stop and notice.** The backup didn't start carrying traffic until the primary actually failed. That's failover working as intended. But notice the *direction* — utilisation is climbing past where the link is comfortable. This is the early-warning shape an experienced on-call reads as *we're going to have a latency problem in a couple of minutes if this doesn't recover*. The empty panel for the first minute isn't a query bug — backup-utilisation samples only start landing once the failover is real. Empty panels at the start of an incident are information, not bugs.
 
 **The symptom your customers feel — latency:**
 
 ```promql
-incident_latency_ms
+incident_latency_ms{source="incident-cascade"}
 ```
 
-Empty even longer. Only starts climbing once backup utilisation crosses ~70%. From there it ramps from ~5ms toward 150ms.
+Empty even longer. Only starts climbing once backup utilisation crosses ~70%. From there it ramps from ~5ms toward 150ms over three minutes.
 
 **Stop and notice.** By the time latency is the visible problem, the actual root cause — the primary uplink fault — happened minutes ago. This is why incident timelines matter. The latency spike is a *symptom*. The flapping interface was the *cause*. If your alert fires on latency, your runbook needs to walk back through the cascade to find the real failure. The cascade is the story; the metrics are the chapters. Operators read incidents this way every day.
 
-There's a wall-clock detail worth calling out. You passed `--duration 90s`, but the whole incident takes roughly three to three-and-a-half minutes end-to-end. Each phase has to wait for the previous one to escalate before it starts. Root cause leads symptoms by minutes — the duration you passed is per-phase, not the lifetime of the cascade.
+There's a wall-clock detail worth calling out. The default `--duration 3m` is the bounded lifetime of *each* signal in the cascade, not the total lifetime end-to-end. Each phase has to wait for the previous one to escalate before it starts (the flap has to drop, then backup has to saturate past 70%), so the cascade as a whole takes longer than three minutes to fully unfold. Root cause leads symptoms by minutes — that's the lesson, regardless of the wall-clock numbers.
 
 ### Act 4 — Build the dashboard for next time
 
-The cascade is still running. Dashboards are noisy, latency is climbing, and you've just realised something: nothing on this dashboard would have caught the *flap* before it cascaded. There's an alert rule that does (`PeerInterfaceFlapping` fires above 3 UPDOWN events in 2 minutes), but no panel making it visible. A real on-call would build it — right now, while the lessons are fresh.
+The cascade is still running. Dashboards are noisy, latency is climbing, and you've just realised something: there's an alert rule for interface flap (`PeerInterfaceFlapping` fires above 3 UPDOWN log events in 2 minutes), and Part 3's `flap-interface` cascade trips it routinely — but nothing on this dashboard makes the flap signature visible. The next time someone gets paged on a flap, they'll be staring at metrics panels with no view of the log evidence behind the alert. A real on-call would build that panel — right now, while the lessons are fresh.
 
 You're adding a **Flap rate** panel to **Workshop Lab 2026**, with thresholds that match the actual alert rule:
 
@@ -162,9 +164,15 @@ You're adding a **Flap rate** panel to **Workshop Lab 2026**, with thresholds th
 7. **Thresholds**: keep green at base, add **Orange** at `1`, add **Red** at `3`. Under **Graph styles** → **Show thresholds**, pick `As lines`. The panel now has a horizontal red line at 3 — a flap rate above it means the alert is firing.
 8. **Apply** to drop back to the dashboard, then **Save dashboard** (disk icon).
 
-Confirm the panel reacts to the still-running cascade. Set the dashboard's `Device` dropdown to `srl1`. The flap rate should be climbing on the interface the cascade is hitting; you should see the orange threshold line being crossed, and on a particularly noisy minute the red one too.
+Set the dashboard's `Device` dropdown to `srl1` and confirm the panel renders. You should see a baseline trickle of UPDOWN events from the lab's continuous emitters — well below the red threshold. The `incident` cascade you started in Act 3 is metrics-only (the three signals are `interface_oper_state`, `incident_backup_link_utilization`, `incident_latency_ms` — no log stream), so it won't move this panel; that's expected. To prove the panel reacts the way you want it to, run a one-off flap from a separate terminal:
 
-**Stop and notice.** Real on-call teams build dashboards in the wake of incidents, not before them. The panel you just added would have caught this incident's flap signature 30 seconds before the page fired in the first place. That's how dashboards earn their keep — they encode the lessons of yesterday's incidents. Six hours from now, when someone else gets paged on a similar shape, this panel will be on screen the moment they open the dashboard.
+```bash
+nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1 --no-cascade
+```
+
+Within a minute the line for `ethernet-1/1` should climb past the orange threshold, and on a noisy moment past the red one — exactly the shape `PeerInterfaceFlapping` fires on.
+
+**Stop and notice.** Real on-call teams build dashboards in the wake of incidents, not before them. The panel you just added makes the alert rule's log-derived condition visible — so the next time someone gets paged on `PeerInterfaceFlapping`, they have a panel that *is* the alert condition rather than guessing what tripped it. That's how dashboards earn their keep: they encode the lessons of yesterday's incidents. The threshold lines in the panel match the rule's predicate, so reading the panel and reading the rule give the same answer.
 
 ### Act 5 — Contain: silence the noise with maintenance
 
@@ -174,36 +182,27 @@ The cascade is still running and the dashboards are still on fire. You're going 
 nobs autocon5 maintenance --device srl1 --state
 ```
 
-Verify the alert flow's response now changes for this device:
+Verify the alert flow's response will now change for this device:
 
 ```bash
 nobs autocon5 alerts
 ```
 
-The `BgpSessionNotUp` row may still be in the firing list — what changes is the *response* path. The webhook flow now consults Infrahub on every alert payload, sees `srl1.maintenance=true`, and skips the automated action. Open Workshop Home, look at the **Recent events** feed: any new annotations from the flow about `srl1` should now read `skipped (maintenance)` instead of `quarantined`.
+The `BgpSessionNotUp` row is still in the firing list — that's expected. The alert isn't "fixed" by going into maintenance; what changes is the *response* path. The webhook flow consults Infrahub on every alert payload, sees `srl1.maintenance=true`, and decides `skip` (reason: `device under maintenance`) instead of `quarantine`. Open Workshop Home and look at the **Recent events** feed: the next time Alertmanager's webhook fires for this alert, the new annotation reads `skip` rather than `quarantine`. (If you don't want to wait for Alertmanager's `repeat_interval`, jump back to Part 3's `try-it` tour after this guide — Path 2 walks exactly this transition.)
 
 **Stop and notice.** Maintenance isn't a static config attribute on the device — it's a *containment primitive* the on-call uses live during an incident. Flipping the flag tells the automation "I'm in here; please don't fire automated actions while I'm working." The flow consults the source of truth at decision time, so the change has effect on the very next alert that arrives. This is what the workshop's source-of-truth integration was for.
 
 ### Act 6 — Fix and recover
 
-Time to simulate the fix landing. Stop the cascade mid-flight:
+Time to simulate the fix landing. Stop the cascade mid-flight — `nobs autocon5 reset` is the canonical way to clear in-flight cascade scenarios:
 
 ```bash
-for ID in $(curl -s http://localhost:8085/scenarios \
-  | jq -r '.scenarios[] | select(.name | startswith("incident_") or . == "interface_oper_state") | .id'); do
-  curl -s -X DELETE "http://localhost:8085/scenarios/$ID"
-done
+nobs autocon5 reset
 ```
 
-Watch the dashboards. Within ~30 seconds the cascade signals stop changing, the lab's continuous emitters take over, the panels drift back toward green. Latency drops on `incident_latency_ms`. `incident_backup_link_utilization` flatlines. The flap rate panel you just built falls back below the orange threshold line.
+Reset is idempotent — it deletes any cascade scenarios still running, expires workshop-related Alertmanager silences, and clears any device maintenance flags. Watch the dashboards. Within ~30 seconds the cascade signals stop changing, the lab's continuous emitters take over, the panels drift back toward green. Latency drops on `incident_latency_ms`. `incident_backup_link_utilization` flatlines.
 
-Clear the maintenance flag — the device is back in production:
-
-```bash
-nobs autocon5 maintenance --device srl1 --clear
-```
-
-Re-run `nobs autocon5 alerts`. The original `BgpSessionNotUp` is still firing — the deliberately broken peer hasn't been "fixed" because that's a configuration issue on the topology side, not what we just simulated. But the *response* path is back to default: the next alert payload routing through the flow will get the full deterministic policy treatment again.
+Note that `reset` already cleared the maintenance flag for `srl1` as part of returning the lab to known-good state. Re-run `nobs autocon5 alerts`: the original `BgpSessionNotUp` is still firing — the deliberately broken peer hasn't been "fixed" because that's a configuration issue on the topology side, not what we just simulated. But the *response* path is back to default: the next alert payload routing through the flow will get the full deterministic policy treatment again.
 
 **Stop and notice.** The dashboard goes green. Latency drops. The metrics tell the recovery story the same way they told the failure story — in causal order, with timing that matches what an operator's intuition would expect. Real fixes don't always look this clean — the lab's synthetic data lets us show recovery as a proper signal so you see the full arc, not just the degradation half.
 
@@ -237,7 +236,7 @@ Then re-read what you wrote.
 ## Stretch goals
 
 - **Drive the same investigation on srl2.** Re-run the cascade with `--device srl2`. Notice that the existing `BgpSessionNotUp` alert was for srl1's broken peer; on srl2 the broken peer is `10.1.11.1`. The triage decision tree from Act 2 works the same; only the device label changes. Confirm your runbook stub still applies — if it doesn't, either it was too device-specific or you've found a real shape difference worth writing down.
-- **Predict the customer-impact window.** Given the timing you observed (latency starts climbing around t=2 min, exceeds 100ms around t=3 min), at what point would a customer's response-time SLO break? Use the queries from Act 3 to back the answer with data, not feel.
+- **Predict the customer-impact window.** Given the timing you observed (backup utilisation crossing 70% around t=2½ min, latency ramping from there toward 150ms over the next three minutes), at what point would a customer's response-time SLO break? Use the queries from Act 3 to back the answer with data, not feel.
 - **Compare the investigation arc to the automated path.** Run `nobs autocon5 try-it` from Part 3 — it walks the four canonical alert paths automatically. Contrast: `try-it` is the automation handling routine cases without you. The investigation game you just walked is what you do when *automation isn't enough* — when you need to know what the workflow would have done, why, and whether to override it.
 
 ## What you took away
