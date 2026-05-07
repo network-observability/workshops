@@ -18,6 +18,9 @@ A sketch-level idea of "metrics database" and "log database" is enough. Part 1 b
 **What if I've never used Docker?**
 You need Docker installed and running, but you don't need to write a Dockerfile. If `docker ps` works on your laptop, you're set.
 
+**Why do I need `uv` installed?**
+We use [`uv`](https://docs.astral.sh/uv/) to install and run the workshop's `nobs` CLI — a thin wrapper that fronts every workshop command (`up`, `down`, `status`, `alerts`, `flap-interface`, and the rest). With `uv` set up the rest of the day flows through one-line commands instead of raw `docker compose` invocations.
+
 **What if my laptop is on Windows?**
 We recommend macOS or a Linux-based system — the workshop should run natively on Windows, but we haven't tested it there.
 
