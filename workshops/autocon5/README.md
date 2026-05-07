@@ -10,70 +10,31 @@ By lunchtime you'll have queried real-shaped telemetry, made a dashboard answer 
 ## FAQ
 
 **Do I need network engineering experience?**
-Helpful, not required.
-The workshop frames every concept (BGP peering, interface state, syslog UPDOWN events) before you query it.
-If you've ever been on the receiving end of a "the dashboard says it's fine but the user says it's broken" page, you'll get the point.
+Helpful, not required. Every concept (BGP peering, interface state, syslog UPDOWN events) is framed before you query it.
 
 **Do I need to know Prometheus, Loki, or Grafana already?**
-A sketch-level idea of "metrics database" and "log database" is enough.
-Part 1 builds PromQL and LogQL from first principles against live data, so you'll write queries from scratch rather than read pre-baked ones.
+A sketch-level idea of "metrics database" and "log database" is enough. Part 1 builds PromQL and LogQL from first principles against live data.
 
 **What if I've never used Docker?**
-You need Docker installed and running, but you don't need to write a Dockerfile.
-The whole stack is `docker compose up` underneath, wrapped by the `nobs` CLI.
-If `docker ps` works on your laptop, you're set.
+You need Docker installed and running, but you don't need to write a Dockerfile. If `docker ps` works on your laptop, you're set.
 
 **What if my laptop is on Windows?**
-Run everything inside WSL 2 with Docker Desktop's WSL backend enabled.
-Native Windows / PowerShell is not supported — paths and Compose volume semantics differ enough to bite you mid-workshop.
+We recommend macOS or a Linux-based system — the workshop should run natively on Windows, but we haven't tested it there.
 
 **How big is the stack?**
-Around 21 containers, ~5.5 GB of RAM at idle, and ~5 GB of disk for images and volumes. CPU sits at low single-digit percent at idle. Driving a cascade with `nobs autocon5 flap-interface` or `nobs autocon5 incident` briefly pushes the stack to roughly one fully-saturated CPU core (Grafana refreshing dashboards and Prefect running the alert flow account for most of the spike); memory doesn't move with cascade activity. The first `nobs autocon5 up` pulls 3–5 GB of images, which is the slow step. After that, `up` reuses cached images — pass `--build` (or run `nobs autocon5 restart`) when you've edited a Dockerfile or service code and want a rebuild.
+Around 21 containers, ~5.5 GB of RAM, and ~5 GB of disk. The first `nobs autocon5 up` pulls 3–5 GB of images — that's the slow step. After that, restarts are fast.
 
 **Can I run this offline?**
-Yes, once images are pulled.
-The only outbound calls during the workshop are the optional AI RCA step (which needs a provider key and internet) and any `docker pull` you trigger by changing image tags.
-If conference Wi-Fi melts, the lab keeps running.
+Yes, once images are pulled. The only outbound call during the workshop is the optional AI RCA step (needs a provider key and internet). If conference Wi-Fi melts, the lab keeps running.
 
 **Is anything sent to a remote service?**
-No, by default.
-All telemetry, alerts, and dashboards are local.
-The AI RCA step is opt-in (`ENABLE_AI_RCA=false` is the default) and only calls out to OpenAI or Anthropic if you set a key in `.env`.
-
-**Why two simulated devices instead of one?**
-`srl1` and `srl2` exercise two parallel telemetry pipelines so you can compare them side by side.
-`srl1` ships canonical metrics and logs straight to Prometheus and Loki.
-`srl2` ships raw vendor shapes through Telegraf (metrics) and Vector (syslog), which normalize them.
-Both converge on the same canonical schema, distinguishable by the `pipeline` label — see [`docs/data-pipelines.md`](docs/data-pipelines.md).
-
-**Why both Telegraf and Vector?**
-Different shipper for each signal type.
-Telegraf renames raw gNMI subscription paths into a canonical Prometheus schema; Vector decodes RFC 5424 syslog into Loki-shaped log events.
-Running both demonstrates the two patterns most production stacks end up using.
+No, by default. All telemetry, alerts, and dashboards are local. The AI RCA step is opt-in (`ENABLE_AI_RCA=false` by default) and only calls OpenAI or Anthropic if you set a key in `.env`.
 
 **Why simulated devices instead of real SR Linux containers?**
-Two reasons.
-A real SR Linux container needs 4–6 GB of RAM each, which would price most laptops out of a multi-device lab.
-And the workshop is about observability, not lab orchestration — sonda emits the exact gNMI metric shapes and syslog events a real SR Linux device would, so the PromQL and LogQL you write here is the same query you'd run against production.
-
-**Why Infrahub?**
-The Prefect quarantine flow needs to know intent before it acts — is this peer supposed to be up, is this device in maintenance.
-Infrahub is the source of truth that answers those questions.
-Without an SoT, the workflow can't tell signal from noise and every alert looks the same.
-
-**What does the AI RCA step actually do?**
-It takes the same evidence bundle the deterministic flow uses (metrics window, recent logs, intent from Infrahub) and asks an LLM for a narrative explanation.
-The output is annotated into Loki next to the deterministic policy decision, not in place of it.
-Human judgement still owns whether to act.
-
-**A panel says "No data". What now?**
-Check `nobs autocon5 status` first — if any row isn't `ok`, the data simply hasn't arrived yet.
-If everything's `ok` and a specific panel is empty, [`docs/troubleshooting.md`](docs/troubleshooting.md) has the recurring failure modes and exact recovery commands.
+Real SR Linux containers need 4–6 GB of RAM each, which would price most laptops out of a multi-device lab. Sonda emits the same gNMI metric shapes and syslog events a real device would, so the queries you write here are the same ones you'd run against production. If you want the full lab with real containers, the companion repo is [`network-observability-lab`](https://github.com/network-observability/network-observability-lab).
 
 **Can I keep using this after the workshop?**
-Yes — fork the repo and the stack is yours.
-Tweak scenarios, change the synthetic topology, point dashboards at your own metrics.
-[`docs/env-lifecycle.md`](docs/env-lifecycle.md) covers `.env` mechanics, and `nobs autocon5 destroy` cleanly tears the whole stack down (volumes included) when you're finished.
+Yes — fork the repo and the stack is yours. `nobs autocon5 destroy` cleanly tears it down when you're finished.
 
 ## Before you arrive
 
