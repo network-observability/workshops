@@ -105,25 +105,25 @@ That's why the queries, dashboards, and alerts you build look exactly like what 
 
 ## Driving the BGP cascade (`flap-interface`)
 
-`nobs autocon5 flap-interface` posts a single declarative cascade scenario to sonda's `/scenarios` endpoint. The interface flap drives `interface_oper_state` via the `enum: oper_state` shorthand on sonda's `flap` generator (UP=1, DOWN=2 — gNMI / openconfig convention); the BGP per-peer metrics and a UPDOWN log stream are gated by a `while: { ref: primary_flap, op: ">", value: 1 }` clause with `delay.open: 10s` (the BGP hold-down). When the gate closes, sonda emits a Prometheus stale marker for every gated series (default behavior on `remote_write` sinks since v1.6) so `BgpSessionNotUp` resolves on the next scrape cycle, and the baseline emitters in `sonda/scenarios/srl1-metrics.yaml` keep publishing established-state values throughout the run. The static reference YAML for the default demo target (`srl1:ethernet-1/1`, peer `10.1.2.2`) lives at [`sonda/scenarios/cascade-incident.yaml`](sonda/scenarios/cascade-incident.yaml); the CLI rebuilds the body in memory whenever a different `--device`/`--interface` is requested.
+`nobs autocon5 flap-interface` posts a single declarative cascade scenario to sonda's `/scenarios` endpoint. The interface flap drives `interface_oper_state` via the `enum: oper_state` shorthand on sonda's `flap` generator (UP=1, DOWN=2 — gNMI / openconfig convention); the BGP per-peer metrics and a UPDOWN log stream are gated by a `while: { ref: primary_flap, op: ">", value: 1 }` clause with `delay.open: 10s` (the BGP hold-down). When the gate closes, each gated entry writes one literal recovery sample via `delay.close.snap_to` (e.g. `bgp_oper_state=1`, prefix counters back to `10`), so dashboards snap green within seconds and `BgpSessionNotUp` resolves on the next scrape cycle. The default cascade runs for 4 minutes with 30s up / 60s down cycles. The static reference YAML for the default demo target (`srl1:ethernet-1/1`, peer `10.1.2.2`) lives at [`sonda/scenarios/cascade-incident.yaml`](sonda/scenarios/cascade-incident.yaml); the CLI rebuilds the body in memory whenever a different `--device`/`--interface` is requested.
 
-Pass `--no-cascade` to emit the interface flap and UPDOWN log stream alone (no BGP collapse) — useful for the Part 1 exercise that trips `PeerInterfaceFlapping` without bringing a session down. Two semantic shifts from the previous imperative cascade are worth flagging. The UPDOWN log stream now emits at a steady cadence during the down window (~30 events across a 60s default down phase) instead of one log per state transition — the alert query (`count_over_time UPDOWN > 3 in 2m`) still fires, but the per-line content is a single down-state template rather than alternating up/down events. And counter-zeroing for `interface_in_octets` / `interface_out_octets` is intentionally out of scope here; sonda v2's `gated_by:` clause will replace it once it lands. The legacy `--count`, `--delay`, and `--restored-prefixes` flags are gone — the YAML structure encodes those parameters declaratively.
+Pass `--no-cascade` to emit the interface flap and UPDOWN log stream alone (no BGP collapse) — useful for the Part 1 exercise that trips `PeerInterfaceFlapping` without bringing a session down. The UPDOWN log stream emits at a steady cadence during each down window (one line every two seconds, ~30 events across a 60s down phase) rather than one log per state transition — the alert query (`count_over_time UPDOWN > 3 in 2m`) still fires, but the per-line content is a single down-state template rather than alternating up/down events. Counters such as `interface_in_octets` / `interface_out_octets` keep their last-observed values during a flap; sonda's gated value coupling is not in scope today.
 
 ## Part 1 — Network telemetry and queries
 
-PromQL and LogQL against the running stack. You'll discover the metric schema, find the deliberately broken BGP peer with a single intent-vs-reality query, and correlate metrics to logs to explain *why* a session is down. By the end you'll be comfortable enough in the query bar to read any dashboard in this workshop.
+Morning of your first deep day on the on-call rotation. Your senior buddy walks you through the lab's telemetry shape — what "normal" looks like, where the broken things hide, how to bridge a metric anomaly to a log line that explains it. By the end you'll have a baseline you can compare every future triage against.
 
 Hands-on guide: [`guides/part-1-telemetry-and-queries.md`](guides/part-1-telemetry-and-queries.md).
 
 ## Part 2 — Dashboards
 
-Add one panel to the **Workshop Lab 2026** dashboard that answers a real operational question — *is this interface flapping right now?* You'll wire it to the `device` template variable, set thresholds that match the actual alert rule, then drive a flap from the CLI and watch the panel react in real time.
+Mid-morning — a post-mortem email lands. Last night's page lost ten minutes because a flap-rate panel didn't exist yet. You build it now, with thresholds matching the actual alert rule, while the team is still in the room.
 
 Hands-on guide: [`guides/part-2-dashboards.md`](guides/part-2-dashboards.md).
 
 ## Part 3 — Alerts, automation, AI-assisted ops
 
-Drive the four canonical alert paths by hand (mismatch → quarantine, healthy → skip, maintenance → skip, resolved → audit) and watch the Prefect workflow decide what to do with each. Then toggle the opt-in AI RCA step and compare its narrative against the deterministic policy on the same evidence bundle.
+Late morning, before lunch — a real alert lands while your senior narrates. Walk the four canonical paths the workflow handles, toggle the AI RCA step, and decide which paths you'd trust the LLM narrative on at 2am. As the lunch break lands your senior signs off and you're ready to take primary on the rotation tomorrow.
 
 Hands-on guide: [`guides/part-3-alerts-automation-ai.md`](guides/part-3-alerts-automation-ai.md).
 

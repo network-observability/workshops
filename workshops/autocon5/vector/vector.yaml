@@ -41,7 +41,7 @@ transforms:
       .type                    = string(sonda.type)                    ?? "srlinux"
       .interface               = string(sonda.interface)               ?? ""
       .interface_status        = string(sonda.interface_status)        ?? ""
-      .peer                    = string(sonda.peer)                    ?? ""
+      .peer_address            = string(sonda.peer_address)            ?? ""
       .netpanda                = string(sonda.netpanda)                ?? "bethepacket"
 
       .pipeline = "vector"
@@ -64,7 +64,7 @@ sinks:
       vendor_facility_process: "{{ vendor_facility_process }}"
       interface: "{{ interface }}"
       interface_status: "{{ interface_status }}"
-      peer: "{{ peer }}"
+      peer_address: "{{ peer_address }}"
       pipeline: "{{ pipeline }}"
     structured_metadata:
       netpanda: "{{ netpanda }}"

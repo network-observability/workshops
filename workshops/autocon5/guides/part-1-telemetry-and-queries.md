@@ -2,19 +2,24 @@
 
 ## What you'll do here
 
-Write PromQL and LogQL by hand against the running lab. You'll discover the metric schema, find the deliberately broken BGP peer with a single intent-vs-reality query, and correlate metrics to logs to explain *why* a session is down. By the end you'll know enough query syntax to read any dashboard in this workshop.
+It's Monday morning. You just rotated onto the on-call team for your company's network observability platform and today is your first deep day. You've got coffee. Your senior buddy is leaning on the desk next to you, laptop open. They're going to walk you through the lab over the next 75 minutes — what "normal" looks like, where the broken things hide, how to bridge from a metric anomaly to a log line that explains it. From tomorrow you'll be primary on the rotation, so today the goal is simple: build a baseline mental model of this network so every future triage has something to compare against.
+
+Write PromQL and LogQL by hand against the running lab. Discover the metric schema, find the deliberately broken BGP peer with a single intent-vs-reality query, and correlate metrics to logs to explain *why* a session is down. By the end you'll know enough query syntax to read any dashboard in this workshop.
 
 This part is the longest of the day on purpose — every later part depends on you being comfortable in the query bar.
 
 ## Setup check
 
-In a terminal, from the repo root:
+Your senior already has Grafana up on their screen. They've reset the lab to known-good baseline and confirmed every row says `ok`. Your turn.
+
+In a terminal:
 
 ```bash
+nobs autocon5 reset
 nobs autocon5 status
 ```
 
-Every row should report `ok`. If `prometheus`, `loki`, or `sonda` is anything else, flag it before continuing.
+`reset` is idempotent — it clears any leftover maintenance flags, expires any silences from a prior workshop run, removes any cascade scenarios still hanging around, and restarts the log shipper if it has gone quiet. Safe to run at the start of every part. `status` then confirms every row reports `ok`. If `prometheus`, `loki`, or `sonda` is anything else, flag it before continuing — your senior wants to know about a degraded stack before you lean on it.
 
 Open Grafana at <http://localhost:3000> (login `admin` / `admin` unless you changed `.env`). Click the compass icon in the left rail to open **Explore**. The datasource picker at the top is how you switch between Prometheus and Loki. You'll bounce between them throughout this part.
 
@@ -23,6 +28,8 @@ Open the **Workshop Home** dashboard once (`/d/workshop-home`) so you've seen th
 ## The exercises
 
 ### Metrics — PromQL
+
+> Your senior taps the screen. *"Pull up Explore. Before we touch anything else this morning, you need to know what's even talking to us right now. Start with the metric name everything in this lab keys off of."*
 
 #### 1. Discover what's in the lab
 
@@ -73,6 +80,8 @@ You should get exactly two rows:
 - `device=srl1, peer_address=10.1.99.2`
 - `device=srl2, peer_address=10.1.11.1`
 
+> Your senior leans in. *"You just found a peer that's been in mismatch for weeks. The team has a runbook entry for this — an alert that's been firing the whole time and nobody's owned. Welcome to on-call. We're not going to fix it today; we're going to learn from it. The shape of the query you just ran is the shape of the alert that's been paging the rotation."*
+
 **Stop and notice.** `and on (device, peer_address)` is the intent-vs-reality pattern. Left side: where admin says `enabled`. Right side: where operational state isn't `up`. Match them on the labels they share. This single query is the core of how the `BgpSessionNotUp` alert fires later in Part 3 — same intent-vs-reality, just with `for: 30s` wrapped around it.
 
 #### 4. Rate of change on a counter
@@ -103,13 +112,9 @@ The lab generates synthetic data on a schedule, but you can also drive events in
 nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1
 ```
 
-A single invocation cascades through three signals over ~46 seconds:
+One invocation posts a single declarative cascade scenario to sonda. Sonda's runtime drives the rest. By default the scenario runs for 4 minutes, walking through cycles of 30 seconds up, then 60 seconds down. While the interface is down, BGP follows: `bgp_oper_state` drops to `2`, `bgp_neighbor_state` drops to `1` (idle), and the prefix counters (`bgp_prefixes_accepted`, `bgp_received_routes`, `bgp_sent_routes`, `bgp_active_routes`) drop to `0`. There's a 10-second hold-down between the interface going down and BGP collapsing — real interface flaps don't take BGP down instantly, and the cascade reflects that.
 
-1. **Phase A (~6s)**: 6 UPDOWN log events paired with `interface_oper_state` metric flips (1↔2), ending on `up`.
-2. **Phase B** (after a 10s hold-down): for the BGP peer attached to that interface, `bgp_oper_state` drops to `2`, `bgp_neighbor_state` drops to `1` (idle), and the prefix counters (`bgp_prefixes_accepted`, `bgp_received_routes`, `bgp_sent_routes`, `bgp_active_routes`) zero out. Sustained for 30 seconds by default.
-3. **Phase C**: BGP restored to established and prefix counters back to a nominal value, so the dashboard recovers when the lab's continuous generator resumes.
-
-The 10-second hold-down is deliberate. Real interface flaps don't take BGP down instantly — there's a damping window. The cascade reflects that.
+When the interface comes back up, BGP restores automatically: each gated metric writes one recovery sample (`bgp_oper_state=1`, prefix counters back to `10`, etc.), so dashboards snap green within seconds of the gate closing. You don't have to wait for a separate restore phase — it's built into the cascade.
 
 If you only want the log + metric flap (no BGP cascade), pass `--no-cascade`. That's the right knob for "I just want to trip `PeerInterfaceFlapping` four times in two minutes" exercises.
 
@@ -129,10 +134,10 @@ bgp_prefixes_accepted{device="srl1", peer_address="10.1.2.2"}
 
 Switch all three to `Time series` view. Run `flap-interface` and watch each one in turn:
 
-- The interface metric flips between `1` and `2` during Phase A, then settles at `1`.
-- After ~10 seconds, `bgp_oper_state` drops from `1` to `2`. Stays there for 30 seconds.
-- At the same time, prefix counters drop to `0`.
-- ~30 seconds later, both restore.
+- The interface metric flips between `1` (up) and `2` (down) on the 30s-up / 60s-down cadence.
+- About 10 seconds after the interface drops, `bgp_oper_state` follows from `1` down to `2`. It stays there until the interface comes back up.
+- Prefix counters drop to `0` on the same beat as `bgp_oper_state`.
+- The moment the interface returns to up, every gated series snaps back: `bgp_oper_state` goes to `1`, prefix counters go to `10`. Dashboards go green within seconds.
 
 Then briefly switch one tab to the `loki` datasource:
 
@@ -142,7 +147,7 @@ Then briefly switch one tab to the `loki` datasource:
 
 The log lines that drove the metric flip are right there with the same timestamps. Same labels, same correlation pattern you'll lean on heavily later in the bridge exercise.
 
-**Stop and notice.** One CLI command, three signals reacting in causal order. Synthetic data with real shapes — and you can drive it. The query bar reacts to lab state in real time, no batch refresh, no caching layer hiding your changes. The shape of this cascade — interface degrades → BGP follows → prefixes drop — is what real outages look like in your network. Memorise the shape; it generalises.
+**Stop and notice.** One CLI command, multiple signals reacting in causal order, and a clean recovery beat when the gate closes. Synthetic data with real shapes — and you can drive it. The query bar reacts to lab state in real time, no batch refresh, no caching layer hiding your changes. The shape of this cascade — interface degrades → BGP follows → prefixes drop → interface recovers → BGP snaps back — is what real outages and recoveries look like in your network. Memorise the shape; it generalises.
 
 #### 6. Pipeline awareness — metrics normalization
 
@@ -173,7 +178,21 @@ Returns rows for *both* devices, *both* pipelines. A dashboard panel querying `b
 
 **Stop and notice.** The `pipeline` label is for inspecting the normalization itself: *"which path did this sample take, is that path healthy?"* It's not for branching your query logic. If you write `bgp_oper_state{pipeline="direct"}` into a dashboard, you've narrowed to one path — useful for debugging that path, but you'll miss every device whose data flows through any other pipeline. Default to pipeline-agnostic queries; reach for the `pipeline` label when you're debugging the normalization, not the network.
 
+#### Your turn — find the busiest interface
+
+> Your senior leans back. *"You've got the basic queries. Now answer one yourself, no scaffolding: which interface is moving the most bytes per second right now, across the whole lab? Get me the answer in one PromQL line."*
+
+This is the first unguided exercise. No copy-paste. The metric you need is `interface_in_octets` (or `interface_out_octets`), the operator that turns a counter into a rate is `rate()`, and the function that picks the top N results is `topk()`. Compose them.
+
+Take a minute on it before you scroll. Two quick hints if you're stuck:
+- Counters need `rate()` over a window (Exercise 4).
+- `topk(N, expression)` returns the N highest-valued series.
+
+You should be able to land an answer with a single query that returns one or two rows. If you get more than that, narrow further — your senior won't want a list of every interface, they want the one that matters.
+
 ### Logs — LogQL
+
+> Your senior pushes back from the desk. *"OK, you've got a sense of the metric shape. Now: when something looks wrong in metrics, you need to find a log line that explains it. Logs are where the why lives. Same lab, different query language. Switch the datasource."*
 
 Switch the Explore datasource to `loki`.
 
@@ -259,6 +278,8 @@ You should see streams from both devices. The `device`, `vendor_facility_process
 
 ### The bridge — metric to log
 
+> Your senior looks over. *"This is the move that pays off most often under pressure. Find the broken thing in metrics, then jump to logs with the same labels and read the why. If you only remember one thing from this morning, remember this."*
+
 #### 12. Why is the peer down?
 
 This is the payoff exercise. Use the broken-peer query from #3 to find a mismatched peer, then jump to logs to find out *why*.
@@ -294,6 +315,7 @@ You'll see BGP-related lines for that specific peer. Add a filter to narrow:
 
 ## What you took away
 
+- You now know what "normal" looks like in this network. That baseline is what every triage in your future is going to compare against.
 - Every metric is `name + labels + value`. Aggregations collapse labels you don't list.
 - Counters need `rate()`. The window inside the brackets controls smoothness.
 - Intent-vs-reality is two clauses joined by `and on (...)` — the workshop's broken peers are caught by exactly that shape.
