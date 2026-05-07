@@ -53,8 +53,7 @@ Resolve any `[FAIL]` lines before the workshop.
 You also need:
 
 - **Docker** (or Docker Desktop / Colima / Rancher Desktop) with **Compose v2**.
-  On Windows, run everything inside **WSL 2**.
-- **[uv](https://docs.astral.sh/uv/)** for the workshop's Python helpers (Infrahub loader, maintenance toggle).
+- **[uv](https://docs.astral.sh/uv/)** to install and run the workshop's `nobs` CLI.
   Install with `curl -LsSf https://astral.sh/uv/install.sh | sh`.
   uv installs its own pinned Python, so a system Python isn't required.
 - ~8 GB of free RAM and ~5 GB of free disk while the stack is running
