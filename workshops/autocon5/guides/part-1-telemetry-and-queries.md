@@ -112,13 +112,9 @@ The lab generates synthetic data on a schedule, but you can also drive events in
 nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1
 ```
 
-A single invocation cascades through three signals over ~46 seconds:
+One invocation posts a single declarative cascade scenario to sonda. Sonda's runtime drives the rest. By default the scenario runs for 4 minutes, walking through cycles of 30 seconds up, then 60 seconds down. While the interface is down, BGP follows: `bgp_oper_state` drops to `2`, `bgp_neighbor_state` drops to `1` (idle), and the prefix counters (`bgp_prefixes_accepted`, `bgp_received_routes`, `bgp_sent_routes`, `bgp_active_routes`) drop to `0`. There's a 10-second hold-down between the interface going down and BGP collapsing — real interface flaps don't take BGP down instantly, and the cascade reflects that.
 
-1. **Phase A (~6s)**: 6 UPDOWN log events paired with `interface_oper_state` metric flips (1↔2), ending on `up`.
-2. **Phase B** (after a 10s hold-down): for the BGP peer attached to that interface, `bgp_oper_state` drops to `2`, `bgp_neighbor_state` drops to `1` (idle), and the prefix counters (`bgp_prefixes_accepted`, `bgp_received_routes`, `bgp_sent_routes`, `bgp_active_routes`) zero out. Sustained for 30 seconds by default.
-3. **Phase C**: BGP restored to established and prefix counters back to a nominal value, so the dashboard recovers when the lab's continuous generator resumes.
-
-The 10-second hold-down is deliberate. Real interface flaps don't take BGP down instantly — there's a damping window. The cascade reflects that.
+When the interface comes back up, BGP restores automatically: each gated metric writes one recovery sample (`bgp_oper_state=1`, prefix counters back to `10`, etc.), so dashboards snap green within seconds of the gate closing. You don't have to wait for a separate restore phase — it's built into the cascade.
 
 If you only want the log + metric flap (no BGP cascade), pass `--no-cascade`. That's the right knob for "I just want to trip `PeerInterfaceFlapping` four times in two minutes" exercises.
 
@@ -138,10 +134,10 @@ bgp_prefixes_accepted{device="srl1", peer_address="10.1.2.2"}
 
 Switch all three to `Time series` view. Run `flap-interface` and watch each one in turn:
 
-- The interface metric flips between `1` and `2` during Phase A, then settles at `1`.
-- After ~10 seconds, `bgp_oper_state` drops from `1` to `2`. Stays there for 30 seconds.
-- At the same time, prefix counters drop to `0`.
-- ~30 seconds later, both restore.
+- The interface metric flips between `1` (up) and `2` (down) on the 30s-up / 60s-down cadence.
+- About 10 seconds after the interface drops, `bgp_oper_state` follows from `1` down to `2`. It stays there until the interface comes back up.
+- Prefix counters drop to `0` on the same beat as `bgp_oper_state`.
+- The moment the interface returns to up, every gated series snaps back: `bgp_oper_state` goes to `1`, prefix counters go to `10`. Dashboards go green within seconds.
 
 Then briefly switch one tab to the `loki` datasource:
 
@@ -151,7 +147,7 @@ Then briefly switch one tab to the `loki` datasource:
 
 The log lines that drove the metric flip are right there with the same timestamps. Same labels, same correlation pattern you'll lean on heavily later in the bridge exercise.
 
-**Stop and notice.** One CLI command, three signals reacting in causal order. Synthetic data with real shapes — and you can drive it. The query bar reacts to lab state in real time, no batch refresh, no caching layer hiding your changes. The shape of this cascade — interface degrades → BGP follows → prefixes drop — is what real outages look like in your network. Memorise the shape; it generalises.
+**Stop and notice.** One CLI command, multiple signals reacting in causal order, and a clean recovery beat when the gate closes. Synthetic data with real shapes — and you can drive it. The query bar reacts to lab state in real time, no batch refresh, no caching layer hiding your changes. The shape of this cascade — interface degrades → BGP follows → prefixes drop → interface recovers → BGP snaps back — is what real outages and recoveries look like in your network. Memorise the shape; it generalises.
 
 #### 6. Pipeline awareness — metrics normalization
 

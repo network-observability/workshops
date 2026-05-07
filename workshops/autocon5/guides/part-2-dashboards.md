@@ -110,7 +110,7 @@ In a terminal:
 nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1
 ```
 
-The default count is 6 events in ~6 seconds. Switch the dashboard's `Device` dropdown to `srl1` if you aren't already there. Within ~30 seconds the new panel should show a spike on `interface=ethernet-1/1` crossing the orange and red threshold lines.
+This kicks off a 4-minute cascade with the interface cycling 30s up, 60s down. UPDOWN log lines emit at a steady cadence (~one every two seconds) during each down window. Switch the dashboard's `Device` dropdown to `srl1` if you aren't already there. Within ~30 seconds the new panel should show a spike on `interface=ethernet-1/1` crossing the orange and red threshold lines.
 
 **Stop and notice.** This is the same query pattern that drives the alert. The panel isn't decoration — it's a visual representation of the rule that's about to fire in Part 3. When the on-call gets paged, this panel is what they look at first.
 

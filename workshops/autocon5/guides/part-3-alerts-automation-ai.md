@@ -80,31 +80,33 @@ Open **Workshop Home** and look at the **Recent events** feed. You should see th
 
 > *"Now do it slowly so you see the moving parts. Same path, but you're driving."*
 
-A single `flap-interface` invocation now cascades through three signals automatically (interface metric flip → 10s hold-down → BGP collapse + prefix drop → restore), so even one call is enough to surface the mismatch path.
+A single `flap-interface` invocation posts one declarative cascade to sonda (interface flap → 10s hold-down → BGP collapse → automatic snap-back when the interface comes back up), so one call is enough to surface the mismatch path.
 
 ```bash
 nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1
 ```
 
-The command runs for ~46 seconds end-to-end. While it's running, in another terminal:
+The cascade runs on the lab for 4 minutes by default, walking through 30s-up / 60s-down cycles. The CLI returns immediately — sonda is driving the cascade now. While it's running, in another terminal:
 
 ```bash
 nobs autocon5 alerts
 ```
 
-You should see a `PeerInterfaceFlapping` row appear within ~30 seconds (the rule fires on `> 3 UPDOWN events in a 2-minute window`, and Phase A pushes 6). Once the cascade enters Phase B, `BgpSessionNotUp` will *also* fire for `srl1 ↔ 10.1.2.2` because the BGP session's `bgp_oper_state` is now `2`.
+You should see a `PeerInterfaceFlapping` row appear within ~30 seconds (the rule fires on `> 3 UPDOWN events in a 2-minute window`, and the down window emits one UPDOWN line every two seconds — about 30 lines per 60s down). Once the interface drops and the 10s hold-down expires, `BgpSessionNotUp` will *also* fire for `srl1 ↔ 10.1.2.2` because the BGP session's `bgp_oper_state` is now `2`.
 
 Open **Workshop Home** in your browser — the **Currently firing alerts** table populates with both alerts. The webhook flow has already run by the time you look; check **Recent events** for the `quarantined` annotation.
 
-If you want to trip *only* `PeerInterfaceFlapping` (without dragging BGP down), use `--no-cascade` and run the CLI four times in two minutes — the historical workshop path:
+When the interface cycles back to up, every gated metric snaps to its established-state value: `bgp_oper_state=1`, prefix counters back to `10`. Alerts resolve on the next scrape. That recovery beat — dashboard goes green within seconds of the interface returning — is the cascade's restore signal landing.
+
+If you want to trip *only* `PeerInterfaceFlapping` (without dragging BGP down), use `--no-cascade`:
 
 ```bash
-for i in 1 2 3 4; do
-  nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1 --no-cascade
-done
+nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1 --no-cascade
 ```
 
-**Stop and notice.** From "press Enter on a CLI" to "alert fired, flow ran, action recorded" is under 60 seconds end-to-end. The cascade matches the shape of a real outage — interface degrades, BGP follows, prefixes drop — so the alert path you're exercising is the same one your on-call would face in production, just compressed in time.
+That one call emits the interface flap and UPDOWN log stream alone, with no BGP gated entries — `PeerInterfaceFlapping` trips on the UPDOWN volume but `BgpSessionNotUp` stays clean.
+
+**Stop and notice.** From "press Enter on a CLI" to "alert fired, flow ran, action recorded" is under 60 seconds end-to-end. The cascade matches the shape of a real outage — interface degrades, BGP follows, prefixes drop, recovery snaps everything back — so the alert path you're exercising is the same one your on-call would face in production, just compressed in time.
 
 ### 4. Drive in-maintenance → skip
 
