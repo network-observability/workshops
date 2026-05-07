@@ -8,11 +8,15 @@
 #   primary_flap (interface_oper_state via `enum: oper_state` — UP=1, DOWN=2)
 #     └─ while > 1, delay open=10s close=0s ─► BGP per-peer metrics + UPDOWN logs
 #
-# Restore is automatic on gate close: sonda emits Prometheus stale markers
-# for the gated series (default behavior on `remote_write` sinks since
-# v1.6), so `BgpSessionNotUp` resolves on the next scrape cycle and the
-# baseline emitters in `srl1-metrics.yaml` keep publishing established-state
-# values through the whole run.
+# Restore is automatic on gate close: each gated entry sets
+# `delay.close.snap_to` to its established-state value (matching the BGP
+# pack defaults), so on `running -> paused` sonda writes that recovered
+# value once before pausing. The cascade series snaps to `bgp_oper_state=1`,
+# `bgp_*_routes=10`, etc — alerts that test `!= 1` resolve on the next
+# scrape. This is the explicit-recovery alternative to the default stale-NaN
+# marker; we use snap_to because some Prometheus deployments don't honor
+# remote_write stale-NaN samples in their query engine, and snap_to
+# bypasses that whole class of receiver-side handling.
 ---
 version: 2
 
@@ -22,7 +26,7 @@ description: "AutoCon5 BGP cascade — declarative while: gating on interface fl
 
 defaults:
   rate: 1
-  duration: 2m
+  duration: 4m
   encoder:
     type: remote_write
   sink:
@@ -59,7 +63,9 @@ scenarios:
       value: 1
     delay:
       open: 10s
-      close: 0s
+      close:
+        duration: 0s
+        snap_to: 1.0
     labels:
       peer_address: "10.1.2.2"
       neighbor_asn: "65102"
@@ -78,7 +84,9 @@ scenarios:
       value: 1
     delay:
       open: 10s
-      close: 0s
+      close:
+        duration: 0s
+        snap_to: 1.0
     labels:
       peer_address: "10.1.2.2"
       neighbor_asn: "65102"
@@ -97,7 +105,9 @@ scenarios:
       value: 1
     delay:
       open: 10s
-      close: 0s
+      close:
+        duration: 0s
+        snap_to: 10.0
     labels:
       peer_address: "10.1.2.2"
       neighbor_asn: "65102"
@@ -116,7 +126,9 @@ scenarios:
       value: 1
     delay:
       open: 10s
-      close: 0s
+      close:
+        duration: 0s
+        snap_to: 10.0
     labels:
       peer_address: "10.1.2.2"
       neighbor_asn: "65102"
@@ -135,7 +147,9 @@ scenarios:
       value: 1
     delay:
       open: 10s
-      close: 0s
+      close:
+        duration: 0s
+        snap_to: 10.0
     labels:
       peer_address: "10.1.2.2"
       neighbor_asn: "65102"
@@ -154,7 +168,9 @@ scenarios:
       value: 1
     delay:
       open: 10s
-      close: 0s
+      close:
+        duration: 0s
+        snap_to: 10.0
     labels:
       peer_address: "10.1.2.2"
       neighbor_asn: "65102"
