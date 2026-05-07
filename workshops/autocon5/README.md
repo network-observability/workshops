@@ -22,7 +22,7 @@ You need Docker installed and running, but you don't need to write a Dockerfile.
 We use [`uv`](https://docs.astral.sh/uv/) to install and run the workshop's `nobs` CLI — a thin wrapper that fronts every workshop command (`up`, `down`, `status`, `alerts`, `flap-interface`, and the rest). With `uv` set up the rest of the day flows through one-line commands instead of raw `docker compose` invocations.
 
 **What if my laptop is on Windows?**
-We recommend macOS or a Linux-based system — the workshop should run natively on Windows, but we haven't tested it there.
+We recommend macOS or a Linux-based system — on Windows the workshop should run natively under WSL 2, but we haven't tested it there. Native Windows / PowerShell isn't supported.
 
 **How big is the stack?**
 Around 21 containers, ~5.5 GB of RAM, and ~5 GB of disk. The first `nobs autocon5 up` pulls 3–5 GB of images — that's the slow step. After that, restarts are fast.
