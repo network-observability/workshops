@@ -16,10 +16,10 @@ Helpful, not required. Every concept (BGP peering, interface state, syslog UPDOW
 A sketch-level idea of "metrics database" and "log database" is enough. Part 1 builds PromQL and LogQL from first principles against live data.
 
 **What if I've never used Docker?**
-You need Docker installed and running, but you don't need to write a Dockerfile. If `docker ps` works on your laptop, you're set.
+You need Docker installed and running, but you don't need to write a Dockerfile. If `docker ps` works on your laptop, you're set. New to Docker? The repo's [Installing Docker and uv](../../README.md#installing-docker-and-uv) section has per-platform install pointers.
 
 **Why do I need `uv` installed?**
-We use [`uv`](https://docs.astral.sh/uv/) to install and run the workshop's `nobs` CLI — a thin wrapper that fronts every workshop command (`up`, `down`, `status`, `alerts`, `flap-interface`, and the rest). With `uv` set up the rest of the day flows through one-line commands instead of raw `docker compose` invocations.
+We use [`uv`](https://docs.astral.sh/uv/) to install and run the workshop's `nobs` CLI — a thin wrapper that fronts every workshop command (`up`, `down`, `status`, `alerts`, `flap-interface`, and the rest). With `uv` set up the rest of the day flows through one-line commands instead of raw `docker compose` invocations. See the same [Installing Docker and uv](../../README.md#installing-docker-and-uv) section for the install one-liner.
 
 **What if my laptop is on Windows?**
 We recommend macOS or a Linux-based system — on Windows the workshop should run natively under WSL 2, but we haven't tested it there. Native Windows / PowerShell isn't supported.
