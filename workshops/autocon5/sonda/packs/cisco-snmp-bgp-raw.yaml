@@ -1,0 +1,70 @@
+# Cisco-style SNMP BGP per-peer metrics — RAW shape, pre-Telegraf-normalization.
+# BGP4-MIB + CISCO-BGP4-MIB names (the latter for things BGP4-MIB lacks,
+# like accepted/active prefix counts and cbgpPeerOperStatus). SNMP-style
+# tags (bgpPeerRemoteAddr, bgpPeerRemoteAs, agent_host). Telegraf-srl2
+# renames to the canonical schema (`bgp_*` + `device`/`peer_address`/
+# `neighbor_asn`). Numeric values match the canonical convention so
+# normalization is rename-only.
+
+name: cisco_snmp_bgp_raw
+description: "Cisco-style SNMP BGP per-peer metrics (raw, pre-normalization, BGP4-MIB / CISCO-BGP4-MIB)"
+category: network
+
+shared_labels:
+  agent_host: ""              # Telegraf renames -> device
+  bgpPeerRemoteAddr: ""       # Telegraf renames -> peer_address
+  bgpPeerRemoteAs: ""         # Telegraf renames -> neighbor_asn
+  afi_safi_name: ipv4-unicast
+  name: default
+  collection_type: snmp
+
+metrics:
+  # BGP4-MIB::bgpPeerState — FSM state (1=idle, 2=connect, 3=active,
+  # 4=opensent, 5=openconfirm, 6=established). The workshop's canonical
+  # `bgp_neighbor_state` uses the gNMI/openconfig enum (1=ESTABLISHED,
+  # 2=IDLE, 3=CONNECT, 4=ACTIVE, ...). For pedagogy we keep the values
+  # aligned with the canonical convention so Telegraf does rename-only
+  # rather than enum-remap; a stretch exercise can demonstrate the
+  # value-level remap as a bonus.
+  - name: bgpPeerState
+    generator:
+      type: constant
+      value: 1.0
+
+  # BGP4-MIB::bgpPeerAdminStatus — 1=stop, 2=start. Same simplification:
+  # workshop's canonical `bgp_admin_state` uses enable=1/disable=2.
+  - name: bgpPeerAdminStatus
+    generator:
+      type: constant
+      value: 1.0
+
+  # CISCO-BGP4-MIB::cbgpPeerOperStatus — Cisco's operational status
+  # (alongside the FSM in bgpPeerState). 1=up, 2=down.
+  - name: cbgpPeerOperStatus
+    generator:
+      type: constant
+      value: 1.0
+
+  # BGP4-MIB::bgpPeerInPrefixes — count of prefixes received from peer.
+  - name: bgpPeerInPrefixes
+    generator:
+      type: constant
+      value: 10.0
+
+  # CISCO-BGP4-MIB::cbgpPeerAcceptedPrefixes — accepted after policy.
+  - name: cbgpPeerAcceptedPrefixes
+    generator:
+      type: constant
+      value: 10.0
+
+  # BGP4-MIB::bgpPeerOutPrefixes — count of prefixes sent to peer.
+  - name: bgpPeerOutPrefixes
+    generator:
+      type: constant
+      value: 10.0
+
+  # CISCO-BGP4-MIB::cbgpPeerActivePrefixes — currently in BGP RIB.
+  - name: cbgpPeerActivePrefixes
+    generator:
+      type: constant
+      value: 10.0

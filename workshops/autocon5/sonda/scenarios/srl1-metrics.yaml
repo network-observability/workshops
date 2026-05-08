@@ -1,11 +1,14 @@
-# srl1 telemetry — pushed directly into Prometheus via remote_write.
-# Broken-on-purpose: BGP peer 10.1.99.2 and interface ethernet-1/11.
+# srl1 telemetry — RAW gNMI shape (`srl_*` names + `source` tag).
+# Pushed via Prom remote_write to telegraf-srl1, which normalizes the
+# names and tags to the canonical schema and re-exposes them as a
+# Prometheus scrape target. Broken-on-purpose: BGP peer 10.1.99.2 and
+# interface ethernet-1/11.
 ---
 version: 2
 
 scenario_name: autocon5-srl1-metrics
 category: network
-description: "AutoCon5 srl1 telemetry — BGP, interfaces, system, uptime."
+description: "AutoCon5 srl1 telemetry — raw gNMI shape, normalized by telegraf-srl1."
 
 defaults:
   rate: 0.1
@@ -13,50 +16,47 @@ defaults:
     type: remote_write
   sink:
     type: remote_write
-    url: "${PROMETHEUS_REMOTE_WRITE_URL:-http://prometheus:9090/api/v1/write}"
+    url: "${TELEGRAF_SRL1_RECEIVE_URL:-http://telegraf-srl1:1316/api/v1/write}"
 
 scenarios:
   # BGP peers
   - id: bgp_peer_10_1_2_2
     signal_type: metrics
-    pack: srlinux_gnmi_bgp
+    pack: srlinux_gnmi_bgp_raw
     labels:
-      device: srl1
-      pipeline: direct
+      source: srl1
       peer_address: "10.1.2.2"
       neighbor_asn: "65102"
 
   - id: bgp_peer_10_1_7_2
     signal_type: metrics
-    pack: srlinux_gnmi_bgp
+    pack: srlinux_gnmi_bgp_raw
     labels:
-      device: srl1
-      pipeline: direct
+      source: srl1
       peer_address: "10.1.7.2"
       neighbor_asn: "65102"
 
   - id: bgp_peer_10_1_99_2_broken
     signal_type: metrics
-    pack: srlinux_gnmi_bgp
+    pack: srlinux_gnmi_bgp_raw
     labels:
-      device: srl1
-      pipeline: direct
+      source: srl1
       peer_address: "10.1.99.2"
       neighbor_asn: "65102"
     overrides:
-      bgp_neighbor_state:
+      srl_bgp_neighbor_state:
         generator:
           type: constant
           value: 4.0
-      bgp_oper_state:
+      srl_bgp_oper_state:
         generator:
           type: constant
           value: 5.0
-      bgp_received_routes:
+      srl_bgp_received_routes:
         generator:
           type: constant
           value: 0.0
-      bgp_prefixes_accepted:
+      srl_bgp_prefixes_accepted:
         generator:
           type: constant
           value: 0.0
@@ -64,37 +64,34 @@ scenarios:
   # Interfaces
   - id: intf_ethernet_1_1
     signal_type: metrics
-    pack: srlinux_gnmi_interface
+    pack: srlinux_gnmi_interface_raw
     labels:
-      device: srl1
-      pipeline: direct
+      source: srl1
       name: "ethernet-1/1"
 
   - id: intf_ethernet_1_10
     signal_type: metrics
-    pack: srlinux_gnmi_interface
+    pack: srlinux_gnmi_interface_raw
     labels:
-      device: srl1
-      pipeline: direct
+      source: srl1
       name: "ethernet-1/10"
 
   - id: intf_ethernet_1_11_broken
     signal_type: metrics
-    pack: srlinux_gnmi_interface
+    pack: srlinux_gnmi_interface_raw
     labels:
-      device: srl1
-      pipeline: direct
+      source: srl1
       name: "ethernet-1/11"
     overrides:
-      interface_oper_state:
+      srl_interface_oper_state:
         generator:
           type: constant
           value: 2.0
-      interface_in_octets:
+      srl_interface_in_octets:
         generator:
           type: constant
           value: 0.0
-      interface_out_octets:
+      srl_interface_out_octets:
         generator:
           type: constant
           value: 0.0
@@ -104,16 +101,15 @@ scenarios:
     signal_type: metrics
     pack: srlinux_ping
     labels:
-      device: srl1
-      pipeline: direct
+      source: srl1
 
-  # System: CPU + memory + uptime
+  # System: CPU + memory + uptime — already canonical, telegraf-srl1
+  # passes them through with the device-tag rename and intf_role derive.
   - id: system_cpu_used
     signal_type: metrics
     name: cpu_used
     labels:
-      device: srl1
-      pipeline: direct
+      source: srl1
       slot: A
       index: "0"
       collection_type: gnmi
@@ -128,8 +124,7 @@ scenarios:
     signal_type: metrics
     name: memory_utilization
     labels:
-      device: srl1
-      pipeline: direct
+      source: srl1
       slot: A
       collection_type: gnmi
     generator:
@@ -145,9 +140,8 @@ scenarios:
     signal_type: metrics
     name: device_uptime
     labels:
-      device: srl1
-      pipeline: direct
-      collection_type: snmp
+      source: srl1
+      collection_type: gnmi
     generator:
       type: step
       start: 36000.0       # 6 minutes "of uptime" at start

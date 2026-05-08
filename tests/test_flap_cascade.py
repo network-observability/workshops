@@ -174,11 +174,12 @@ def test_defaults_carry_device_pipeline_and_sinks(two_peers: list[Peer]) -> None
         "url": "http://prom:9090/api/v1/write",
     }
     assert defaults["labels"]["device"] == "srl1"
-    assert defaults["labels"]["pipeline"] == "direct"
+    assert defaults["labels"]["pipeline"] == "telegraf"
+    assert defaults["labels"]["collection_type"] == "gnmi"
     assert defaults["labels"]["source"] == "workshop-cascade"
 
 
-def test_srl2_pipeline_label_is_telegraf() -> None:
+def test_srl2_collection_type_label_is_snmp() -> None:
     body = _build_cascade(
         device="srl2",
         interface="ethernet-1/1",
@@ -191,6 +192,7 @@ def test_srl2_pipeline_label_is_telegraf() -> None:
         loki_url="http://loki:3001",
     )
     assert body["defaults"]["labels"]["pipeline"] == "telegraf"
+    assert body["defaults"]["labels"]["collection_type"] == "snmp"
 
 
 def test_srl2_bgp_entries_carry_telegraf_labels() -> None:

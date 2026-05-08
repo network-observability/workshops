@@ -1,37 +1,52 @@
 [agent]
-  hostname = "telegraf-02"
+  hostname = "telegraf-srl1"
 
 
 ###############################################################################
 #                            DATA COLLECTION                                  #
 ###############################################################################
-# Scrape sonda-server's per-scenario Prometheus text endpoints. The
-# script reads scenario IDs from /shared/scenario-ids.txt (written by
-# sonda-setup) and curls each `/scenarios/{id}/metrics`.
+# Receive Prom remote_write pushes from sonda-srl1 (which emits the
+# gNMI-raw shape — `srl_*` field names + `source` tag). Telegraf 1.31's
+# dedicated `inputs.prometheus_remote_write` doesn't exist yet; the
+# `inputs.http_listener_v2` with the `prometheusremotewrite` data
+# format is the equivalent.
 
-[[inputs.exec]]
-  commands = ["/scripts/scrape-sonda-metrics.sh"]
-  timeout = "15s"
-  interval = "10s"
-  data_format = "prometheus"
+[[inputs.http_listener_v2]]
+  service_address = ":1316"
+  paths = ["/api/v1/write"]
+  methods = ["POST", "PUT"]
+  data_format = "prometheusremotewrite"
 
-  [inputs.exec.tags]
+  [inputs.http_listener_v2.tags]
     pipeline = "telegraf"
 
 
 ###############################################################################
 #                            DATA NORMALIZATION                               #
 ###############################################################################
-# Strip the vendor `srl_` prefix to converge srl2 series with srl1's
+# Strip the vendor `srl_` prefix to converge srl1 series with srl2's
 # canonical names. `field_rename` (not `metric_rename`) because the
-# Prometheus parser keeps measurement="prometheus" and uses the metric
-# name as the field; `metric_version=2` then publishes the field name.
+# Prom remote_write parser keeps measurement="prometheus_remote_write"
+# and uses the metric name as the field.
 [[processors.regex]]
   order = 1
 
   [[processors.regex.field_rename]]
     pattern = "^srl_(.*)$"
     replacement = "${1}"
+
+# Telegraf's prometheus_client output strips the measurement prefix
+# (when metric_version=2) only if measurement="prometheus" exactly.
+# The http_listener_v2 + prometheusremotewrite data_format produces
+# measurement="prometheus_remote_write", so we rename it down to
+# "prometheus" — that way Prometheus sees `bgp_oper_state` instead
+# of `prometheus_remote_write_bgp_oper_state`.
+[[processors.rename]]
+  order = 1
+
+  [[processors.rename.replace]]
+    measurement = "prometheus_remote_write"
+    dest = "prometheus"
 
 # gNMI's device-identifier tag is `source`; canonical schema uses `device`.
 [[processors.rename]]
@@ -45,14 +60,14 @@
 ###############################################################################
 #                            DATA ENRICHMENT                                  #
 ###############################################################################
-# Derive `intf_role` from the `name` tag. No namepass needed — the regex
-# only matches `ethernet*` / `mgmt*`, so BGP (`name="default"`) and
-# system metrics pass through unchanged.
+# Derive `intf_role` from the `name` tag. The regex only matches
+# `ethernet*` / `mgmt*`, so BGP (`name="default"`) and system metrics
+# pass through unchanged.
 [[processors.regex]]
   order = 3
 
   [processors.regex.tagpass]
-      device = ["srl2"]
+      device = ["srl1"]
 
   [[processors.regex.tags]]
     key = "name"
