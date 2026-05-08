@@ -74,6 +74,54 @@ nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1
 - Outbound HTTPS to `github.com`, `ghcr.io`, `docker.io`, `quay.io` for image
   pulls.
 
+If Docker or uv aren't already installed, the next section walks through each.
+
+## Installing Docker and uv
+
+The workshop assumes you can run `docker compose` and `uv` from a terminal. New to either? Pick the path for your platform:
+
+### Docker
+
+- **macOS** — install [Docker Desktop](https://www.docker.com/products/docker-desktop/) (the easy default), [Colima](https://github.com/abiosoft/colima), or [Rancher Desktop](https://rancherdesktop.io/). For Docker Desktop, run the installer and open the Docker app once so the daemon starts. The official setup guide: <https://docs.docker.com/desktop/setup/install/mac-install/>.
+- **Linux** — follow the [Docker Engine install guide](https://docs.docker.com/engine/install/) for your distro (Ubuntu, Debian, Fedora, RHEL, etc.). Add your user to the `docker` group afterwards so commands don't need `sudo`:
+  ```bash
+  sudo usermod -aG docker $USER
+  newgrp docker
+  ```
+- **Windows** — install [Docker Desktop with the WSL 2 backend](https://docs.docker.com/desktop/setup/install/windows-install/) and run every workshop command inside a WSL 2 shell, not from PowerShell. (Note: the workshop hasn't been tested on Windows; macOS or Linux is the recommended path.)
+
+Verify the install:
+
+```bash
+docker compose version
+# Docker Compose version v2.x.x
+docker ps
+# (an empty table is a healthy result — daemon's up, no containers yet)
+```
+
+If `docker compose version` reports v2+, you're set. If you only see `docker-compose` (with a hyphen) reporting v1.x, install Compose v2 alongside it — the workshop expects v2.
+
+### uv
+
+One install command works on macOS, Linux, and WSL:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv --version
+```
+
+uv installs its own pinned Python from `.python-version`, so you don't need a system Python.
+
+### One last sanity check
+
+Once both are installed, clone this repo and run the preflight from anywhere inside it:
+
+```bash
+uv run nobs preflight
+```
+
+It checks Docker, Compose v2, RAM, free disk, and outbound reachability to the image registries the workshop pulls from. Run it the night before the workshop to surface issues with time to fix them.
+
 ## Quickstart
 
 ```bash
