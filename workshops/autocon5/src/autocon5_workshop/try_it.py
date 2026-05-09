@@ -50,17 +50,18 @@ def try_it(
 
     loki = LokiClient(loki_url)
 
-    # Path 1 - quarantine for the broken peer
+    # Path 1 - actionable mismatch → flow decides 'proceed'
     _header(
-        "Path 1 - Actionable / mismatch → quarantine",
+        "Path 1 - Actionable / mismatch → proceed",
         "The lab ships srl1→10.1.99.2 and srl2→10.1.11.1 as intentionally broken.\n"
-        "BgpSessionNotUp should already be firing; we wait for the Prefect annotation.",
+        "Replay a firing payload for one of those peers and expect decision='proceed'.",
     )
+    _post_alert(webhook_url, "firing", "srl1", "10.1.99.2", "try-it-1")
     _wait_for_loki(
         loki,
-        '{source="prefect", workflow="autocon5_quarantine_bgp", decision="proceed"}',
-        "quarantine flow ran and decided 'proceed'",
-        timeout=120,
+        '{source="prefect", workflow="autocon5_quarantine_bgp", device="srl1", peer_address="10.1.99.2", decision="proceed"}',
+        "quarantine flow decided 'proceed' for the actionable mismatch",
+        timeout=60,
     )
     _pause(auto)
 

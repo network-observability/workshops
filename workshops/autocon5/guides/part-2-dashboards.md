@@ -155,6 +155,8 @@ Watch the spike land on `srl2`'s `ethernet-1/10` line — same ramp shape, same 
 
 **Stop and notice.** One panel, two devices. That's what the dashboard variable bought you. If you'd hard-coded `device="srl1"` in the query, you'd need a duplicate panel for every device you ever add — and one to maintain per device when the schema changes.
 
+There's a second thing happening here that's easy to miss: `srl1` and `srl2` arrive in Loki and Prometheus through *different* upstream pipelines. `srl1`'s metrics emit as raw gNMI shapes (`srl_*` field names) and Telegraf-srl1 normalizes them; `srl2`'s metrics emit as raw SNMP shapes (`ifHC*`, `bgpPeer*`) and Telegraf-srl2 normalizes them. By the time your panel queries them, both look identical — same metric names, same label keys. **That's normalization paying off at the dashboard layer.** Hover the **Collection Type** panel on the Device Health dashboard if you want to see which raw shape each device came in as.
+
 > Your senior nods at the screen. *"That's the panel. Six hours from now when somebody on the rotation gets paged on a similar shape, this view is on screen the moment they open the dashboard. Ten minutes saved off the next triage. That's the work."*
 
 ## Stretch goals
