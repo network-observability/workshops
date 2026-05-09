@@ -29,11 +29,23 @@ _BROKEN_PEER_OVERRIDES: dict[tuple[str, str], tuple[str, str]] = {
     ("srl2", "ethernet-1/11"): ("10.1.11.1", "65101"),
 }
 
-# srl2's series carry telegraf-02 provenance labels post-normalization.
-_TELEGRAF_LABELS: dict[str, str] = {
-    "host": "telegraf-02",
-    "instance": "telegraf-02:9005",
-    "job": "telegraf",
+# Each device's baseline series carry the Prometheus-scrape provenance
+# tags from its dedicated Telegraf instance (host/instance/job land
+# from the scrape job in prometheus.yml). Cascade scenarios POST direct
+# to remote_write, so the cascade body needs to set these explicitly to
+# keep its series indistinguishable from baseline for queries that
+# group by job/host/instance.
+_TELEGRAF_LABELS_BY_DEVICE: dict[str, dict[str, str]] = {
+    "srl1": {
+        "host": "telegraf-srl1",
+        "instance": "telegraf-srl1:9005",
+        "job": "telegraf-srl1",
+    },
+    "srl2": {
+        "host": "telegraf-srl2",
+        "instance": "telegraf-srl2:9005",
+        "job": "telegraf-srl2",
+    },
 }
 
 
@@ -101,19 +113,21 @@ def known_devices() -> Iterable[str]:
     return tuple((_LAB_VARS.get("nodes") or {}).keys())
 
 
+def _collection_type(device: str) -> str:
+    """srl1 baseline is gNMI-collected, srl2 is SNMP-collected."""
+    return "snmp" if device == "srl2" else "gnmi"
+
+
 def interface_labels(device: str, name: str) -> dict[str, str]:
     """Label set for `interface_oper_state` matching the lab's continuous emitters."""
     base: dict[str, str] = {
         "device": device,
         "name": name,
         "intf_role": "peer",
-        "collection_type": "gnmi",
+        "collection_type": _collection_type(device),
+        "pipeline": "telegraf",
     }
-    if device == "srl2":
-        base["pipeline"] = "telegraf"
-        base.update(_TELEGRAF_LABELS)
-    else:
-        base["pipeline"] = "direct"
+    base.update(_TELEGRAF_LABELS_BY_DEVICE.get(device, {}))
     return base
 
 
@@ -125,11 +139,8 @@ def bgp_labels(device: str, peer_address: str, neighbor_asn: str) -> dict[str, s
         "neighbor_asn": neighbor_asn,
         "name": "default",
         "afi_safi_name": "ipv4-unicast",
-        "collection_type": "gnmi",
+        "collection_type": _collection_type(device),
+        "pipeline": "telegraf",
     }
-    if device == "srl2":
-        base["pipeline"] = "telegraf"
-        base.update(_TELEGRAF_LABELS)
-    else:
-        base["pipeline"] = "direct"
+    base.update(_TELEGRAF_LABELS_BY_DEVICE.get(device, {}))
     return base

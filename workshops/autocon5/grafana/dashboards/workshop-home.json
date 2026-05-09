@@ -317,7 +317,7 @@
           "showLineNumbers": false,
           "showMiniMap": false
         },
-        "content": "### [srl1 Device Health](/d/c78e686b-138b-4deb-b6ae-3239dc10a162?var-device=srl1)\n\nMetrics, BGP, interfaces, and logs for `srl1` \u2014 the **direct-pipeline** device. sonda pushes everything straight to Prometheus and Loki."
+        "content": "### [srl1 Device Health](/d/c78e686b-138b-4deb-b6ae-3239dc10a162?var-device=srl1)\n\nMetrics, BGP, interfaces, and logs for `srl1` \u2014 the **gNMI-collected** device (`collection_type=gnmi`). Metrics arrive as raw gNMI shapes (`srl_*` names) and telegraf-srl1 normalizes them to canonical. Logs push direct to Loki."
       },
       "gridPos": {
         "x": 0,
@@ -343,7 +343,7 @@
           "showLineNumbers": false,
           "showMiniMap": false
         },
-        "content": "### [srl2 Device Health](/d/c78e686b-138b-4deb-b6ae-3239dc10a162?var-device=srl2)\n\nSame view for `srl2` \u2014 the **hybrid-pipeline** device. Metrics route through Telegraf, syslog ships via Vector. Same dashboard, different transports."
+        "content": "### [srl2 Device Health](/d/c78e686b-138b-4deb-b6ae-3239dc10a162?var-device=srl2)\n\nSame view for `srl2` \u2014 the **SNMP-collected** device (`collection_type=snmp`). Metrics arrive as raw SNMP shapes (`ifHC*`, `bgpPeer*` names) and telegraf-srl2 normalizes them to the same canonical schema as srl1. Syslog ships via Vector. Same downstream queries, different vendor shapes upstream."
       },
       "gridPos": {
         "x": 6,

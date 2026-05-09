@@ -268,8 +268,8 @@ def _build_cascade(
             "sink": {"type": "remote_write", "url": prom_url},
             "labels": {
                 "device": device,
-                "pipeline": intf_labels.get("pipeline", "direct"),
-                "collection_type": "gnmi",
+                "pipeline": intf_labels.get("pipeline", "telegraf"),
+                "collection_type": intf_labels.get("collection_type", "gnmi"),
                 "source": "workshop-cascade",
             },
         },

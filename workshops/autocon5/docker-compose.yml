@@ -34,14 +34,16 @@ services:
   # Sonda — synthetic telemetry generation
   # =========================================================================
 
-  # srl1 pipeline: sonda CLI -> remote_write directly into Prometheus.
+  # srl1 pipeline: sonda CLI emits gNMI-raw (`srl_*`) shapes via Prom
+  # remote_write to telegraf-srl1, which renames them to canonical
+  # (`interface_*`, `bgp_*`) and re-exposes them as a Prom scrape target.
   sonda-srl1:
     container_name: sonda-srl1
     image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.6.4}
     entrypoint: ["/sonda"]
     command: ["run", "--scenario", "/scenarios/srl1-metrics.yaml"]
     environment:
-      # Custom packs (srlinux_gnmi_bgp, srlinux_gnmi_interface) are loaded
+      # Custom packs (srlinux_gnmi_bgp_raw, srlinux_gnmi_interface_raw) load
       # from the bind-mount; SONDA_PACK_PATH adds them to the discovery path
       # alongside the image's built-ins.
       SONDA_PACK_PATH: "/packs:/sonda/packs"
@@ -50,12 +52,12 @@ services:
       - ./sonda/scenarios:/scenarios:ro
       - ./sonda/packs:/packs:ro
     depends_on:
-      prometheus:
+      telegraf-srl1:
         condition: service_started
     restart: unless-stopped
 
   # srl2 pipeline: sonda-server holds the scenarios and exposes per-scenario
-  # /metrics endpoints; telegraf-02 scrapes them.
+  # /metrics endpoints; telegraf-srl2 scrapes them.
   sonda-server:
     container_name: sonda-server
     image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.6.4}
@@ -71,7 +73,7 @@ services:
 
   # Init container: POSTs the srl2 scenario file (a v2 envelope) to
   # sonda-server, then reads back the registered scenario IDs and drops
-  # them in a shared volume for telegraf-02's scrape script to pick up.
+  # them in a shared volume for telegraf-srl2's scrape script to pick up.
   sonda-setup:
     container_name: sonda-setup
     image: python:3.12-slim
@@ -110,11 +112,17 @@ services:
     restart: unless-stopped
 
   # =========================================================================
-  # Telegraf — collection (srl2 only)
+  # Telegraf — two collectors, one per device, each normalizing a different
+  # raw vendor shape into the workshop's canonical schema. Side-by-side for
+  # the curriculum: gNMI-raw (srl1) and SNMP-raw (srl2) both arrive as
+  # canonical `interface_*` / `bgp_*` series in Prometheus.
   # =========================================================================
 
-  telegraf-02:
-    container_name: telegraf-02
+  # telegraf-srl1: receives gNMI-raw push from sonda-srl1 via the Prom
+  # remote_write listener, renames `srl_*` → canonical, exposes a Prom
+  # scrape endpoint on :9005.
+  telegraf-srl1:
+    container_name: telegraf-srl1
     build:
       context: .
       dockerfile: ./telegraf/telegraf.Dockerfile
@@ -123,11 +131,29 @@ services:
     command: telegraf --config /etc/telegraf/telegraf.conf
     tty: true
     volumes:
-      - ./telegraf/telegraf-02.conf.toml:/etc/telegraf/telegraf.conf
+      - ./telegraf/telegraf-srl1.conf.toml:/etc/telegraf/telegraf.conf
+    expose:
+      - "1316"
+      - "9005"
+
+  # telegraf-srl2: scrapes SNMP-raw (`ifHC*`, `bgpPeer*`) from sonda-server's
+  # per-scenario /metrics endpoints, renames to canonical, exposes a Prom
+  # scrape endpoint on :9005.
+  telegraf-srl2:
+    container_name: telegraf-srl2
+    build:
+      context: .
+      dockerfile: ./telegraf/telegraf.Dockerfile
+      args:
+        TELEGRAF_IMAGE: ${TELEGRAF_IMAGE:-docker.io/telegraf:1.31}
+    command: telegraf --config /etc/telegraf/telegraf.conf
+    tty: true
+    volumes:
+      - ./telegraf/telegraf-srl2.conf.toml:/etc/telegraf/telegraf.conf
       - ./sonda/scripts/scrape-sonda-metrics.sh:/scripts/scrape-sonda-metrics.sh:ro
       - sonda_shared:/shared:ro
-    ports:
-      - "9005:9005"
+    expose:
+      - "9005"
     environment:
       SONDA_SERVER_URL: "http://sonda-server:8080"
     depends_on:

@@ -1161,7 +1161,7 @@
         "type": "prometheus",
         "uid": "P1809F7CD0C75ACF3"
       },
-      "description": "Which pipeline currently delivers metrics for this device. srl1 is shipped directly by sonda (`pipeline=direct`); srl2 routes through Telegraf for normalization (`pipeline=telegraf`). Same metric schema, different paths \u2014 that's the workshop's hybrid story.",
+      "description": "Which collection shape this device's metrics arrive in. srl1 emits gNMI-raw (`srl_*` names) into telegraf-srl1; srl2 emits SNMP-raw (`ifHC*`, `bgpPeer*`) into telegraf-srl2. Both telegrafs rename to the canonical schema before re-exposing to Prometheus. Same canonical metric names downstream, different vendor shapes upstream \u2014 that's the workshop's normalization story.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1170,7 +1170,7 @@
           "mappings": [
             {
               "options": {
-                "direct": {
+                "gnmi": {
                   "color": "green",
                   "index": 0
                 }
@@ -1179,18 +1179,9 @@
             },
             {
               "options": {
-                "telegraf": {
+                "snmp": {
                   "color": "blue",
                   "index": 1
-                }
-              },
-              "type": "value"
-            },
-            {
-              "options": {
-                "vector": {
-                  "color": "orange",
-                  "index": 2
                 }
               },
               "type": "value"
@@ -1240,13 +1231,13 @@
             "uid": "P1809F7CD0C75ACF3"
           },
           "editorMode": "code",
-          "expr": "count by (pipeline) (bgp_oper_state{device=\"$device\"})",
-          "legendFormat": "{{pipeline}}",
+          "expr": "count by (collection_type) (bgp_oper_state{device=\"$device\"})",
+          "legendFormat": "{{collection_type}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Metrics Pipeline",
+      "title": "Collection Type",
       "type": "stat"
     },
     {

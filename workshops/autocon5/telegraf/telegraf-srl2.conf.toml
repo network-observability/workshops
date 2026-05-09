@@ -1,0 +1,124 @@
+[agent]
+  hostname = "telegraf-srl2"
+
+
+###############################################################################
+#                            DATA COLLECTION                                  #
+###############################################################################
+# Scrape sonda-server's per-scenario Prometheus text endpoints. The
+# script reads scenario IDs from /shared/scenario-ids.txt (written by
+# sonda-setup) and curls each `/scenarios/{id}/metrics`. sonda-srl2
+# emits the SNMP-raw shape (IF-MIB / BGP4-MIB / CISCO-BGP4-MIB names
+# and tags).
+
+[[inputs.exec]]
+  commands = ["/scripts/scrape-sonda-metrics.sh"]
+  timeout = "15s"
+  interval = "10s"
+  data_format = "prometheus"
+
+  [inputs.exec.tags]
+    pipeline = "telegraf"
+
+
+###############################################################################
+#                            DATA NORMALIZATION                               #
+###############################################################################
+# IF-MIB / BGP4-MIB / CISCO-BGP4-MIB metric names → canonical schema.
+# `field_rename` because the Prometheus parser keeps measurement="prometheus"
+# and uses the metric name as the field; metric_version=2 below publishes
+# the field name as the Prometheus metric name.
+[[processors.rename]]
+  order = 1
+
+  # Interface metrics — IF-MIB
+  [[processors.rename.replace]]
+    field = "ifAdminStatus"
+    dest = "interface_admin_state"
+  [[processors.rename.replace]]
+    field = "ifOperStatus"
+    dest = "interface_oper_state"
+  [[processors.rename.replace]]
+    field = "ifHCInOctets"
+    dest = "interface_in_octets"
+  [[processors.rename.replace]]
+    field = "ifHCOutOctets"
+    dest = "interface_out_octets"
+
+  # BGP metrics — BGP4-MIB + CISCO-BGP4-MIB
+  [[processors.rename.replace]]
+    field = "bgpPeerAdminStatus"
+    dest = "bgp_admin_state"
+  [[processors.rename.replace]]
+    field = "cbgpPeerOperStatus"
+    dest = "bgp_oper_state"
+  [[processors.rename.replace]]
+    field = "bgpPeerState"
+    dest = "bgp_neighbor_state"
+  [[processors.rename.replace]]
+    field = "bgpPeerInPrefixes"
+    dest = "bgp_received_routes"
+  [[processors.rename.replace]]
+    field = "cbgpPeerAcceptedPrefixes"
+    dest = "bgp_prefixes_accepted"
+  [[processors.rename.replace]]
+    field = "bgpPeerOutPrefixes"
+    dest = "bgp_sent_routes"
+  [[processors.rename.replace]]
+    field = "cbgpPeerActivePrefixes"
+    dest = "bgp_active_routes"
+
+  # Tag renames — SNMP-style → canonical
+  [[processors.rename.replace]]
+    tag = "agent_host"
+    dest = "device"
+  [[processors.rename.replace]]
+    tag = "ifDescr"
+    dest = "name"
+  [[processors.rename.replace]]
+    tag = "bgpPeerRemoteAddr"
+    dest = "peer_address"
+  [[processors.rename.replace]]
+    tag = "bgpPeerRemoteAs"
+    dest = "neighbor_asn"
+
+
+###############################################################################
+#                            DATA ENRICHMENT                                  #
+###############################################################################
+# Derive `intf_role` from the `name` tag (post-rename). The regex only
+# matches `ethernet*` / `mgmt*`, so BGP (`name="default"`) and system
+# metrics pass through unchanged.
+[[processors.regex]]
+  order = 2
+
+  [processors.regex.tagpass]
+      device = ["srl2"]
+
+  [[processors.regex.tags]]
+    key = "name"
+    pattern = "^ethernet.*$"
+    result_key = "intf_role"
+    replacement = "peer"
+
+  [[processors.regex.tags]]
+    key = "name"
+    pattern = "^mgmt.*$"
+    result_key = "intf_role"
+    replacement = "mgmt"
+
+
+##############################################################################
+#                            DATA OUTPUT                                     #
+##############################################################################
+[[outputs.file]]
+  files = ["stdout"]
+
+
+[[outputs.prometheus_client]]
+  # HTTP port to listen on — Prometheus scrapes this endpoint
+  listen = ":9005"
+  # v2 emits `<field>{tags}` (e.g. `bgp_oper_state{...}`); v1 (default) emits
+  # `<measurement>_<field>{tags}`. The alert rules and dashboards query the
+  # raw metric names, so v2 is required.
+  metric_version = 2
