@@ -187,6 +187,45 @@ One row: `collection_type=snmp` returning `3`. Same metric, same number of serie
 
 Now click into a result on each side and compare the full label set — `device`, `peer_address`, `neighbor_asn`, `name`, `afi_safi_name`. The *only* meaningful difference is the `collection_type` value. Everything else lines up.
 
+> Your senior taps the screen. *"Don't take my word that Telegraf rewrote the names. Read what srl2 actually emits before Telegraf touches it, then read the rules that bridge it to canonical."*
+
+In a terminal, look at the SNMP-raw shape sonda is emitting for srl2:
+
+```bash
+grep '^  - name:' workshops/autocon5/sonda/packs/cisco-snmp-bgp-raw.yaml
+```
+
+You'll see metric names straight out of the BGP MIBs:
+
+```
+  - name: bgpPeerState
+  - name: bgpPeerAdminStatus
+  - name: cbgpPeerOperStatus
+  - name: bgpPeerInPrefixes
+  - name: cbgpPeerAcceptedPrefixes
+  - name: bgpPeerOutPrefixes
+  - name: cbgpPeerActivePrefixes
+```
+
+Same idea for interfaces — `cisco-snmp-interface-raw.yaml` declares `ifAdminStatus`, `ifOperStatus`, `ifHCInOctets`, `ifHCOutOctets`. The shared tags on those packs are `agent_host`, `ifDescr`, `bgpPeerRemoteAddr`, `bgpPeerRemoteAs` — SNMP-native, not what the dashboards know how to query.
+
+Now look at the rules that turn those raw shapes into the canonical schema you've been querying:
+
+```bash
+grep -E '^[[:space:]]*\[\[processors\.rename\.replace\]\]|^[[:space:]]+(field|tag|dest)' \
+  workshops/autocon5/telegraf/telegraf-srl2.conf.toml | head -30
+```
+
+Each `[[processors.rename.replace]]` block is one bridge — `ifHCInOctets` → `interface_in_octets`, `cbgpPeerOperStatus` → `bgp_oper_state`, `bgpPeerState` → `bgp_neighbor_state`, and so on. Boring TOML doing the load-bearing work. Tag renames are in the same file: `agent_host` → `device`, `ifDescr` → `name`, `bgpPeerRemoteAddr` → `peer_address`.
+
+Confirm Prometheus sees the canonical shape on its end:
+
+```promql
+bgp_neighbor_state{device="srl2"}
+```
+
+Same numeric values that `bgpPeerState` carried in the pack. Different name, different label keys, queryable from every dashboard panel on this workshop. **That whole transformation lives in one TOML file.** When a new vendor lands tomorrow with a third raw shape, you write one more rename ruleset; the dashboards keep working.
+
 That alignment is what "normalization" actually buys you:
 
 - The query layer doesn't see the dialects. `bgp_oper_state{device="srl1"}` and `bgp_oper_state{device="srl2"}` return rows in the same shape, even though one came in as gNMI and the other as SNMP.
@@ -202,6 +241,8 @@ bgp_oper_state
 Returns rows for *both* devices, *both* collection types. A dashboard panel querying `bgp_oper_state{device="$device"}` doesn't care which protocol delivered the data — it asks for the canonical name and gets it.
 
 > Your senior closes the laptop slightly. *"You'll meet engineers who hate normalization because it abstracts away vendor specifics. They're not wrong about the cost — but the cost of not normalizing, in this lab and in production, is that every alert rule has to be written six times and every dashboard has six panels for the same thing. Pick your trade. We've picked normalization."*
+>
+> *"And the trade isn't free. Normalization rules rot quietly — someone moves a metric and the rename ruleset drops a label, dashboards keep working but the `collection_type` distinction goes silently empty until an audit catches it. Vendor-unique counters with no canonical analog (queue depth on one chip, drop reason on another) shouldn't be force-fit into the schema; let those keep their native names and document them per-vendor. Normalize the things every device speaks. Leave the genuinely vendor-specific stuff alone."*
 
 **Stop and notice.** The `collection_type` label is for inspecting the normalization itself: *"which raw shape did this sample come from, is that path healthy?"* It's not for branching your query logic. If you write `bgp_oper_state{collection_type="gnmi"}` into a dashboard, you've narrowed to one vendor — useful for debugging that pipeline, but you'll miss every device whose data arrives via any other protocol. Default to collection-type-agnostic queries; reach for the label when you're debugging the normalization, not the network.
 

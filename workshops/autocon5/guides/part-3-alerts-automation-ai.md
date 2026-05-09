@@ -230,7 +230,7 @@ nobs autocon5 evidence srl1 10.1.99.2
 
 The metrics row tells you the peer is configured to be up (`admin_state=1`) but operationally trying-to-establish (`oper_state=5`) and receiving zero prefixes — exactly the mismatch the alert fires on. The Infrahub block tells you intent (`expected_state=established`, `reason=ip-mismatch-demo`). The Loki block carries both the broken-peer's BGP log lines AND prior Prefect annotations for this same peer — that's the audit trail.
 
-**Stop and notice.** This bundle is the input to *both* the deterministic policy *and* (when it's enabled) the AI RCA step. Same evidence, two consumers — one decides mechanically, one writes a narrative. Neither sees more than what the other sees.
+**Stop and notice.** This bundle is the input to *both* the deterministic policy *and* (when it's enabled) the AI RCA step. Same evidence, two consumers — one decides mechanically, one writes a narrative. Neither sees more than what the other sees. And the bundle works for *any* device because every BGP series in it speaks the canonical schema from Part 1 — swap `srl1` for `srl2` and the same query shapes, the same metric names, the same decoded enums all line up. The flow doesn't carry per-vendor branches; it carries one schema and lets normalization upstream do the rest.
 
 ### 6. Toggle the AI RCA step
 
