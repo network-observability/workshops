@@ -49,12 +49,18 @@ jobs:
         run: |
           python3 - <<'PY'
           import yaml, os, sys
+          # mkdocs.yml uses !!python/name: tags (Material's emoji extension)
+          # which safe_load correctly refuses. mkdocs build --strict in the
+          # docs workflow validates it natively.
+          SKIP = {"./mkdocs.yml"}
           ok = fail = 0
           for root, _, files in os.walk('.'):
               if '.git' in root or '.venv' in root: continue
               for f in files:
                   if f.endswith(('.yml', '.yaml')):
                       p = os.path.join(root, f)
+                      if p in SKIP:
+                          continue
                       try:
                           with open(p) as fh: list(yaml.safe_load_all(fh))
                           ok += 1

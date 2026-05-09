@@ -1,0 +1,145 @@
+site_name: Network Observability Workshops
+site_description: Self-contained, laptop-friendly hands-on workshops for Modern Network Observability — the book, the talks, the lab.
+site_url: https://network-observability.github.io/workshops/
+repo_url: https://github.com/network-observability/workshops
+repo_name: network-observability/workshops
+edit_uri: edit/main/
+
+copyright: Copyright &copy; 2026 — Modern Network Observability
+
+theme:
+  name: material
+  language: en
+  features:
+    # Navigation
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.indexes
+    - navigation.path
+    - navigation.top
+    - navigation.footer
+    # Search
+    - search.suggest
+    - search.highlight
+    - search.share
+    # Code blocks
+    - content.code.copy
+    - content.code.annotate
+    - content.code.select
+    # Tabs (for vendor compare etc)
+    - content.tabs.link
+    # Tooltips
+    - content.tooltips
+    # Headers
+    - header.autohide
+    # TOC
+    - toc.follow
+  palette:
+    # Light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+    # Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
+  font:
+    text: Inter
+    code: JetBrains Mono
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/pencil
+    view: material/eye
+
+plugins:
+  - search
+  - include-markdown:
+      preserve_includer_indent: true
+      dedent: false
+      trailing_newlines: true
+      comments: false
+
+markdown_extensions:
+  # Python Markdown
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3
+
+  # PyMdown — the FastAPI / Prefect set
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.snippets:
+      check_paths: true
+      base_path: ["docs", "."]
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+nav:
+  - Home: index.md
+  - Get started:
+      - Install Docker and uv: install.md
+      - Quickstart: quickstart.md
+  - AutoCon5 workshop:
+      - Overview: workshop/index.md
+      - One workday, one investigation: workshop/guides.md
+      - Part 1 — Telemetry and queries: workshop/part-1.md
+      - Part 2 — Dashboards: workshop/part-2.md
+      - Part 3 — Alerts, automation, AI: workshop/part-3.md
+      - Advanced — End-to-end investigation: workshop/advanced.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/network-observability/workshops
+      name: workshops on GitHub
+    - icon: fontawesome/brands/github
+      link: https://github.com/network-observability/network-observability-lab
+      name: companion lab on GitHub
+
+watch:
+  - workshops/autocon5/README.md
+  - workshops/autocon5/guides
+  - README.md
