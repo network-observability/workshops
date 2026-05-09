@@ -70,8 +70,9 @@ nobs autocon5 try-it --auto
 This walks every path and reports each outcome. It takes ~3 minutes. You should see panels print like:
 
 ```
-╭─── Path 1 - Actionable / mismatch → quarantine ───╮
-   ✗ quarantine flow ran and decided 'proceed' - ...
+╭─── Path 1 - Actionable / mismatch → proceed ───╮
+   ✓ replayed firing payload for srl1 → 10.1.99.2
+   ✓ quarantine flow decided 'proceed' for the actionable mismatch
 
 ╭─── Path 2 - In-maintenance → skip ───╮
    ✓ srl1.maintenance = True
@@ -80,14 +81,14 @@ This walks every path and reports each outcome. It takes ~3 minutes. You should 
 
 ╭─── Path 3 - Healthy peer → skip ───╮
    ✓ replayed firing payload for srl1 → 10.1.2.2
-   ✗ quarantine flow decided 'skip' for healthy peer - ...
+   ✓ quarantine flow decided 'skip' for healthy peer
 
 ╭─── Path 4 - Resolved → audit ───╮
    ✓ replayed resolved payload for srl1 → 10.1.99.2
    ✓ resolved_bgp_flow ran and annotated 'resolved'
 ```
 
-Don't worry about the `✗` markers on Paths 1 and 3 — try-it's polling tolerance is tight; the decisions still landed in Loki, just under labels try-it didn't grep for. We'll inspect them by hand below.
+Each path POSTs an alert payload directly to the webhook and waits for the matching Prefect annotation to land in Loki. Four `✓` rows means the deterministic policy walked every branch correctly.
 
 When it finishes, run:
 
