@@ -176,7 +176,13 @@ def test_defaults_carry_device_pipeline_and_sinks(two_peers: list[Peer]) -> None
     assert defaults["labels"]["device"] == "srl1"
     assert defaults["labels"]["pipeline"] == "telegraf"
     assert defaults["labels"]["collection_type"] == "gnmi"
-    assert defaults["labels"]["source"] == "workshop-cascade"
+    # Cascade carries telegraf scrape provenance so its series share an
+    # exact label set with the baseline series — query shows ONE line.
+    assert defaults["labels"]["host"] == "telegraf-srl1"
+    assert defaults["labels"]["instance"] == "telegraf-srl1:9005"
+    assert defaults["labels"]["job"] == "telegraf-srl1"
+    # No `source` label — cascade and baseline are the same Prom series.
+    assert "source" not in defaults["labels"]
 
 
 def test_srl2_collection_type_label_is_snmp() -> None:
@@ -195,7 +201,7 @@ def test_srl2_collection_type_label_is_snmp() -> None:
     assert body["defaults"]["labels"]["collection_type"] == "snmp"
 
 
-def test_srl2_bgp_entries_carry_telegraf_labels() -> None:
+def test_srl2_telegraf_provenance_lives_in_defaults() -> None:
     body = _build_cascade(
         device="srl2",
         interface="ethernet-1/1",
@@ -207,10 +213,14 @@ def test_srl2_bgp_entries_carry_telegraf_labels() -> None:
         prom_url="http://prom:9090/api/v1/write",
         loki_url="http://loki:3001",
     )
+    # Provenance keys are inherited via `defaults.labels` so every entry
+    # gets them without per-entry duplication.
+    assert body["defaults"]["labels"]["host"] == "telegraf-srl2"
+    assert body["defaults"]["labels"]["instance"] == "telegraf-srl2:9005"
+    assert body["defaults"]["labels"]["job"] == "telegraf-srl2"
     bgp_entry = next(e for e in body["scenarios"] if e["name"].startswith("bgp_"))
-    for key in ("host", "instance", "job"):
-        assert key in bgp_entry["labels"]
-        assert key not in body["defaults"]["labels"]
+    for key in ("host", "instance", "job", "pipeline", "collection_type"):
+        assert key not in bgp_entry["labels"]
 
 
 def test_log_entry_targets_loki_and_carries_interface_label(two_peers: list[Peer]) -> None:

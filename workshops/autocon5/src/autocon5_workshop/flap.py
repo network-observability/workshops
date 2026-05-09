@@ -42,6 +42,16 @@ _BGP_PREFIX_METRICS = (
     "bgp_active_routes",
 )
 
+_CASCADE_PROVENANCE_KEYS = ("host", "instance", "job", "pipeline", "collection_type")
+
+
+def _cascade_default_labels(device: str, intf_labels: dict[str, str]) -> dict[str, str]:
+    labels = {"device": device}
+    for key in _CASCADE_PROVENANCE_KEYS:
+        if key in intf_labels:
+            labels[key] = intf_labels[key]
+    return labels
+
 
 def flap_interface(
     device: Annotated[
@@ -266,12 +276,15 @@ def _build_cascade(
             "duration": duration,
             "encoder": {"type": "remote_write"},
             "sink": {"type": "remote_write", "url": prom_url},
-            "labels": {
-                "device": device,
-                "pipeline": intf_labels.get("pipeline", "telegraf"),
-                "collection_type": intf_labels.get("collection_type", "gnmi"),
-                "source": "workshop-cascade",
-            },
+            # `host`/`instance`/`job` mirror what telegraf-{device} would add
+            # via Prom's scrape job. Setting them explicitly here lets the
+            # cascade's series share an exact label set with the baseline
+            # series, so a query like `interface_oper_state{device="srl1"}`
+            # shows ONE line that flips up/down rather than two parallel
+            # series with mismatched labels. Recovery is still explicit via
+            # snap_to on each gated entry; baseline takes over naturally
+            # via Prom's latest-sample-wins after the cascade ends.
+            "labels": _cascade_default_labels(device, intf_labels),
         },
         "scenarios": scenarios,
     }
@@ -383,9 +396,10 @@ def _gated_updown_log_entry(
 def _entry_only_bgp_labels(device: str, peer: Peer) -> dict[str, str]:
     """Per-peer labels that should land on the entry, not in defaults."""
     full = bgp_labels(device, peer.address, peer.asn)
-    # `device`, `pipeline`, `collection_type`, `source` come from defaults.labels.
-    # Strip them so the entry only carries per-peer specifics.
-    inherited = {"device", "pipeline", "collection_type", "source"}
+    # `device` + the provenance keys (`pipeline`, `collection_type`, `host`,
+    # `instance`, `job`) come from defaults.labels. Strip them so the entry
+    # only carries per-peer specifics.
+    inherited = {"device", *_CASCADE_PROVENANCE_KEYS}
     return {k: v for k, v in full.items() if k not in inherited}
 
 
