@@ -39,6 +39,12 @@ dist/
 # Node (just in case)
 node_modules/
 
+# MkDocs build output
+site/
+
+# Claude Code local session state
+.claude/
+
 # Local data dumps
 **/_local/
 

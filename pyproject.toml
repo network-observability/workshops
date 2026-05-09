@@ -29,6 +29,11 @@ dev = [
   "pytest>=8.0,<9",
   "pytest-mock>=3.12",
 ]
+docs = [
+  "mkdocs-material>=9.5,<10",
+  "mkdocs-include-markdown-plugin>=7.0,<8",
+  "pymdown-extensions>=10.0",
+]
 
 [tool.uv]
 package = false
