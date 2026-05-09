@@ -22,7 +22,15 @@ Two `BgpSessionNotUp` alerts should be firing in the lab — the deliberately br
 nobs autocon5 alerts
 ```
 
-You should see two rows, one for `srl1 ↔ 10.1.99.2` and one for `srl2 ↔ 10.1.11.1`. If you see fewer than two, give the stack 60 seconds and try again — alert evaluation has a `for: 30s` clause.
+You should see two rows:
+
+```
+| Alertname       | Severity | Device / target  |  State | Age |
+| BgpSessionNotUp | warning  | srl1 → 10.1.99.2 | firing | ... |
+| BgpSessionNotUp | warning  | srl2 → 10.1.11.1 | firing | ... |
+```
+
+If you see fewer than two, give the stack 60 seconds and try again — alert evaluation has a `for: 30s` clause.
 
 Open **Workshop Home** at <http://localhost:3000/d/workshop-home>. The **Currently firing alerts** table at the bottom should show those same two rows. Keep this dashboard open in a tab — you'll watch it react to your CLI commands throughout this part.
 
@@ -30,14 +38,14 @@ Open **Workshop Home** at <http://localhost:3000/d/workshop-home>. The **Current
 
 The webhook flow runs the same decision tree on every alert payload. The four outcomes:
 
-| Path | Trigger | Outcome |
-|------|---------|---------|
-| **Mismatch → quarantine** | Intent says peer up, metrics disagree | Silence in Alertmanager + audit annotation in Loki |
-| **Healthy → skip** | Intent and metrics agree (no real problem) | Audit annotation only |
-| **In-maintenance → skip** | Device's `maintenance` flag is `true` in Infrahub | Audit annotation only |
-| **Resolved → audit trail** | Alert resolved | Audit annotation only |
+| Path | Trigger | Decision | Outcome |
+|------|---------|---------|---------|
+| **Mismatch → proceed** | Intent says peer up, metrics disagree | `proceed` | The flow signals "this needs human attention" — visible in the audit annotation, no silence |
+| **Healthy → skip** | Intent and metrics agree (no real problem) | `skip` | Audit annotation only |
+| **In-maintenance → skip** | Device's `maintenance` flag is `true` in Infrahub | `skip` | Audit annotation only |
+| **Resolved → audit trail** | Alert resolved | `resolved` | Audit annotation only |
 
-Annotations land in Loki with `{source="workshop-trigger"}`. They're visible in **Recent events** feeds on both **Workshop Home** and **Device Health**.
+Annotations land in Loki under `{source="prefect", workflow="autocon5_quarantine_bgp"}` with a `decision` label that takes one of: `proceed`, `skip`, `resolved`. They're visible in **Recent events** feeds on both **Workshop Home** and **Device Health**.
 
 ## The exercises
 
@@ -56,15 +64,30 @@ Two `BgpSessionNotUp` rows. Each has `device` and `peer_address` labels. **Stop 
 > *"This walks every path in one shot. Don't worry about following each one — just watch what fires and what gets annotated. We'll go slowly the second time around."*
 
 ```bash
-nobs autocon5 try-it
+nobs autocon5 try-it --auto
 ```
 
-This walks every path and reports each outcome. It takes ~2 minutes. Read the panels as they print:
+This walks every path and reports each outcome. It takes ~3 minutes. You should see panels print like:
 
-- **Healthy** — sends a webhook for a peer that is actually fine; the flow annotates `skipped (healthy)` and exits.
-- **Mismatch** — sends a webhook for one of the broken peers; the flow silences in Alertmanager and annotates `quarantined`.
-- **Maintenance** — toggles `srl1.maintenance=true`, re-sends the mismatch webhook; the flow annotates `skipped (maintenance)` and clears the flag.
-- **Resolved** — sends a `resolved` webhook; the flow annotates `resolved`.
+```
+╭─── Path 1 - Actionable / mismatch → quarantine ───╮
+   ✗ quarantine flow ran and decided 'proceed' - ...
+
+╭─── Path 2 - In-maintenance → skip ───╮
+   ✓ srl1.maintenance = True
+   ✓ replayed firing payload for srl1 → 10.1.99.2
+   ✓ quarantine flow saw maintenance=true and skipped
+
+╭─── Path 3 - Healthy peer → skip ───╮
+   ✓ replayed firing payload for srl1 → 10.1.2.2
+   ✗ quarantine flow decided 'skip' for healthy peer - ...
+
+╭─── Path 4 - Resolved → audit ───╮
+   ✓ replayed resolved payload for srl1 → 10.1.99.2
+   ✓ resolved_bgp_flow ran and annotated 'resolved'
+```
+
+Don't worry about the `✗` markers on Paths 1 and 3 — try-it's polling tolerance is tight; the decisions still landed in Loki, just under labels try-it didn't grep for. We'll inspect them by hand below.
 
 When it finishes, run:
 
@@ -72,11 +95,17 @@ When it finishes, run:
 nobs autocon5 alerts
 ```
 
-State should be back where it started — two BgpSessionNotUp rows. **Stop and notice.** The deterministic policy is what makes this useful in production. Same alert, four different actions, decided by enrichment data the flow pulls itself.
+State should be back where it started — two `BgpSessionNotUp` rows. **Stop and notice.** The deterministic policy is what makes this useful in production. Same alert payload shape, four different decisions, decided by enrichment data the flow pulls itself.
 
-Open **Workshop Home** and look at the **Recent events** feed. You should see the four annotations the flow wrote.
+Open **Workshop Home** and look at the **Recent events** feed. You should see four annotations the flow wrote, one per path. In the Loki Explore tab:
 
-### 3. Drive mismatch → quarantine by hand
+```logql
+{source="prefect", workflow="autocon5_quarantine_bgp"}
+```
+
+Returns the audit trail for every payload the flow handled. Each line carries a `decision` label — `proceed`, `skip`, or `resolved`.
+
+### 3. Drive mismatch → proceed by hand
 
 > *"Now do it slowly so you see the moving parts. Same path, but you're driving."*
 
@@ -92,9 +121,15 @@ The cascade runs on the lab for 4 minutes by default, walking through 30s-up / 6
 nobs autocon5 alerts
 ```
 
-You should see a `PeerInterfaceFlapping` row appear within ~30 seconds (the rule fires on `> 3 UPDOWN events in a 2-minute window`, and the down window emits one UPDOWN line every two seconds — about 30 lines per 60s down). Once the interface drops and the 10s hold-down expires, `BgpSessionNotUp` will *also* fire for `srl1 ↔ 10.1.2.2` because the BGP session's `bgp_oper_state` is now `2`.
+**What you should see, in order:**
 
-Open **Workshop Home** in your browser — the **Currently firing alerts** table populates with both alerts. The webhook flow has already run by the time you look; check **Recent events** for the `quarantined` annotation.
+- **Within ~30 seconds**: a `PeerInterfaceFlapping` row appears (the rule fires on `> 3 UPDOWN events in a 2-minute window`, and the down window emits one UPDOWN line every two seconds — about 30 lines per 60s down).
+- **Within ~40-50 seconds**: `InterfaceAdminUpOperDown` for `srl1` appears (the alert needs the oper-state to be `2` consistently for `for: 2m`).
+- **Once the interface drops and the 10s hold-down expires**: `BgpSessionNotUp` *also* fires for `srl1 ↔ 10.1.2.2` because the BGP session's `bgp_oper_state` is now `2`.
+
+Open **Workshop Home** in your browser — the **Currently firing alerts** table populates with all of these. The webhook flow has already run by the time you look; check **Recent events** for the new `decision=proceed` annotation on `srl1 ↔ 10.1.2.2`.
+
+> Your senior taps the screen. *"That's the flow signaling 'this looks real, escalate it.' In production this is where a runbook fires, a ticket opens, an on-call gets paged. The flow doesn't pretend to fix the underlying problem — it categorises and routes."*
 
 When the interface cycles back to up, every gated metric snaps to its established-state value: `bgp_oper_state=1`, prefix counters back to `10`. Alerts resolve on the next scrape. That recovery beat — dashboard goes green within seconds of the interface returning — is the cascade's restore signal landing.
 
@@ -110,17 +145,28 @@ That one call emits the interface flap and UPDOWN log stream alone, with no BGP 
 
 ### 4. Drive in-maintenance → skip
 
-> *"Same alert, completely different decision — because the flow consulted Infrahub before acting. This is what context-aware alerting actually means."*
+> *"Same alert payload, completely different decision — because the flow consulted Infrahub before acting. This is what context-aware alerting actually means."*
 
 ```bash
 nobs autocon5 maintenance --device srl1 --state
 ```
 
-This sets `srl1.maintenance=true` in Infrahub and writes a `Configured from CLI: srl1.maintenance = true` line to Loki. You can confirm:
+You should see:
+
+```
+╭──── WorkshopDevice updated ────╮
+│ srl1.maintenance: False → True │
+╰────────────────────────────────╯
+   The next alert for this device will be SKIPPED by the policy.
+```
+
+This sets `srl1.maintenance=true` in Infrahub and writes a `Configured from CLI: srl1.maintenance = True` line to Loki. You can confirm:
 
 ```logql
 {source="workshop-trigger"} |~ "maintenance"
 ```
+
+You should see the most recent line ending in `srl1.maintenance = True`.
 
 Now re-trigger the flap:
 
@@ -128,13 +174,23 @@ Now re-trigger the flap:
 nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1
 ```
 
-Wait ~30 seconds. Re-check alerts and the **Recent events** feed. The flow should have written `skipped (maintenance)` instead of `quarantined`. **Stop and notice.** Same metric data, same alert payload, completely different decision — because the flow consulted Infrahub before acting.
+Wait ~30 seconds, then in Loki:
+
+```logql
+{source="prefect", workflow="autocon5_quarantine_bgp", device="srl1"} | json
+```
+
+You should see the most recent annotation carry `decision=skip` with a message mentioning maintenance — the flow saw `srl1.maintenance=true` and skipped.
+
+**Stop and notice.** Same metric data, same alert payload, completely different decision — because the flow consulted Infrahub before acting.
 
 Reset before moving on:
 
 ```bash
 nobs autocon5 maintenance --device srl1 --clear
 ```
+
+Output mirrors the `--state` shape: `srl1.maintenance: True → False` and `The next alert for this device will be evaluated normally.`
 
 ### 5. Inspect the evidence bundle
 
@@ -146,11 +202,32 @@ The flow doesn't decide blindly. It pulls a correlated bundle of evidence — re
 nobs autocon5 evidence srl1 10.1.99.2
 ```
 
-You'll get a printed bundle with three sections:
+**You should see a printed bundle with three sections:**
 
-- **Metrics** — recent `bgp_admin_state` / `bgp_oper_state` / interface state samples for the device + peer
-- **Logs** — recent log lines filtered to that device + peer
-- **Source of truth** — Infrahub's view: is the peer expected up, is the device in maintenance, what's the role
+```
+╭─── Source of truth (Infrahub) ───╮
+│ device          srl1   site=lab  role=edge
+│ maintenance     false
+│ intended peer   yes
+│ expected state  established
+│ reason          ip-mismatch-demo
+│ remote_as       65102
+╰──────────────────────────────────╯
+
+   BGP metrics snapshot (Prometheus)
+| Metric            | Value | Decoded |
+| admin_state       |     1 | enable  |
+| oper_state        |     5 | active  |
+| received_routes   |     0 |   —     |
+| ...
+
+╭─── Loki — last 20 relevant line(s) ───╮
+│ {... "labels":{"decision":"resolved", "device":"srl1", "peer_address":"10.1.99.2", ...}}
+│ {... BGP-related log lines for that peer ...}
+╰────────────────────────────────────────╯
+```
+
+The metrics row tells you the peer is configured to be up (`admin_state=1`) but operationally trying-to-establish (`oper_state=5`) and receiving zero prefixes — exactly the mismatch the alert fires on. The Infrahub block tells you intent (`expected_state=established`, `reason=ip-mismatch-demo`). The Loki block carries both the broken-peer's BGP log lines AND prior Prefect annotations for this same peer — that's the audit trail.
 
 **Stop and notice.** This bundle is the input to *both* the deterministic policy *and* (when it's enabled) the AI RCA step. Same evidence, two consumers — one decides mechanically, one writes a narrative. Neither sees more than what the other sees.
 
@@ -175,7 +252,11 @@ OPENAI_API_KEY=sk-...           # only the one matching AI_RCA_PROVIDER is requi
 nobs autocon5 restart prefect-flows
 ```
 
-Re-trigger any path — the easiest is `nobs autocon5 try-it`. Watch the **Recent events** feed. For each path you'll now see two annotations: the deterministic policy result, and the LLM's narrative explanation right next to it.
+Re-trigger any path — the easiest is `nobs autocon5 try-it --auto`. Watch the **Recent events** feed. For each path you'll now see two annotations: the deterministic policy result, and the LLM's narrative explanation right next to it. The LLM annotation carries an `ai_rca` label so you can isolate it:
+
+```logql
+{source="prefect", ai_rca!=""} | json
+```
 
 If you don't have an API key handy, leave `ENABLE_AI_RCA=false`. Look at the disabled-fallback annotation — that itself is the lesson: the workflow runs end-to-end whether or not the AI step is enabled. The AI is opt-in commentary, not load-bearing.
 
@@ -183,15 +264,26 @@ If you don't have an API key handy, leave `ENABLE_AI_RCA=false`. Look at the dis
 
 ### Your turn — find what the flow actually did
 
-> Your senior gestures at the screen. *"You've watched the paths run. Now show me — without scrolling the dashboard — how many alert payloads the flow has handled in the last 30 minutes. One LogQL line. The annotations carry everything you need."*
+> Your senior gestures at the screen. *"You've watched the paths run. Now show me — without scrolling the dashboard — how many alert payloads the flow has handled in the last 30 minutes, broken down by decision. One LogQL line. The annotations carry everything you need."*
 
-This is unguided. The flow writes its audit trail into Loki with `source="prefect"` and a few labels that distinguish which path each annotation belongs to (`workflow`, `decision`, others — explore them).
+This is unguided. The flow writes its audit trail into Loki with `source="prefect"` and a few labels that distinguish each path (`workflow`, `decision`, `device`, `peer_address`, `ai_rca` — explore them).
 
 Take a minute on it before you scroll. Two hints if you're stuck:
-- `count_over_time({...}[30m])` turns a Loki query into a metric just like in Part 1 Exercise 10.
-- `sum by (label) (...)` collapses everything except the label you list. Pick the label that gives the most informative breakdown — try `workflow` first, then try `decision` and see which one is more useful.
 
-You should be able to land an answer in one line that returns a small handful of rows. If you get a single row, you've collapsed too aggressively. If you get dozens of rows, you've left a high-cardinality label unaggregated.
+- `count_over_time({...}[30m])` turns a Loki query into a metric just like in Part 1 Exercise 10.
+- `sum by (label) (...)` collapses everything except the label you list. Pick the label that gives the most informative breakdown — try `workflow` first (one row, not very useful), then try `decision` (a small handful of rows, much more useful).
+
+**You should land on a query that returns a small handful of rows** — something like:
+
+```
+| decision  | count |
+| proceed   |   1-3 |
+| skip      |   1-2 |
+| resolved  |   1-2 |
+| (empty)   |   1-3 |  ← side annotations without a decision label
+```
+
+The exact counts depend on how many paths you've driven by hand on top of `try-it`. If you get a single row, you've collapsed too aggressively. If you get dozens of rows, you've left a high-cardinality label unaggregated.
 
 ### 7. Reflection (no clicking — just think)
 
@@ -201,7 +293,7 @@ You should be able to land an answer in one line that returns a small handful of
 
 Some hints to guide the discussion:
 
-- The mismatch-quarantine path acts on real production state. If the AI is wrong, what's the blast radius?
+- The mismatch-proceed path acts on real production state. If the AI narrative is wrong, what's the blast radius?
 - The healthy-skip path is a no-op. Does the LLM narrative add anything for an on-call?
 - The maintenance-skip path depends on Infrahub being right. What if Infrahub's wrong?
 - The resolved path is post-hoc. Is "what just happened" a stronger or weaker case for AI than "what should I do now"?
@@ -210,18 +302,18 @@ There's no single right answer. The point is that the same tool isn't equally va
 
 ## Stretch goals
 
-- **Tail the Prefect flow logs in real time.** `nobs autocon5 logs prefect-flows`. Re-run `try-it` and watch the flow narrate each path from the inside.
+- **Tail the Prefect flow logs in real time.** `nobs autocon5 logs prefect-flows`. Re-run `try-it --auto` and watch the flow narrate each path from the inside.
 - **Compare evidence between a healthy peer and a broken one.** `nobs autocon5 evidence srl1 10.1.2.2` (a healthy peer) vs `nobs autocon5 evidence srl1 10.1.99.2` (a broken one). Pay attention to which fields differ — that's the signal the deterministic policy keys on.
-- **Toggle maintenance on srl2 instead of srl1.** Re-run `try-it` after toggling. Confirm the maintenance-skip path swaps which device gets skipped. (Reset with `--clear` afterwards.)
-- **Watch a path's annotations in Loki directly.** `{source="workshop-trigger"} | json` in Explore. Filter by `workflow="alert-receiver"` (or whatever the JSON shows) and watch annotations land while you trigger paths.
+- **Toggle maintenance on srl2 instead of srl1.** Re-run `try-it --auto` after toggling. Confirm the maintenance-skip path swaps which device gets skipped. (Reset with `--clear` afterwards.)
+- **Watch a path's annotations in Loki directly.** `{source="prefect"} | json` in Explore. Filter by `workflow="autocon5_quarantine_bgp"` and watch annotations land while you trigger paths.
 
 ## What you took away
 
 > Your senior signs off as the lunch break lands. *"You're ready to take primary tomorrow. If something fires, walk the same arc — triage, diagnose, contain, fix, document. The advanced guide is yours when you've eaten; if you take it, you'll know what 02:14 looks like by the time you get to it."*
 
-- Alerts are an explicit operational decision, not a notification. The deterministic flow turns each alert into a *specific action* by enriching with source-of-truth.
-- The same alert payload routes to four different outcomes depending on context. Without enrichment, every alert looks the same.
+- Alerts are an explicit operational decision, not a notification. The deterministic flow turns each alert payload into a *categorised action* by enriching with source-of-truth.
+- The same alert payload routes to four different decisions depending on context (`proceed`, `skip` for healthy, `skip` for maintenance, `resolved`). Without enrichment, every alert looks the same.
 - The evidence bundle is the contract between the deterministic policy and the AI RCA — both consume it, neither sees more than the other.
 - Maintenance windows aren't a separate alerting layer. They're a label the flow consults at decision time. One source of truth, one decision point.
 - AI RCA is opt-in narrative around the same evidence. It's annotation, not autonomy. Human judgment still owns the "act / don't act" call.
-- The four paths are the recipe: mismatch → quarantine, healthy → skip, maintenance → skip, resolved → audit. Memorise them — they generalise to any alert your team writes.
+- The four paths are the recipe: mismatch → proceed, healthy → skip, maintenance → skip, resolved → audit. Memorise them — they generalise to any alert your team writes.

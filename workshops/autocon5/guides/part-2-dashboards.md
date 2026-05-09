@@ -40,6 +40,8 @@ Open Grafana at <http://localhost:3000> and navigate to **Workshop Lab 2026** (`
 
 At the top of the dashboard there's a **Device** dropdown — that's the `$device` template variable. Toggle it between `srl1` and `srl2` and watch every panel re-query.
 
+> Your senior glances at the screen. *"Notice the dashboard didn't break when you toggled. That's the variable doing its job. Every panel here uses `$device` — same panel, two subjects."*
+
 The dashboard is provisioned `editable: true, allowUiUpdates: true`. UI changes save back to Grafana for the workshop session. **They don't persist past `nobs autocon5 restart grafana`** — that's intentional, and a useful thing to know about provisioned dashboards. Treat the dashboard as a scratchpad, not a deliverable.
 
 ## The exercise
@@ -48,13 +50,19 @@ You're adding a **flap rate** panel: how many UPDOWN log events per minute, brok
 
 ### 1. Enter edit mode
 
-Top right of the dashboard, click **Edit**, then **Add panel** → **Add visualization**.
+> *"Click Edit, top right. Then Add panel → Add visualization."*
+
+You should land in Grafana's panel editor — query box at the bottom, panel preview at the top, options on the right.
 
 ### 2. Pick the datasource
 
-You'll see a datasource picker. Choose `loki`. Flap rate is a *log-derived metric*, not a Prometheus counter — same pattern you saw in Part 1 exercise 10.
+> *"What datasource? Think about the data shape — flap rate is a count of log events, not a metric Prometheus is scraping for us."*
+
+Choose **`loki`** in the datasource picker. Flap rate is a *log-derived metric*, not a Prometheus counter — same pattern you saw in Part 1 exercise 10.
 
 ### 3. Write the query
+
+> *"Same shape as the LogQL aggregation we wrote together earlier. UPDOWN log events, grouped per interface, counted in a 1-minute window. Use the dashboard variable so this panel works for both devices."*
 
 In the Loki query box, paste:
 
@@ -67,13 +75,17 @@ Two things to notice:
 - `$device` is the dashboard variable. Grafana substitutes it before sending the query, so this panel becomes `srl1`-aware or `srl2`-aware automatically.
 - `count_over_time(...[1m])` counts UPDOWN log lines per minute. `sum by (interface)` groups so each interface gets its own line.
 
-Click **Run query**. You should see one line per interface, all flat at zero (no flaps yet). If you see "No data", check that the dropdown variable above the dashboard is set to a real device.
+Click **Run query**. **You should see one or two flat lines near zero** — sonda's continuous emitter trickles a low background of UPDOWN events to keep the alert pipeline warm without tripping anything. With `$device=srl1` you'll typically see a flat line for `ethernet-1/11` (the always-broken interface) and possibly a label-less line at value `1`. With `$device=srl2` you'll see flat lines for each of the three interfaces. None of them should be near the alert threshold yet. If you see "No data," check the dropdown variable above the dashboard is set to a real device.
 
 ### 4. Pick the panel type
+
+> *"Time series for this. Aggregations over time always read better as a line graph than a table."*
 
 In the right-hand options panel, panel-type dropdown at the top: choose **Time series**. (It usually defaults to time series for Loki aggregation queries — confirm it.)
 
 ### 5. Title and description
+
+> *"Title and description matter. The panel needs to tell the next on-call what they're looking at without you being there to explain it."*
 
 Scroll the right-hand options to **Panel options**:
 
@@ -83,6 +95,8 @@ Scroll the right-hand options to **Panel options**:
 Description shows up as a small `i` icon on the panel — students hovering it later get the context without leaving the dashboard.
 
 ### 6. Set thresholds that match reality
+
+> *"Now thresholds. The PeerInterfaceFlapping alert fires when count_over_time over 2 minutes exceeds 3. Match that — when the threshold line moves, the alert is right behind it."*
 
 The `PeerInterfaceFlapping` alert fires when `count_over_time({vendor_facility_process="UPDOWN"}[2m]) > 3`. Mirror that on the panel so the threshold line *is* the alert condition:
 
@@ -94,15 +108,17 @@ In the right-hand options, scroll to **Thresholds**. Set:
 | Orange | `1` |
 | Red | `3` |
 
-Then under **Graph styles** → **Show thresholds**, pick `As lines`. Now the panel has a horizontal red line at 3 — a flap rate above it means an alert is firing.
+Then under **Graph styles** → **Show thresholds**, pick `As lines`. **You should now see two horizontal lines on the panel preview — orange at 1, red at 3.** A flap rate above the red line means an alert is firing.
 
 > Your senior glances over. *"Thresholds matching the alert rule? Good. When the line crosses the orange one, the alert is firing. The panel should make the alert visible, not duplicate it."*
 
 ### 7. Save
 
-Top right, **Apply** to drop back to the dashboard, then **Save dashboard** (disk icon, top right of the dashboard).
+Top right, **Apply** to drop back to the dashboard, then **Save dashboard** (disk icon, top right of the dashboard). Grafana confirms `Dashboard saved`. The new panel is now part of `Workshop Lab 2026`.
 
 ### 8. Drive a flap
+
+> *"OK. Panel's there. Doesn't mean anything until we see it react. Drive a flap."*
 
 In a terminal:
 
@@ -110,21 +126,34 @@ In a terminal:
 nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1
 ```
 
-This kicks off a 4-minute cascade with the interface cycling 30s up, 60s down. UPDOWN log lines emit at a steady cadence (~one every two seconds) during each down window. Switch the dashboard's `Device` dropdown to `srl1` if you aren't already there. Within ~30 seconds the new panel should show a spike on `interface=ethernet-1/1` crossing the orange and red threshold lines.
+This kicks off a 4-minute cascade with the interface cycling 30s up, 60s down. UPDOWN log lines emit at a steady cadence (~one every two seconds) during each down window. Switch the dashboard's `Device` dropdown to `srl1` if you aren't already there.
+
+**What you should see, in order:**
+
+- **Within ~30 seconds** of the CLI returning: a line for `interface=ethernet-1/1` starts climbing. It crosses the orange threshold (1) almost immediately, then the red threshold (3) within another 10–20 seconds.
+- **By ~60 seconds** in: `ethernet-1/1` is well above red — typically around `10` events per minute during the down window.
+- **After ~90 seconds** (interface returns up, gate closes): the line trickles back down toward zero as the 1-minute window ages out the down-phase events.
+- **Cycle 2 around t+120s**: the same ramp/cool-down pattern repeats.
+
+> Your senior taps the screen. *"Watch the orange line — that's where the alert is starting to fire. Watch the red line — that's where someone's pager goes off. The panel makes both moments visible without a separate alerts pane."*
 
 **Stop and notice.** This is the same query pattern that drives the alert. The panel isn't decoration — it's a visual representation of the rule that's about to fire in Part 3. When the on-call gets paged, this panel is what they look at first.
 
 ### 9. Switch device variable
 
-Toggle the `Device` dropdown to `srl2`. The flap-rate panel now queries `srl2` UPDOWN events. Trigger one:
+> *"Now the proof that the variable was worth it. Toggle to srl2 and drive a flap there. No editing the panel — the dashboard does the work."*
+
+Toggle the `Device` dropdown to `srl2`. The flap-rate panel re-queries and now shows `srl2`'s steady-state lines (the broken `ethernet-1/11` plus normal trickle).
+
+Trigger:
 
 ```bash
 nobs autocon5 flap-interface --device srl2 --interface ethernet-1/10
 ```
 
-Watch the spike land on `srl2`'s panel without you editing the query.
+Watch the spike land on `srl2`'s `ethernet-1/10` line — same ramp shape, same threshold crossings, same recovery — without you editing the query.
 
-**Stop and notice.** One panel, two devices. That's what the dashboard variable bought you. If you'd hard-coded `device="srl1"` in the query, you'd need a duplicate panel for every device you ever add.
+**Stop and notice.** One panel, two devices. That's what the dashboard variable bought you. If you'd hard-coded `device="srl1"` in the query, you'd need a duplicate panel for every device you ever add — and one to maintain per device when the schema changes.
 
 > Your senior nods at the screen. *"That's the panel. Six hours from now when somebody on the rotation gets paged on a similar shape, this view is on screen the moment they open the dashboard. Ten minutes saved off the next triage. That's the work."*
 
