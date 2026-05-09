@@ -34,9 +34,16 @@ defaults:
     url: "${PROMETHEUS_REMOTE_WRITE_URL:-http://prometheus:9090/api/v1/write}"
   labels:
     device: srl1
-    pipeline: direct
+    pipeline: telegraf
     collection_type: gnmi
-    source: workshop-cascade
+    # Telegraf scrape provenance — matches what telegraf-srl1 would add via
+    # Prom's scrape job. Setting these explicitly lets the cascade's series
+    # share an exact label set with the baseline series, so a query like
+    # `interface_oper_state{device="srl1"}` shows ONE line that flips up/down
+    # rather than two parallel series with mismatched labels.
+    host: telegraf-srl1
+    instance: telegraf-srl1:9005
+    job: telegraf-srl1
 
 scenarios:
   - id: primary_flap
