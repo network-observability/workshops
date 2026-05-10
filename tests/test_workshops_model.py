@@ -61,6 +61,35 @@ def test_compose_file_default_resolves_under_dir(tmp_path: Path) -> None:
     assert ws.resolved_compose_file() == tmp_path / "docker-compose.yml"
 
 
+def test_capabilities_default_is_full_set(tmp_path: Path) -> None:
+    ws = _ws(tmp_path)
+    assert ws.capabilities == frozenset({"status", "alerts", "maintenance", "schema"})
+
+
+def test_capabilities_can_be_subset(tmp_path: Path) -> None:
+    ws = _ws(tmp_path, capabilities={"status", "alerts"})
+    assert "status" in ws.capabilities
+    assert "alerts" in ws.capabilities
+    assert "maintenance" not in ws.capabilities
+    assert "schema" not in ws.capabilities
+
+
+def test_capabilities_accepts_list(tmp_path: Path) -> None:
+    ws = _ws(tmp_path, capabilities=["status"])
+    assert ws.capabilities == frozenset({"status"})
+
+
+def test_capabilities_rejects_unknown(tmp_path: Path) -> None:
+    with pytest.raises(ValidationError, match="Unknown capability"):
+        _ws(tmp_path, capabilities={"status", "not-a-real-cap"})
+
+
+def test_capabilities_empty_set_allowed(tmp_path: Path) -> None:
+    """A workshop with no operational primitives only ships lifecycle + extra commands."""
+    ws = _ws(tmp_path, capabilities=set())
+    assert ws.capabilities == frozenset()
+
+
 def test_register_rejects_duplicate_names(tmp_path: Path) -> None:
     """Re-registering a workshop with a colliding name must raise."""
     initial_len = len(REGISTRY)

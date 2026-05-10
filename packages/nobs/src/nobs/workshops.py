@@ -74,6 +74,35 @@ class Workshop(BaseModel):
         default_factory=list,
         description="Workshop-specific Typer command callables added to the subcommand group.",
     )
+    capabilities: frozenset[str] = Field(
+        default_factory=lambda: frozenset({"status", "alerts", "maintenance", "schema"}),
+        description=(
+            "Operational primitives this workshop exposes. Each entry mounts the "
+            "corresponding shared command into the workshop's subcommand group. "
+            "A workshop without Alertmanager would drop 'alerts'; without "
+            "Infrahub-shaped source-of-truth, drop 'maintenance' and 'schema'. "
+            "Defaults to all four for back-compat with the original AutoCon5-shaped stack."
+        ),
+        examples=[frozenset({"status", "alerts", "maintenance", "schema"})],
+    )
+
+    @field_validator("capabilities", mode="before")
+    @classmethod
+    def _coerce_capabilities(cls, v: object) -> frozenset[str]:
+        if isinstance(v, frozenset):
+            return v
+        if isinstance(v, (list, set, tuple)):
+            return frozenset(str(x) for x in v)
+        raise TypeError(f"capabilities must be a collection of strings, got {type(v).__name__}")
+
+    @field_validator("capabilities")
+    @classmethod
+    def _check_capabilities(cls, v: frozenset[str]) -> frozenset[str]:
+        valid = {"status", "alerts", "maintenance", "schema"}
+        unknown = v - valid
+        if unknown:
+            raise ValueError(f"Unknown capability/capabilities: {sorted(unknown)}. Valid: {sorted(valid)}")
+        return v
 
     @field_validator("name")
     @classmethod
