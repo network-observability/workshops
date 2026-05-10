@@ -8,6 +8,7 @@ resulting compose process injected `localhost:8000` into the
 `prefect-flows` container's environment, which broke the in-network
 Prefect → Infrahub query path silently.
 """
+
 from __future__ import annotations
 
 import os
@@ -64,9 +65,7 @@ def test_run_compose_passes_unrewritten_infrahub_address(
     )
 
 
-def test_load_env_then_host_address_returns_localhost(
-    workshop_with_env: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_load_env_then_host_address_returns_localhost(workshop_with_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The rewrite still happens — just at the host_address() call site,
     not as a global os.environ mutation. Confirm the host-side helper
     sees the in-network value and rewrites it."""

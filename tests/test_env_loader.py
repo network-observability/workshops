@@ -10,6 +10,7 @@ These pin the two BLOCKERs the Opus reviewer caught in PR #4:
      localhost form when the input contains the in-network DNS name; it
      leaves anything else alone.
 """
+
 from __future__ import annotations
 
 import os
@@ -25,9 +26,7 @@ def workshop_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     so individual tests can mutate it freely."""
     env = tmp_path / ".env"
     env.write_text(
-        "INFRAHUB_ADDRESS=http://infrahub-server:8000\n"
-        "INFRAHUB_API_TOKEN=test-token-123\n"
-        "GRAFANA_USER=admin\n"
+        "INFRAHUB_ADDRESS=http://infrahub-server:8000\nINFRAHUB_API_TOKEN=test-token-123\nGRAFANA_USER=admin\n"
     )
     monkeypatch.delenv("INFRAHUB_ADDRESS", raising=False)
     monkeypatch.delenv("INFRAHUB_API_TOKEN", raising=False)
@@ -49,9 +48,7 @@ def test_load_env_does_not_rewrite_infrahub_address_in_os_environ(workshop_dir: 
     assert os.environ["INFRAHUB_ADDRESS"] == "http://infrahub-server:8000"
 
 
-def test_load_env_existing_os_environ_wins(
-    workshop_dir: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_load_env_existing_os_environ_wins(workshop_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """If a value is already set in os.environ, it must override `.env`
     (matches docker-compose precedence)."""
     monkeypatch.setenv("GRAFANA_USER", "shell-override")

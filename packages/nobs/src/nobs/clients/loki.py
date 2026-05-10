@@ -1,4 +1,5 @@
 """Loki HTTP client — query_range + annotate (via sonda /events)."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -89,6 +90,9 @@ class LokiClient:
             "sink": {"type": "loki", "url": self.sonda_loki_sink_url},
         }
         r = requests.post(
-            f"{self.sonda_url}/events", json=payload, headers=headers, timeout=self.timeout,
+            f"{self.sonda_url}/events",
+            json=payload,
+            headers=headers,
+            timeout=self.timeout,
         )
         r.raise_for_status()

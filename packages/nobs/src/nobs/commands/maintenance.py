@@ -4,6 +4,7 @@ Generic over the schema kind (defaults to `WorkshopDevice` for the
 AutoCon5 workshop). Future workshops with a different node type can
 override `--kind` without forking the command.
 """
+
 from __future__ import annotations
 
 import sys
@@ -112,9 +113,7 @@ def maintenance_for(ws: Workshop) -> Callable[..., None]:
     def maintenance_ws(
         device: Annotated[
             str,
-            typer.Option(
-                "--device", "-d", help="Device name (matches the kind's `name` attribute)."
-            ),
+            typer.Option("--device", "-d", help="Device name (matches the kind's `name` attribute)."),
         ],
         state: Annotated[
             bool,
@@ -123,20 +122,11 @@ def maintenance_for(ws: Workshop) -> Callable[..., None]:
                 help="Set maintenance to true (--state) or false (--clear).",
             ),
         ] = True,
-        kind: Annotated[
-            str, typer.Option("--kind", help="Infrahub node kind to update.")
-        ] = "WorkshopDevice",
-        address: Annotated[
-            str, typer.Option("--address", envvar="INFRAHUB_ADDRESS")
-        ] = "http://localhost:8000",
-        token: Annotated[
-            str, typer.Option("--token", envvar="INFRAHUB_API_TOKEN")
-        ] = "",
-        loki_url: Annotated[
-            str, typer.Option("--loki-url", envvar="LOKI_URL")
-        ] = "http://localhost:3001",
+        kind: Annotated[str, typer.Option("--kind", help="Infrahub node kind to update.")] = "WorkshopDevice",
+        address: Annotated[str, typer.Option("--address", envvar="INFRAHUB_ADDRESS")] = "http://localhost:8000",
+        token: Annotated[str, typer.Option("--token", envvar="INFRAHUB_API_TOKEN")] = "",
+        loki_url: Annotated[str, typer.Option("--loki-url", envvar="LOKI_URL")] = "http://localhost:3001",
     ) -> None:
-        _env.load_env(ws.dir)
         maintenance(
             device=device,
             state=state,

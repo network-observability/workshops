@@ -147,9 +147,7 @@ def incident(
         ok(f"registered {len(created)} scenario(s): {ids}")
         console.print(
             "  Inspect:  [muted]curl {url}/scenarios[/]\n"
-            "  Stop:     [muted]curl -X DELETE {url}/scenarios/<id>[/]".format(
-                url=sonda_url.rstrip("/")
-            )
+            "  Stop:     [muted]curl -X DELETE {url}/scenarios/<id>[/]".format(url=sonda_url.rstrip("/"))
         )
         return
 

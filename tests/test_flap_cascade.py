@@ -113,9 +113,7 @@ def test_gated_bgp_entries_snap_to_established_baseline(two_peers: list[Peer]) -
         "bgp_sent_routes": 10.0,
         "bgp_active_routes": 10.0,
     }
-    bgp_entries = [
-        e for e in body["scenarios"] if e["name"].startswith("bgp_")
-    ]
+    bgp_entries = [e for e in body["scenarios"] if e["name"].startswith("bgp_")]
     assert bgp_entries, "expected at least one BGP entry"
     for entry in bgp_entries:
         close = entry["delay"]["close"]

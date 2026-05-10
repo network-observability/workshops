@@ -7,6 +7,7 @@ Importing the `nobs` package triggers workshop self-registration via the
 When entry-points discovery is added later, this side-effect import
 becomes a loop over `entry_points(group="nobs.workshops")`.
 """
+
 from __future__ import annotations
 
 __version__ = "0.1.0"

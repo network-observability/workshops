@@ -1,4 +1,5 @@
 """`nobs alerts` — list active alerts from Alertmanager."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -10,7 +11,6 @@ from rich.table import Table
 
 from .._console import console, fail
 from ..clients import AlertmanagerClient
-from ..lifecycle import env as _env
 from ..workshops import Workshop
 
 
@@ -40,13 +40,17 @@ def _humanize_age(start: dt.datetime | None) -> str:
 
 
 def alerts(
-    am_url: Annotated[str, typer.Option("--am-url", envvar="ALERTMANAGER_URL", help="Alertmanager URL.")] = "http://localhost:9093",
+    am_url: Annotated[
+        str, typer.Option("--am-url", envvar="ALERTMANAGER_URL", help="Alertmanager URL.")
+    ] = "http://localhost:9093",
     label: Annotated[
         list[str] | None,
         typer.Option("--label", "-l", help="Filter by label, e.g. -l alertname=BgpSessionNotUp. Can be repeated."),
     ] = None,
     show_silenced: Annotated[bool, typer.Option("--silenced/--no-silenced", help="Include silenced alerts.")] = True,
-    show_inhibited: Annotated[bool, typer.Option("--inhibited/--no-inhibited", help="Include inhibited alerts.")] = True,
+    show_inhibited: Annotated[
+        bool, typer.Option("--inhibited/--no-inhibited", help="Include inhibited alerts.")
+    ] = True,
 ) -> None:
     """List active alerts from Alertmanager as a Rich table.
 
@@ -147,7 +151,6 @@ def alerts_for(ws: Workshop) -> Callable[..., None]:
             bool, typer.Option("--inhibited/--no-inhibited", help="Include inhibited alerts.")
         ] = True,
     ) -> None:
-        _env.load_env(ws.dir)
         alerts(
             am_url=am_url,
             label=label,

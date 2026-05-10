@@ -12,6 +12,7 @@ The `task` (go-task) check is intentionally dropped - go-task is being
 removed from the workshops repo as part of the `nobs`-as-single-CLI
 migration.
 """
+
 from __future__ import annotations
 
 import shutil
@@ -113,9 +114,7 @@ def _check_tooling() -> list[CheckResult]:
             )
         )
     else:
-        out.append(
-            CheckResult("docker compose v2", "fail", "docker compose subcommand not available")
-        )
+        out.append(CheckResult("docker compose v2", "fail", "docker compose subcommand not available"))
     return out
 
 

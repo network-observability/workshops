@@ -7,6 +7,7 @@ sub-Typer.
 The `list_workshops` function (top-level `nobs workshops`) renders the
 registry as a Rich tree.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -19,7 +20,6 @@ from rich.tree import Tree
 from .. import workshops as _workshops_module
 from .._console import console, fail, ok, step
 from ..workshops import Workshop
-from . import env as _env
 from .compose import run_compose
 
 # ---------------------------------------------------------------------------
@@ -67,7 +67,6 @@ def up_for(ws: Workshop) -> Callable[..., None]:
     ) -> None:
         if ws.bootstrap is not None:
             ws.bootstrap()
-        _env.load_env(ws.dir)
 
         action = "up -d --build" if build else "up -d"
         step(f"docker compose {action} (project={ws.name})")
@@ -88,7 +87,6 @@ def up_for(ws: Workshop) -> Callable[..., None]:
 
 def down_for(ws: Workshop) -> Callable[..., None]:
     def down() -> None:
-        _env.load_env(ws.dir)
         step(f"docker compose down (project={ws.name})")
         result = run_compose("down", ws)
         if result.returncode != 0:
@@ -102,7 +100,6 @@ def down_for(ws: Workshop) -> Callable[..., None]:
 
 def destroy_for(ws: Workshop) -> Callable[..., None]:
     def destroy() -> None:
-        _env.load_env(ws.dir)
         step(f"docker compose down --volumes --remove-orphans (project={ws.name})")
         result = run_compose("down --volumes --remove-orphans", ws)
         if result.returncode != 0:
@@ -121,7 +118,6 @@ def restart_for(ws: Workshop) -> Callable[..., None]:
             typer.Argument(help="Specific services to restart (default: full down + up)."),
         ] = None,
     ) -> None:
-        _env.load_env(ws.dir)
         if services:
             step(f"docker compose restart {' '.join(services)} (project={ws.name})")
             result = run_compose("restart", ws, services=services)
@@ -148,7 +144,6 @@ def restart_for(ws: Workshop) -> Callable[..., None]:
 
 def ps_for(ws: Workshop) -> Callable[..., None]:
     def ps() -> None:
-        _env.load_env(ws.dir)
         result = run_compose("ps", ws)
         if result.returncode != 0:
             raise typer.Exit(code=result.returncode)
@@ -167,7 +162,6 @@ def logs_for(ws: Workshop) -> Callable[..., None]:
         tail: Annotated[int, typer.Option("--tail", help="Number of lines to show.")] = 200,
         follow: Annotated[bool, typer.Option("--follow/--no-follow", "-f")] = True,
     ) -> None:
-        _env.load_env(ws.dir)
         action = f"logs --tail={tail}"
         if follow:
             action += " -f"
@@ -189,7 +183,6 @@ def exec_for(ws: Workshop) -> Callable[..., None]:
             typer.Argument(help="Command to run inside the container (default: sh)."),
         ] = None,
     ) -> None:
-        _env.load_env(ws.dir)
         cmd = command or ["sh"]
         result = run_compose("exec", ws, services=[service, *cmd])
         if result.returncode != 0:
@@ -207,7 +200,6 @@ def build_for(ws: Workshop) -> Callable[..., None]:
             typer.Argument(help="Services to rebuild (default: all)."),
         ] = None,
     ) -> None:
-        _env.load_env(ws.dir)
         step(f"docker compose build (project={ws.name})")
         result = run_compose("build", ws, services=services)
         if result.returncode != 0:

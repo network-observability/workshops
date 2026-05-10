@@ -4,6 +4,7 @@ We require Compose v2 (`docker compose`, not `docker-compose`); the
 preflight check enforces this. The legacy `DOCKER_COMPOSE_WITH_HASH`
 fallback used by netobs is intentionally dropped.
 """
+
 from __future__ import annotations
 
 import os

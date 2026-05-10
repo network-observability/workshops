@@ -1,4 +1,5 @@
 """Tiny Prometheus HTTP client — instant + range queries, alerts list."""
+
 from __future__ import annotations
 
 import datetime as dt

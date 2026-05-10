@@ -16,6 +16,7 @@ Two responsibilities, deliberately separated:
   value and inject `localhost:8000` into `prefect-flows`'s container,
   which breaks the in-network Prefect → Infrahub queries.
 """
+
 from __future__ import annotations
 
 import os

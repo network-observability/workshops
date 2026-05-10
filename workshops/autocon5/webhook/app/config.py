@@ -1,4 +1,5 @@
 """Settings + log configuration for the webhook."""
+
 from __future__ import annotations
 
 from pydantic import BaseModel

@@ -36,22 +36,31 @@ from workshop_sdk import Decision, DecisionPolicy, EvidenceBundle, WorkshopSDK
 # ---------------------------------------------------------------------------
 
 
-@task(retries=2, retry_delay_seconds=3, log_prints=True,
-      task_run_name="collect_evidence[{device}:{peer_address}]")
+@task(retries=2, retry_delay_seconds=3, log_prints=True, task_run_name="collect_evidence[{device}:{peer_address}]")
 def collect_bgp_evidence_task(
-    device: str, peer_address: str, afi_safi: str, instance_name: str,
-    log_minutes: int, log_limit: int,
+    device: str,
+    peer_address: str,
+    afi_safi: str,
+    instance_name: str,
+    log_minutes: int,
+    log_limit: int,
 ) -> EvidenceBundle:
     print(f"🔎 [collect] device={device} peer={peer_address} afi={afi_safi} instance={instance_name}")
     sdk = WorkshopSDK()
     ev = sdk.collect_bgp_evidence(
-        device=device, peer_address=peer_address, afi_safi=afi_safi, instance_name=instance_name,
-        log_minutes=log_minutes, log_limit=log_limit,
+        device=device,
+        peer_address=peer_address,
+        afi_safi=afi_safi,
+        instance_name=instance_name,
+        log_minutes=log_minutes,
+        log_limit=log_limit,
     )
     print(
         "✅ [collect] sot.found={} maintenance={} intended={} expected_state={} reason={!r}".format(
-            ev.sot.get("found"), ev.sot.get("maintenance"),
-            ev.sot.get("intended_peer"), ev.sot.get("expected_state"),
+            ev.sot.get("found"),
+            ev.sot.get("maintenance"),
+            ev.sot.get("intended_peer"),
+            ev.sot.get("expected_state"),
             ev.sot.get("reason"),
         )
     )
@@ -80,8 +89,11 @@ def annotate_decision_task(workflow: str, device: str, peer_address: str, decisi
     print(f"📝 [annotate] decision={decision.decision} reason={decision.reason}")
     sdk = WorkshopSDK()
     sdk.annotate_decision(
-        workflow=workflow, device=device, peer_address=peer_address,
-        decision=decision.decision, message=decision.reason,
+        workflow=workflow,
+        device=device,
+        peer_address=peer_address,
+        decision=decision.decision,
+        message=decision.reason,
     )
 
 
@@ -135,27 +147,39 @@ def annotate_action_task(workflow: str, device: str, peer_address: str, silence_
 
 @flow(log_prints=True, flow_run_name="quarantine_bgp | {device}:{peer_address}")
 def quarantine_bgp_flow(
-    device: str, peer_address: str,
-    afi_safi: str = "ipv4-unicast", instance_name: str = "default",
-    log_minutes: int = 30, log_limit: int = 50, quarantine_minutes: int = 20,
+    device: str,
+    peer_address: str,
+    afi_safi: str = "ipv4-unicast",
+    instance_name: str = "default",
+    log_minutes: int = 30,
+    log_limit: int = 50,
+    quarantine_minutes: int = 20,
 ) -> dict[str, Any]:
     logger = get_run_logger()
     print(f"⚙️  [flow] quarantine_bgp_flow {device}:{peer_address}")
 
     with tags(
-        f"device:{device}", f"peer_address:{peer_address}",
-        f"afi_safi:{afi_safi}", f"instance:{instance_name}",
+        f"device:{device}",
+        f"peer_address:{peer_address}",
+        f"afi_safi:{afi_safi}",
+        f"instance:{instance_name}",
         "action:quarantine",
     ):
         ev = collect_bgp_evidence_task(
-            device=device, peer_address=peer_address, afi_safi=afi_safi,
-            instance_name=instance_name, log_minutes=log_minutes, log_limit=log_limit,
+            device=device,
+            peer_address=peer_address,
+            afi_safi=afi_safi,
+            instance_name=instance_name,
+            log_minutes=log_minutes,
+            log_limit=log_limit,
         )
 
         decision = evaluate_policy_task(device=device, peer_address=peer_address, ev=ev)
         annotate_decision_task(
             workflow="autocon5_quarantine_bgp",
-            device=device, peer_address=peer_address, decision=decision,
+            device=device,
+            peer_address=peer_address,
+            decision=decision,
         )
 
         # AI RCA runs regardless of decision so the user can see the LLM's
@@ -163,15 +187,23 @@ def quarantine_bgp_flow(
         # no-op (returns a clear sentinel) when ENABLE_AI_RCA is false.
         rca_text = ai_rca_task(
             workflow="autocon5_quarantine_bgp",
-            device=device, peer_address=peer_address, ev=ev,
+            device=device,
+            peer_address=peer_address,
+            ev=ev,
         )
 
         if decision.decision != "proceed":
             print(f"✅ [flow] no action ({decision.decision} — {decision.reason})")
             return {
-                "device": device, "peer_address": peer_address, "action": "none",
-                "decision": {"ok": decision.ok, "decision": decision.decision,
-                             "reason": decision.reason, "details": decision.details},
+                "device": device,
+                "peer_address": peer_address,
+                "action": "none",
+                "decision": {
+                    "ok": decision.ok,
+                    "decision": decision.decision,
+                    "reason": decision.reason,
+                    "details": decision.details,
+                },
                 "evidence_summary": ev.summary(),
                 "ai_rca": rca_text,
             }
@@ -180,13 +212,21 @@ def quarantine_bgp_flow(
         logger.info("Quarantine applied: silence_id=%s", silence_id)
         annotate_action_task(
             workflow="autocon5_quarantine_bgp",
-            device=device, peer_address=peer_address, silence_id=silence_id,
+            device=device,
+            peer_address=peer_address,
+            silence_id=silence_id,
         )
         return {
-            "device": device, "peer_address": peer_address,
-            "action": "quarantine", "silence_id": silence_id,
-            "decision": {"ok": decision.ok, "decision": decision.decision,
-                         "reason": decision.reason, "details": decision.details},
+            "device": device,
+            "peer_address": peer_address,
+            "action": "quarantine",
+            "silence_id": silence_id,
+            "decision": {
+                "ok": decision.ok,
+                "decision": decision.decision,
+                "reason": decision.reason,
+                "details": decision.details,
+            },
             "evidence_summary": ev.summary(),
             "ai_rca": rca_text,
         }
@@ -194,19 +234,25 @@ def quarantine_bgp_flow(
 
 @flow(log_prints=True, flow_run_name="resolved_bgp | {device}:{peer_address}")
 def resolved_bgp_flow(
-    device: str, peer_address: str,
-    afi_safi: str = "ipv4-unicast", instance_name: str = "default",
+    device: str,
+    peer_address: str,
+    afi_safi: str = "ipv4-unicast",
+    instance_name: str = "default",
 ) -> None:
     print(f"🧊 [flow] resolved_bgp_flow {device}:{peer_address}")
     with tags(
-        f"device:{device}", f"peer_address:{peer_address}",
-        f"afi_safi:{afi_safi}", f"instance:{instance_name}",
+        f"device:{device}",
+        f"peer_address:{peer_address}",
+        f"afi_safi:{afi_safi}",
+        f"instance:{instance_name}",
         "status:resolved",
     ):
         decision = Decision(ok=False, decision="resolved", reason="Alert resolved")
         annotate_decision_task(
             workflow="autocon5_quarantine_bgp",
-            device=device, peer_address=peer_address, decision=decision,
+            device=device,
+            peer_address=peer_address,
+            decision=decision,
         )
 
 
@@ -218,7 +264,11 @@ def resolved_bgp_flow(
 def _extract_bgp_fields(labels: dict[str, str]) -> dict[str, str]:
     return {
         "device": labels.get("device") or labels.get("hostname") or "",
-        "peer_address": labels.get("peer_address") or labels.get("peer") or labels.get("neighbor") or labels.get("interface") or "",
+        "peer_address": labels.get("peer_address")
+        or labels.get("peer")
+        or labels.get("neighbor")
+        or labels.get("interface")
+        or "",
         "afi_safi": labels.get("afi_safi_name") or labels.get("afi_safi") or "ipv4-unicast",
         "instance_name": labels.get("name") or labels.get("instance_name") or "default",
     }
@@ -249,11 +299,15 @@ def alert_receiver(alertname: str, status: str, alert_group: dict[str, Any]) -> 
 
         if status == "firing":
             quarantine_bgp_flow(
-                device=device, peer_address=peer_address,
-                afi_safi=fields["afi_safi"], instance_name=fields["instance_name"],
+                device=device,
+                peer_address=peer_address,
+                afi_safi=fields["afi_safi"],
+                instance_name=fields["instance_name"],
             )
         else:
             resolved_bgp_flow(
-                device=device, peer_address=peer_address,
-                afi_safi=fields["afi_safi"], instance_name=fields["instance_name"],
+                device=device,
+                peer_address=peer_address,
+                afi_safi=fields["afi_safi"],
+                instance_name=fields["instance_name"],
             )

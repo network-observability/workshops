@@ -10,6 +10,7 @@ Steps:
 Also exposes `run_for(ws)` - same as step 4 for a single workshop, used
 by `nobs <workshop> setup`.
 """
+
 from __future__ import annotations
 
 import shutil
@@ -95,8 +96,7 @@ def run_for(ws: Workshop) -> Callable[[], None]:
         console.print()
         console.print(
             Panel.fit(
-                f"[ok]{ws.title}[/] is ready.\n"
-                f"Next: [label]nobs {ws.name} up[/]",
+                f"[ok]{ws.title}[/] is ready.\nNext: [label]nobs {ws.name} up[/]",
                 title=f"nobs {ws.name} setup",
                 border_style="green",
             )
@@ -131,9 +131,7 @@ def _summary(*, deps_installed: bool, bootstrapped: list[str], preflight_failed:
     console.print()
     console.print(
         Panel.fit(
-            f"deps          {deps_line}\n"
-            f"workshops     {ws_line}\n"
-            f"preflight     {pre_line}",
+            f"deps          {deps_line}\nworkshops     {ws_line}\npreflight     {pre_line}",
             title="nobs setup",
             border_style=border,
         )

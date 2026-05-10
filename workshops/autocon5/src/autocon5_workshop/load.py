@@ -1,4 +1,5 @@
 """`nobs autocon5 load-infrahub` - apply schema (via nobs) + seed lab_vars.yml."""
+
 from __future__ import annotations
 
 import sys
@@ -28,27 +29,33 @@ def _detect_default(path: Path) -> Path:
 
 def load_infrahub(
     schema: Annotated[
-        Path, typer.Option("--schema", help="Path to the Infrahub schema YAML."),
+        Path,
+        typer.Option("--schema", help="Path to the Infrahub schema YAML."),
     ] = Path("infrahub/schema.yml"),
     lab_vars: Annotated[
-        Path, typer.Option("--lab-vars", help="Path to lab_vars.yml."),
+        Path,
+        typer.Option("--lab-vars", help="Path to lab_vars.yml."),
     ] = Path("lab_vars.yml"),
     address: Annotated[
-        str, typer.Option("--address", envvar="INFRAHUB_ADDRESS", help="Infrahub URL."),
+        str,
+        typer.Option("--address", envvar="INFRAHUB_ADDRESS", help="Infrahub URL."),
     ] = "http://localhost:8000",
     token: Annotated[
-        str, typer.Option("--token", envvar="INFRAHUB_API_TOKEN"),
+        str,
+        typer.Option("--token", envvar="INFRAHUB_API_TOKEN"),
     ] = "",
     skip_schema: Annotated[
-        bool, typer.Option("--skip-schema", help="Skip the `infrahubctl schema load` step."),
+        bool,
+        typer.Option("--skip-schema", help="Skip the `infrahubctl schema load` step."),
     ] = False,
 ) -> None:
     """Apply the workshop schema and seed lab_vars.yml into Infrahub.
 
     Idempotent. Re-running updates existing nodes rather than duplicating.
-    The schema apply step delegates to `nobs schema load`; the data upsert
-    is workshop-specific (it knows the `WorkshopDevice` / `WorkshopInterface`
-    / `WorkshopBgpSession` schema and the `lab_vars.yml` shape).
+    The schema apply step delegates to the shared schema apply in
+    `nobs/commands/schema.py`; the data upsert is workshop-specific (it
+    knows the `WorkshopDevice` / `WorkshopInterface` / `WorkshopBgpSession`
+    schema and the `lab_vars.yml` shape).
     """
     schema = _detect_default(schema)
     lab_vars = _detect_default(lab_vars)
@@ -95,7 +102,7 @@ def _seed_lab_vars(address: str, token: str, lab_vars: Path) -> dict[str, dict[s
         lab = yaml.safe_load(fh)
 
     nodes = lab.get("nodes") or {}
-    intent_bgp = ((lab.get("observability_intent") or {}).get("bgp") or {})
+    intent_bgp = (lab.get("observability_intent") or {}).get("bgp") or {}
     afi_safi = intent_bgp.get("afi_safi", "ipv4-unicast")
     intended_peers = intent_bgp.get("intended_peers") or {}
 
@@ -123,9 +130,7 @@ def _seed_lab_vars(address: str, token: str, lab_vars: Path) -> dict[str, dict[s
     return counts
 
 
-def _wait_for_workshop_schema(
-    client: Any, kinds: list[str], timeout: float, branch: str = "main"
-) -> None:
+def _wait_for_workshop_schema(client: Any, kinds: list[str], timeout: float, branch: str = "main") -> None:
     """Block until every workshop schema kind is visible to the SDK.
 
     The schema apply above is sync from `infrahubctl`'s perspective, but

@@ -18,6 +18,7 @@ WORKSHOP = Workshop(
 register(WORKSHOP)
 ```
 """
+
 from __future__ import annotations
 
 import re
@@ -27,6 +28,24 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 _NAME_RE = re.compile(r"^[a-z][a-z0-9-]{1,30}$")
+
+VALID_CAPABILITIES: frozenset[str] = frozenset({"status", "alerts", "maintenance", "schema"})
+
+_RESERVED_EXTRA_NAMES: frozenset[str] = (
+    frozenset(
+        {
+            "up",
+            "down",
+            "destroy",
+            "restart",
+            "ps",
+            "logs",
+            "exec",
+            "build",
+        }
+    )
+    | VALID_CAPABILITIES
+)
 
 
 class Workshop(BaseModel):
@@ -52,10 +71,7 @@ class Workshop(BaseModel):
         examples=["AutoCon5 - Modern Network Observability"],
     )
     dir: Path = Field(
-        description=(
-            "Workshop directory (where docker-compose.yml + .env live). "
-            "Resolved once at registration time."
-        ),
+        description=("Workshop directory (where docker-compose.yml + .env live). Resolved once at registration time."),
         examples=[Path("/repo/workshops/autocon5")],
     )
     compose_file: Path | None = Field(
@@ -74,6 +90,46 @@ class Workshop(BaseModel):
         default_factory=list,
         description="Workshop-specific Typer command callables added to the subcommand group.",
     )
+    capabilities: frozenset[str] = Field(
+        default_factory=lambda: VALID_CAPABILITIES,
+        description="Operational primitives this workshop exposes. See `VALID_CAPABILITIES`.",
+        examples=[frozenset({"status", "alerts", "maintenance", "schema"})],
+    )
+
+    @field_validator("capabilities", mode="before")
+    @classmethod
+    def _coerce_capabilities(cls, v: object) -> frozenset[str]:
+        if isinstance(v, frozenset):
+            return v
+        if isinstance(v, (list, set, tuple)):
+            return frozenset(str(x) for x in v)
+        raise ValueError(f"capabilities must be a collection of strings, got {type(v).__name__}")
+
+    @field_validator("capabilities")
+    @classmethod
+    def _check_capabilities(cls, v: frozenset[str]) -> frozenset[str]:
+        unknown = v - VALID_CAPABILITIES
+        if unknown:
+            raise ValueError(f"Unknown capability/capabilities: {sorted(unknown)}. Valid: {sorted(VALID_CAPABILITIES)}")
+        return v
+
+    @field_validator("extra_commands")
+    @classmethod
+    def _check_extra_commands(cls, v: list[Callable]) -> list[Callable]:
+        seen: set[str] = set()
+        for cmd in v:
+            name = getattr(cmd, "__name__", "").replace("_", "-")
+            if not name:
+                raise ValueError("extra_commands entry has no __name__")
+            if name in _RESERVED_EXTRA_NAMES:
+                raise ValueError(
+                    f"extra_commands name {name!r} collides with a reserved "
+                    f"lifecycle/capability slot. Reserved: {sorted(_RESERVED_EXTRA_NAMES)}"
+                )
+            if name in seen:
+                raise ValueError(f"extra_commands has duplicate command name {name!r}")
+            seen.add(name)
+        return v
 
     @field_validator("name")
     @classmethod

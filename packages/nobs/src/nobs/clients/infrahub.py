@@ -4,6 +4,7 @@ Generic on purpose — workshops layer their schema-specific queries on top
 of `query()`. The token is read from `INFRAHUB_API_TOKEN` if not passed
 explicitly, which lines up with the rest of the workshop tooling.
 """
+
 from __future__ import annotations
 
 import os

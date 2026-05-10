@@ -7,6 +7,7 @@ srl1 and srl2. Validates frame + row count.
 All datasources used by the workshop (prometheus, loki, infinity) are
 backend plugins, so /api/ds/query is the truthful test for every panel.
 """
+
 from __future__ import annotations
 
 import json
@@ -17,13 +18,11 @@ from typing import Any
 
 import requests
 
-WORKSHOP_DIR = Path(os.environ.get("PREFLIGHT_WORKSHOP_DIR",
-                                   Path(__file__).resolve().parents[3]))
+WORKSHOP_DIR = Path(os.environ.get("PREFLIGHT_WORKSHOP_DIR", Path(__file__).resolve().parents[3]))
 OUT_DIR = Path(os.environ.get("PREFLIGHT_OUT_DIR", "/tmp/preflight-out"))
 
 GRAFANA = os.environ.get("GRAFANA_URL", "http://localhost:3000")
-GRAFANA_AUTH = (os.environ.get("GRAFANA_USER", "admin"),
-                os.environ.get("GRAFANA_PASSWORD", "admin"))
+GRAFANA_AUTH = (os.environ.get("GRAFANA_USER", "admin"), os.environ.get("GRAFANA_PASSWORD", "admin"))
 
 DEVICES = ["srl1", "srl2"]
 WINDOW_SECONDS = 5 * 60
@@ -53,14 +52,17 @@ def grafana_ds_query(target: dict[str, Any]) -> dict[str, Any]:
     end = int(time.time() * 1000)
     start = end - WINDOW_SECONDS * 1000
     body = {
-        "queries": [{**target, "refId": target.get("refId", "A"),
-                     "intervalMs": 30_000, "maxDataPoints": 600}],
-        "from": str(start), "to": str(end),
+        "queries": [{**target, "refId": target.get("refId", "A"), "intervalMs": 30_000, "maxDataPoints": 600}],
+        "from": str(start),
+        "to": str(end),
     }
     r = requests.post(f"{GRAFANA}/api/ds/query", json=body, auth=GRAFANA_AUTH, timeout=15)
-    return {"status": r.status_code,
-            "json": r.json() if r.headers.get("content-type", "").startswith("application/json")
-            else {"_text": r.text[:300]}}
+    return {
+        "status": r.status_code,
+        "json": r.json()
+        if r.headers.get("content-type", "").startswith("application/json")
+        else {"_text": r.text[:300]},
+    }
 
 
 def collect_panels(dashboard_path: Path) -> tuple[str, list[dict[str, Any]]]:
@@ -136,10 +138,14 @@ def main() -> int:
                         ok, summary = shape_check(resp)
                     except Exception as e:  # noqa: BLE001
                         ok, summary = False, f"{type(e).__name__}: {e}"
-                    target_results.append({
-                        "ok": ok, "ds": ds_type, "summary": summary,
-                        "expr": (rendered.get("expr") or rendered.get("queryText") or "")[:200],
-                    })
+                    target_results.append(
+                        {
+                            "ok": ok,
+                            "ds": ds_type,
+                            "summary": summary,
+                            "expr": (rendered.get("expr") or rendered.get("queryText") or "")[:200],
+                        }
+                    )
 
                 if not target_results:
                     status = "SKIP"
@@ -153,14 +159,23 @@ def main() -> int:
 
                 marker = {"PASS": "OK  ", "FAIL": "FAIL", "SKIP": "SKIP"}[status]
                 summary_str = "; ".join(f"{r['ds']}:{r['summary']}" for r in target_results) or "no targets"
-                print(f"  [{marker}] panel #{panel_id} {panel_type:14s} "
-                      f"device={device:12s} {panel_title[:38]!r:40s} → {summary_str[:140]}", flush=True)
+                print(
+                    f"  [{marker}] panel #{panel_id} {panel_type:14s} "
+                    f"device={device:12s} {panel_title[:38]!r:40s} → {summary_str[:140]}",
+                    flush=True,
+                )
 
-                dashboard_results.append({
-                    "panel_id": panel_id, "panel_title": panel_title, "panel_type": panel_type,
-                    "device": device, "status": status, "summary": summary_str,
-                    "targets": target_results,
-                })
+                dashboard_results.append(
+                    {
+                        "panel_id": panel_id,
+                        "panel_title": panel_title,
+                        "panel_type": panel_type,
+                        "device": device,
+                        "status": status,
+                        "summary": summary_str,
+                        "targets": target_results,
+                    }
+                )
 
         report.append({"dashboard": title, "file": dashboard_path.name, "panels": dashboard_results})
 

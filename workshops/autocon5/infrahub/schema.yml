@@ -6,8 +6,8 @@
 # `maintenance` flag and the BGP intent), in a flat, easy-to-grok shape.
 #
 # Apply with:  nobs autocon5 load-infrahub
-# (which calls `nobs schema load infrahub/schema.yml` then upserts
-#  lab_vars.yml via the Infrahub SDK in autocon5_workshop/load.py).
+# (which calls `nobs autocon5 schema load infrahub/schema.yml` then
+#  upserts lab_vars.yml via the Infrahub SDK in autocon5_workshop/load.py).
 ---
 version: '1.0'
 
