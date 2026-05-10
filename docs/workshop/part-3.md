@@ -1,3 +1,40 @@
+---
+title: Part 3 — Alerts, automation, AI
+description: Late morning. A real alert lands and your senior narrates how the workflow handles it. Walk the four canonical paths, toggle the AI RCA step.
+---
+
+<div class="autocon5-section-hero" markdown>
+
+<span class="autocon5-section-hero__badge">Part 3 of 4 · Late morning</span>
+
+<h1 class="autocon5-section-hero__title">Alerts, automation, AI</h1>
+
+<p class="autocon5-section-hero__subtitle">Watch a real alert flow through Alertmanager → Prefect → Infrahub.</p>
+
+A real alert lands while your senior narrates. Walk the four canonical paths the workflow handles, toggle the AI RCA step, and decide which paths you'd trust the LLM narrative on at 02:14. Your senior signs off as the lunch break lands — you're ready to take primary on the rotation tomorrow.
+
+<p class="autocon5-section-hero__meta">
+  <span>~75 minutes</span>
+  <span>Four canonical paths walked end-to-end</span>
+  <span>Optional AI-assisted RCA toggle</span>
+</p>
+
+</div>
+
 {%
   include-markdown "../../workshops/autocon5/guides/part-3-alerts-automation-ai.md"
 %}
+
+<nav class="autocon5-nav-footer" markdown>
+
+<a href="part-2.md">
+  <span class="autocon5-nav-footer__label">← Previous</span>
+  <span class="autocon5-nav-footer__title">Part 2 — Dashboards</span>
+</a>
+
+<a class="autocon5-nav-footer__next" href="advanced.md">
+  <span class="autocon5-nav-footer__label">Next →</span>
+  <span class="autocon5-nav-footer__title">Advanced — The 02:14 page</span>
+</a>
+
+</nav>

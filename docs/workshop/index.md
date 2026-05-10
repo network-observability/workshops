@@ -2,12 +2,23 @@
 title: AutoCon5 — Modern Network Observability
 ---
 
-# AutoCon5 — Modern Network Observability
+<div class="autocon5-section-hero" markdown>
 
-A four-hour, laptop-friendly workshop. You bring a laptop with Docker; we bring a self-contained observability stack (Prometheus, Loki, Grafana, Alertmanager) plus a synthetic telemetry generator that stands in for a small network. By lunchtime you'll have queried real-shaped telemetry, made a dashboard answer an operational question, watched alerts route through an automated workflow, and seen what an opt-in AI RCA step does next to that workflow.
+<span class="autocon5-section-hero__badge">Workshop overview · Pre-flight</span>
 
-!!! abstract "Format"
-    ~20% framing and guided demos, ~80% hands-on. The whole stack runs locally — no shared backend, no live network gear.
+<h1 class="autocon5-section-hero__title">AutoCon5 — Modern Network Observability</h1>
+
+<p class="autocon5-section-hero__subtitle">A four-hour, laptop-friendly workshop. You bring Docker; we bring the rest.</p>
+
+By lunchtime you'll have queried real-shaped telemetry, made a dashboard answer an operational question, watched alerts route through an automated workflow, and seen what an opt-in AI RCA step does next to that workflow.
+
+<p class="autocon5-section-hero__meta">
+  <span>~20% framing &amp; guided demos, ~80% hands-on</span>
+  <span>Whole stack runs locally</span>
+  <span>No shared backend, no live network gear</span>
+</p>
+
+</div>
 
 ## FAQ
 

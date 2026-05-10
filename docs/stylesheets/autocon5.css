@@ -123,6 +123,189 @@
   -webkit-text-fill-color: transparent;
 }
 
+/* ---------- Section hero (per-part) ---------------------------------------- */
+/* Smaller, lower-key hero used at the top of each part guide. Tinted
+ * background + left border accent so it reads as part-of-the-page rather
+ * than a slab. */
+
+.autocon5-section-hero {
+  background: linear-gradient(
+    100deg,
+    rgba(0, 188, 212, 0.10) 0%,
+    rgba(0, 137, 123, 0.06) 100%
+  );
+  border-left: 4px solid var(--autocon5-gradient-mid);
+  border-radius: 0 8px 8px 0;
+  padding: 1.5rem 1.75rem;
+  margin: 0.5rem 0 2rem;
+}
+
+[data-md-color-scheme="slate"] .autocon5-section-hero {
+  background: linear-gradient(
+    100deg,
+    rgba(77, 208, 225, 0.10) 0%,
+    rgba(0, 137, 123, 0.06) 100%
+  );
+  border-left-color: var(--autocon5-accent);
+}
+
+.autocon5-section-hero__badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.65rem;
+  background: var(--autocon5-gradient-mid);
+  color: #fff;
+  border-radius: 999px;
+  margin-bottom: 0.6rem;
+}
+
+.autocon5-section-hero__title {
+  font-size: 1.9rem;
+  font-weight: 700;
+  line-height: 1.15;
+  margin: 0 0 0.35rem;
+}
+
+.autocon5-section-hero__subtitle {
+  font-size: 1.1rem;
+  font-weight: 400;
+  margin: 0 0 0.85rem;
+  color: var(--md-default-fg-color--light);
+}
+
+.autocon5-section-hero__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.25rem;
+  font-size: 0.85rem;
+  color: var(--md-default-fg-color--light);
+  margin-top: 0.5rem;
+}
+
+.autocon5-section-hero__meta span::before {
+  content: "› ";
+  opacity: 0.5;
+  margin-right: 0.2rem;
+}
+
+/* ---------- Cross-part navigation footer ----------------------------------- */
+/* Two-card row that sits at the bottom of each part: previous on the left,
+ * next on the right. Visually echoes Material's grid cards but with directional
+ * arrows. */
+
+.autocon5-nav-footer {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin: 3rem 0 1rem;
+}
+
+/* The markdown processor wraps anchors in <p>; flatten so the grid sees
+ * one cell per nav link. */
+.autocon5-nav-footer > p {
+  margin: 0;
+}
+
+.autocon5-nav-footer a {
+  display: block;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 8px;
+  text-decoration: none;
+  color: var(--md-default-fg-color);
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+
+.autocon5-nav-footer a:hover {
+  border-color: var(--autocon5-gradient-mid);
+  background: rgba(0, 188, 212, 0.06);
+  transform: translateY(-1px);
+}
+
+.autocon5-nav-footer__label {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--md-default-fg-color--light);
+  margin-bottom: 0.25rem;
+}
+
+.autocon5-nav-footer__title {
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.autocon5-nav-footer__next {
+  text-align: right;
+}
+
+.autocon5-nav-footer__placeholder {
+  visibility: hidden;
+}
+
+@media (max-width: 600px) {
+  .autocon5-nav-footer {
+    grid-template-columns: 1fr;
+  }
+  .autocon5-nav-footer__next {
+    text-align: left;
+  }
+}
+
+/* ---------- Material polish ------------------------------------------------- */
+/* Subtle reading-experience refinements that ride on top of Material's
+ * defaults — softer admonitions, code blocks that lift on hover, and
+ * blockquotes that read as senior-engineer voice rather than dead quote. */
+
+.md-typeset .admonition,
+.md-typeset details {
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.md-typeset .admonition-title,
+.md-typeset summary {
+  font-weight: 600;
+}
+
+.md-typeset pre > code {
+  border-radius: 8px;
+  transition: box-shadow 0.15s ease;
+}
+
+.md-typeset .highlight:hover pre > code {
+  box-shadow: 0 4px 12px rgba(0, 137, 123, 0.10);
+}
+
+.md-typeset blockquote {
+  border-left-width: 4px;
+  border-left-color: var(--autocon5-gradient-mid);
+  background: rgba(0, 188, 212, 0.04);
+  padding: 0.75rem 1rem;
+  border-radius: 0 6px 6px 0;
+}
+
+[data-md-color-scheme="slate"] .md-typeset blockquote {
+  background: rgba(77, 208, 225, 0.05);
+  border-left-color: var(--autocon5-accent);
+}
+
+/* Slightly tighter table styling for the many comparison tables in the
+ * guides (vendor-A vs vendor-B, gNMI-raw vs canonical, etc.) */
+.md-typeset table:not([class]) th {
+  background: rgba(0, 137, 123, 0.06);
+  font-weight: 600;
+}
+
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) th {
+  background: rgba(77, 208, 225, 0.06);
+}
+
 /* ---------- Subtle palette tightening -------------------------------------- */
 
 [data-md-color-scheme="default"] {

@@ -1,3 +1,40 @@
+---
+title: Part 2 — Dashboards
+description: Mid-morning. A post-mortem email lands — last night's page lost ten minutes because a flap-rate panel didn't exist. Build it now, with thresholds matching the alert rule.
+---
+
+<div class="autocon5-section-hero" markdown>
+
+<span class="autocon5-section-hero__badge">Part 2 of 4 · Mid-morning</span>
+
+<h1 class="autocon5-section-hero__title">Dashboards</h1>
+
+<p class="autocon5-section-hero__subtitle">Build the panel last night's post-mortem said you needed.</p>
+
+A post-mortem email lands. Last night's page lost ten minutes because a flap-rate panel didn't exist yet. You build it now — thresholds matching the actual alert rule, while the team is still in the room and your senior is at your shoulder.
+
+<p class="autocon5-section-hero__meta">
+  <span>~75 minutes</span>
+  <span>Grafana panels with intent</span>
+  <span>Alert thresholds aligned with the rule</span>
+</p>
+
+</div>
+
 {%
   include-markdown "../../workshops/autocon5/guides/part-2-dashboards.md"
 %}
+
+<nav class="autocon5-nav-footer" markdown>
+
+<a href="part-1.md">
+  <span class="autocon5-nav-footer__label">← Previous</span>
+  <span class="autocon5-nav-footer__title">Part 1 — Telemetry and queries</span>
+</a>
+
+<a class="autocon5-nav-footer__next" href="part-3.md">
+  <span class="autocon5-nav-footer__label">Next →</span>
+  <span class="autocon5-nav-footer__title">Part 3 — Alerts, automation, AI</span>
+</a>
+
+</nav>
