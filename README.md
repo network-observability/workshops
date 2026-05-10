@@ -8,6 +8,8 @@ synthetic telemetry generator ([sonda](https://github.com/davidban77/sonda)) tha
 stands in for a small network.
 No real or containerized network devices required.
 
+> 📖 **Browse it as a website:** <https://network-observability.github.io/workshops/> — the same content rendered as a searchable, mobile-friendly docs site (handy on a phone during the workshop).
+
 ## Why this repo exists
 
 The companion repo [`network-observability-lab`][lab] grew out of the book's

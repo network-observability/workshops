@@ -7,6 +7,8 @@ By lunchtime you'll have queried real-shaped telemetry, made a dashboard answer 
 > **Format:** ~20% framing and guided demos, ~80% hands-on.
 > The whole stack runs locally — no shared backend, no live network gear.
 
+> 📖 **Read this online:** <https://network-observability.github.io/workshops/workshop/> — searchable, mobile-friendly docs site with the same content as this README and the hands-on guides.
+
 ## FAQ
 
 **Do I need network engineering experience?**
