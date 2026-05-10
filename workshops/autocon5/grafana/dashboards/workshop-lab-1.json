@@ -29,7 +29,31 @@
       "targetBlank": false,
       "asDropdown": false,
       "includeVars": false,
-      "keepTime": false,
+      "keepTime": true,
+      "tags": []
+    },
+    {
+      "title": "srl1 Health",
+      "url": "/d/c78e686b-138b-4deb-b6ae-3239dc10a162?var-device=srl1",
+      "type": "link",
+      "icon": "bolt",
+      "tooltip": "Jump to srl1 \u2014 BGP peers, interfaces, logs",
+      "targetBlank": false,
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": true,
+      "tags": []
+    },
+    {
+      "title": "srl2 Health",
+      "url": "/d/c78e686b-138b-4deb-b6ae-3239dc10a162?var-device=srl2",
+      "type": "link",
+      "icon": "bolt",
+      "tooltip": "Jump to srl2 \u2014 BGP peers, interfaces, logs",
+      "targetBlank": false,
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": true,
       "tags": []
     },
     {
