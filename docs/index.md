@@ -1,21 +1,33 @@
 ---
-title: Network Observability Workshops
-description: Hands-on workshops for Modern Network Observability — one continuous on-call investigation, the whole stack on your laptop.
+title: AutoCon5 · Modern Network Observability
+description: The AutoCon5 hands-on workshop on Modern Network Observability — one continuous on-call investigation, the whole stack on your laptop.
 hide:
   - navigation
 ---
 
-# Network Observability Workshops
+<div class="autocon5-hero" markdown>
 
-<p style="font-size: 1.15rem; line-height: 1.6;">
-  <em>Hands-on workshops for <strong>Modern Network Observability</strong>. You arrive on a new on-call rotation. Over four hours you learn the lab's telemetry, build the dashboard your team needed yesterday, and watch the automation handle a real alert — with a senior engineer over your shoulder until lunch.</em>
+<span class="autocon5-hero__badge">AutoCon5 · Hands-on workshop</span>
+
+<h1 class="autocon5-hero__title">Modern Network Observability</h1>
+
+<p class="autocon5-hero__subtitle">One workday on a new on-call rotation. Four hours, one laptop.</p>
+
+<p class="autocon5-hero__lead">
+You arrive on a new on-call rotation. Over four hours you learn the lab's telemetry, build the dashboard your team needed yesterday, and watch the automation handle a real alert — with a senior engineer over your shoulder until lunch. By the time you close the laptop you've queried real-shape telemetry, made a Grafana panel answer an operational question, walked through how Alertmanager → Prefect routes a live alert, and decided which paths you'd trust an LLM-assisted RCA on at 02:14.
 </p>
-
-By the time you close the laptop you'll have queried real-shape telemetry, made a Grafana panel answer an operational question, walked through how Alertmanager → Prefect routes a live alert, and decided which paths you'd trust an LLM-assisted RCA on at 02:14. The whole stack runs locally. No shared backend. No live network gear. :rocket:
 
 [Quickstart :material-arrow-right:](quickstart.md){ .md-button .md-button--primary }
 [Install Docker and uv :material-arrow-right:](install.md){ .md-button }
 [Open the workshop :material-arrow-right:](workshop/index.md){ .md-button }
+
+<p class="autocon5-hero__meta">
+  <span>Four hours · ~80% hands-on</span>
+  <span>Whole stack runs locally</span>
+  <span>No shared backend, no live network gear</span>
+</p>
+
+</div>
 
 ---
 
