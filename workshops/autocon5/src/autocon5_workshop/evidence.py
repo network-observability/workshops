@@ -8,6 +8,7 @@ human reader. Useful for:
   * debugging when a quarantine flow does something unexpected
   * letting attendees write their own queries against the same shape
 """
+
 from __future__ import annotations
 
 from typing import Annotated, Any
@@ -143,10 +144,7 @@ def _fetch_sot(url: str, token: str, device: str, peer: str, afi_safi: str) -> d
 
 def _fetch_metrics(prom_url: str, device: str, peer: str, afi_safi: str, instance: str) -> dict[str, float]:
     client = PromClient(prom_url)
-    base = (
-        f'device="{device}",peer_address="{peer}",'
-        f'afi_safi_name="{afi_safi}",name="{instance}"'
-    )
+    base = f'device="{device}",peer_address="{peer}",afi_safi_name="{afi_safi}",name="{instance}"'
 
     def _first(query: str, default: float = 0.0) -> float:
         try:
@@ -246,8 +244,7 @@ def _render_decision(decision: dict[str, str]) -> None:
     console.print()
     console.print(
         Panel.fit(
-            f"[label]decision[/]: [{style}]{decision['decision']}[/]\n"
-            f"[label]reason  [/]: {decision['reason']}",
+            f"[label]decision[/]: [{style}]{decision['decision']}[/]\n[label]reason  [/]: {decision['reason']}",
             title="Policy hint",
             border_style=style,
         )

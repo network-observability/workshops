@@ -54,9 +54,7 @@ def _cascade_default_labels(device: str, intf_labels: dict[str, str]) -> dict[st
 
 
 def flap_interface(
-    device: Annotated[
-        str, typer.Option("--device", "-d", help="Device name (e.g. srl1).")
-    ] = "srl1",
+    device: Annotated[str, typer.Option("--device", "-d", help="Device name (e.g. srl1).")] = "srl1",
     interface: Annotated[
         str,
         typer.Option("--interface", "-i", help="Interface name (e.g. ethernet-1/1)."),
@@ -87,8 +85,7 @@ def flap_interface(
         str,
         typer.Option(
             "--cascade-delay",
-            help="Hold-down between interface down and BGP collapse "
-            "(maps to delay.open on the gated entries).",
+            help="Hold-down between interface down and BGP collapse (maps to delay.open on the gated entries).",
         ),
     ] = "10s",
     no_cascade: Annotated[
@@ -136,8 +133,7 @@ def flap_interface(
         bool,
         typer.Option(
             "--follow/--no-follow",
-            help="Poll the running scenario(s) until completion. "
-            "`--no-follow` returns immediately after registration.",
+            help="Poll the running scenario(s) until completion. `--no-follow` returns immediately after registration.",
         ),
     ] = False,
 ) -> None:
@@ -203,9 +199,7 @@ def flap_interface(
         ok(f"registered {len(created)} scenario(s): {ids}")
         console.print(
             "  Inspect:  [muted]curl {url}/scenarios[/]\n"
-            "  Stop:     [muted]curl -X DELETE {url}/scenarios/<id>[/]".format(
-                url=sonda_url.rstrip("/")
-            )
+            "  Stop:     [muted]curl -X DELETE {url}/scenarios/<id>[/]".format(url=sonda_url.rstrip("/"))
         )
         return
 

@@ -1,4 +1,5 @@
 """Alertmanager webhook handler — forwards into the Prefect alert-receiver flow."""
+
 from __future__ import annotations
 
 import logging
@@ -59,7 +60,9 @@ def process_webhook(alert_group: AlertmanagerAlertGroup):
 
         log.info(
             "Fanning out %d device/target pairs for alert '%s' status='%s'",
-            len(pairs), alertname, status,
+            len(pairs),
+            alertname,
+            status,
         )
 
         for device, target in pairs:

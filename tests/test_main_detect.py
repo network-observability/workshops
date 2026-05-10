@@ -1,4 +1,5 @@
 """Tests for `nobs.main._detect_current_workshop`."""
+
 from __future__ import annotations
 
 from pathlib import Path

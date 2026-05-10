@@ -12,6 +12,7 @@ commands are also mounted at root so the workshop name can be elided
 (`cd workshops/autocon5 && nobs alerts` == `nobs autocon5 alerts`). The
 three root primitives are not shadowed.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -49,9 +50,7 @@ def _detect_current_workshop(cwd: Path | None = None) -> Workshop | None:
     return None
 
 
-def _register_workshop_commands(
-    target: typer.Typer, ws: Workshop, *, skip: frozenset[str] = frozenset()
-) -> None:
+def _register_workshop_commands(target: typer.Typer, ws: Workshop, *, skip: frozenset[str] = frozenset()) -> None:
     """Mount a workshop's commands on `target`. `skip` drops named commands."""
 
     def add(name: str, fn) -> None:

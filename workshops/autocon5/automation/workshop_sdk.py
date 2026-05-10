@@ -194,8 +194,8 @@ class DecisionPolicy:
 
         admin = self._as_int(metrics.get("admin_state", -1))
         oper = self._as_int(metrics.get("oper_state", -1))
-        admin_ok = (admin == 1)
-        oper_ok = (oper == 1)
+        admin_ok = admin == 1
+        oper_ok = oper == 1
 
         if admin_ok and oper_ok:
             return Decision(False, "skip", "peer matches SoT intent (enabled + up)")
@@ -267,8 +267,7 @@ class LokiClient:
         # Map common Loki/syslog level values to sonda's enum
         # (trace|debug|info|warn|error|fatal).
         sev = labels.get("level", "info").lower()
-        sev_map = {"warning": "warn", "notice": "info", "critical": "error",
-                   "alert": "fatal", "emergency": "fatal"}
+        sev_map = {"warning": "warn", "notice": "info", "critical": "error", "alert": "fatal", "emergency": "fatal"}
         sev = sev_map.get(sev, sev if sev in {"trace", "debug", "info", "warn", "error", "fatal"} else "info")
         payload = {
             "signal_type": "logs",
@@ -282,7 +281,10 @@ class LokiClient:
             "sink": {"type": "loki", "url": self.sonda_loki_sink_url},
         }
         r = requests.post(
-            f"{self.sonda_url}/events", json=payload, headers=headers, timeout=self.timeout,
+            f"{self.sonda_url}/events",
+            json=payload,
+            headers=headers,
+            timeout=self.timeout,
         )
         r.raise_for_status()
 
@@ -475,7 +477,7 @@ def llm_rca(device: str, peer_address: str, evidence: dict[str, Any]) -> str:
     annotates whatever comes back into Loki, so the workshop demo never gets
     stuck on a missing token.
     """
-    if (os.environ.get("ENABLE_AI_RCA", "false").lower() not in {"1", "true", "yes"}):
+    if os.environ.get("ENABLE_AI_RCA", "false").lower() not in {"1", "true", "yes"}:
         return _AI_DISABLED_MSG
 
     provider = (os.environ.get("AI_RCA_PROVIDER") or "openai").lower()
@@ -569,10 +571,7 @@ class WorkshopSDK:
 
     # --- BGP-specific helpers --------------------------------------------
     def bgp_queries(self, device: str, peer_address: str, afi_safi: str, instance_name: str) -> dict[str, str]:
-        base = (
-            f'device="{device}",peer_address="{peer_address}",'
-            f'afi_safi_name="{afi_safi}",name="{instance_name}"'
-        )
+        base = f'device="{device}",peer_address="{peer_address}",afi_safi_name="{afi_safi}",name="{instance_name}"'
         return {
             "admin_state": f"bgp_admin_state{{{base}}}",
             "oper_state": f"bgp_oper_state{{{base}}}",
@@ -624,7 +623,9 @@ class WorkshopSDK:
     ) -> EvidenceBundle:
         ev = EvidenceBundle(device=device, peer_address=peer_address, afi_safi=afi_safi, instance_name=instance_name)
         ev.sot = self.bgp_gate(device=device, peer_address=peer_address, afi_safi=afi_safi)
-        ev.metrics = self.bgp_metrics_snapshot(device=device, peer_address=peer_address, afi_safi=afi_safi, instance_name=instance_name)
+        ev.metrics = self.bgp_metrics_snapshot(
+            device=device, peer_address=peer_address, afi_safi=afi_safi, instance_name=instance_name
+        )
         ev.sot["decoded"] = decode_bgp_states(ev.metrics)
         ev.logs = self.bgp_logs(device=device, peer_address=peer_address, minutes=log_minutes, limit=log_limit)
         return ev

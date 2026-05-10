@@ -78,10 +78,7 @@ def page(
         and (not peer or a.get("labels", {}).get("peer_address") == peer)
     ]
     if not candidates:
-        fail(
-            "no firing alert matched the filters. "
-            "Run `nobs autocon5 alerts` to see what's currently firing."
-        )
+        fail("no firing alert matched the filters. Run `nobs autocon5 alerts` to see what's currently firing.")
         raise typer.Exit(code=1)
 
     chosen = candidates[0]

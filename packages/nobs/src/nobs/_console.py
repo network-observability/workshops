@@ -3,6 +3,7 @@
 Every nobs command (and any third-party that wants to feel native) should
 import `console` from here so the look stays consistent.
 """
+
 from __future__ import annotations
 
 from rich.console import Console

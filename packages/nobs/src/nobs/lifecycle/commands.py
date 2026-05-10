@@ -7,6 +7,7 @@ sub-Typer.
 The `list_workshops` function (top-level `nobs workshops`) renders the
 registry as a Rich tree.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable

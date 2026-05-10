@@ -1,4 +1,5 @@
 """`nobs autocon5 preflight` — run Layer A → B → C, aggregate REPORT.md."""
+
 from __future__ import annotations
 
 import json
@@ -20,8 +21,9 @@ def preflight(
     ] = False,
     out_dir: Annotated[
         Path,
-        typer.Option("--out-dir", envvar="PREFLIGHT_OUT_DIR",
-                     help="Where to write logs, JSON manifests, and screenshots."),
+        typer.Option(
+            "--out-dir", envvar="PREFLIGHT_OUT_DIR", help="Where to write logs, JSON manifests, and screenshots."
+        ),
     ] = Path("/tmp/preflight-out"),
 ) -> None:
     """Run Layer A → B → C against the live workshop stack.
@@ -45,9 +47,8 @@ def preflight(
     report = _render_report(out_dir, rc_a, rc_b, rc_c)
     elapsed = round(time.time() - started, 1)
 
-    summary = (
-        f"Layer A exit={rc_a} | Layer B exit={rc_b}"
-        + (f" | Layer C exit={rc_c}" if rc_c is not None else " | Layer C skipped")
+    summary = f"Layer A exit={rc_a} | Layer B exit={rc_b}" + (
+        f" | Layer C exit={rc_c}" if rc_c is not None else " | Layer C skipped"
     )
     if max(rc_a, rc_b, rc_c or 0) == 0:
         ok(f"preflight green ({elapsed}s) — {summary}")
@@ -80,8 +81,9 @@ def _render_report(out_dir: Path, rc_a: int, rc_b: int, rc_c: int | None) -> Pat
     if layer_a_json.exists():
         parts.append("## Layer A — data shape waits\n")
         for r in json.loads(layer_a_json.read_text()):
-            parts.append(f"- **{'PASS' if r['ok'] else 'FAIL'}** "
-                         f"`{r['label']}` — {r['detail']} (elapsed {r['elapsed_s']}s)")
+            parts.append(
+                f"- **{'PASS' if r['ok'] else 'FAIL'}** `{r['label']}` — {r['detail']} (elapsed {r['elapsed_s']}s)"
+            )
         parts.append("")
 
     layer_b_json = out_dir / "layer_b.json"
@@ -92,9 +94,11 @@ def _render_report(out_dir: Path, rc_a: int, rc_b: int, rc_c: int | None) -> Pat
             parts.append("| panel | type | device | status | summary |")
             parts.append("|---|---|---|---|---|")
             for p in d["panels"]:
-                parts.append(f"| #{p['panel_id']} {p['panel_title']} | "
-                             f"{p['panel_type']} | {p['device']} | "
-                             f"**{p['status']}** | {p['summary']} |")
+                parts.append(
+                    f"| #{p['panel_id']} {p['panel_title']} | "
+                    f"{p['panel_type']} | {p['device']} | "
+                    f"**{p['status']}** | {p['summary']} |"
+                )
             parts.append("")
 
     layer_c_json = out_dir / "layer_c.json"
@@ -104,10 +108,12 @@ def _render_report(out_dir: Path, rc_a: int, rc_b: int, rc_c: int | None) -> Pat
         verdicts = {"PASS": 0, "WARN": 0, "FAIL": 0}
         for c in captures:
             verdicts[c["verdict"]] = verdicts.get(c["verdict"], 0) + 1
-        parts.append(f"- {len(captures)} captures: "
-                     f"PASS={verdicts.get('PASS', 0)} "
-                     f"WARN={verdicts.get('WARN', 0)} "
-                     f"FAIL={verdicts.get('FAIL', 0)}")
+        parts.append(
+            f"- {len(captures)} captures: "
+            f"PASS={verdicts.get('PASS', 0)} "
+            f"WARN={verdicts.get('WARN', 0)} "
+            f"FAIL={verdicts.get('FAIL', 0)}"
+        )
         parts.append(f"- Screenshots: `{out_dir / 'screenshots'}/`\n")
         non_pass = [c for c in captures if c["verdict"] != "PASS"]
         if non_pass:
@@ -115,8 +121,10 @@ def _render_report(out_dir: Path, rc_a: int, rc_b: int, rc_c: int | None) -> Pat
             parts.append("| dashboard | panel | device | verdict | detail |")
             parts.append("|---|---|---|---|---|")
             for c in non_pass:
-                parts.append(f"| {c['dashboard']} | #{c['panel_id']} {c['panel_title']} | "
-                             f"{c['device']} | **{c['verdict']}** | {c['detail']} |")
+                parts.append(
+                    f"| {c['dashboard']} | #{c['panel_id']} {c['panel_title']} | "
+                    f"{c['device']} | **{c['verdict']}** | {c['detail']} |"
+                )
         else:
             parts.append("All panels PASS.")
         parts.append("")

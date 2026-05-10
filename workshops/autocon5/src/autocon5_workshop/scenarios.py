@@ -3,6 +3,7 @@
 Replaces the old `task autocon5:scenarios` (`curl /scenarios | jq`) with
 a Rich table.
 """
+
 from __future__ import annotations
 
 from typing import Annotated, Any

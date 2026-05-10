@@ -1,4 +1,5 @@
 """Tests for `nobs.workshops.Workshop` validators + `register()`."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -32,11 +33,11 @@ def test_valid_workshop(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     "bad",
     [
-        "Uppercase",          # must be lowercase
-        "1starts-with-digit", # must start with a-z
-        "has_underscore",     # underscore not allowed
-        "",                   # empty
-        "x" * 40,             # too long
+        "Uppercase",  # must be lowercase
+        "1starts-with-digit",  # must start with a-z
+        "has_underscore",  # underscore not allowed
+        "",  # empty
+        "x" * 40,  # too long
         "has space",
     ],
 )
@@ -95,15 +96,18 @@ def test_capabilities_rejects_non_collection(tmp_path: Path) -> None:
 
 def test_extra_commands_rejects_lifecycle_collision(tmp_path: Path) -> None:
     """extra_commands names must not collide with lifecycle / capability slots."""
-    def up() -> None:  #collides with lifecycle "up"
+
+    def up() -> None:  # collides with lifecycle "up"
         pass
+
     with pytest.raises(ValidationError, match="reserved lifecycle/capability slot"):
         _ws(tmp_path, extra_commands=[up])
 
 
 def test_extra_commands_rejects_capability_collision(tmp_path: Path) -> None:
-    def alerts() -> None:  #collides with capability "alerts"
+    def alerts() -> None:  # collides with capability "alerts"
         pass
+
     with pytest.raises(ValidationError, match="reserved lifecycle/capability slot"):
         _ws(tmp_path, extra_commands=[alerts])
 
@@ -111,8 +115,10 @@ def test_extra_commands_rejects_capability_collision(tmp_path: Path) -> None:
 def test_extra_commands_allows_root_primitive_names(tmp_path: Path) -> None:
     """`preflight` and `setup` ARE allowed as extras — they resolve under the
     workshop prefix; the auto-mount's skip set keeps the root meta version."""
+
     def preflight() -> None:
         pass
+
     ws = _ws(tmp_path, extra_commands=[preflight])
     assert preflight in ws.extra_commands
 
@@ -120,8 +126,10 @@ def test_extra_commands_allows_root_primitive_names(tmp_path: Path) -> None:
 def test_extra_commands_rejects_duplicate_names(tmp_path: Path) -> None:
     def reset() -> None:
         pass
+
     def reset_again() -> None:  # different function, same surfaced name
         pass
+
     reset_again.__name__ = "reset"
     with pytest.raises(ValidationError, match="duplicate command name"):
         _ws(tmp_path, extra_commands=[reset, reset_again])

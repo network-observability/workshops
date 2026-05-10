@@ -205,9 +205,7 @@ def _restart_sonda_logs_if_wedged(loki_url: str) -> None:
         if r.returncode == 0:
             console.print("  restarted sonda-logs (loki sink reset)")
         else:
-            warn(
-                f"sonda-logs restart failed: {r.stderr.splitlines()[-1] if r.stderr else 'unknown error'}"
-            )
+            warn(f"sonda-logs restart failed: {r.stderr.splitlines()[-1] if r.stderr else 'unknown error'}")
     except subprocess.TimeoutExpired:
         warn("sonda-logs restart timed out")
 

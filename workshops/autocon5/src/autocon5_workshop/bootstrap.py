@@ -1,4 +1,5 @@
 """Workshop-specific setup: copy `.env.example` to `.env` if missing."""
+
 from __future__ import annotations
 
 import shutil

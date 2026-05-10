@@ -8,6 +8,7 @@ issue Layer B's `/api/ds/query` path can't see.
 Playwright is imported lazily inside `main()` so `--skip-c` works
 without the dev dep installed.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -21,15 +22,14 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from playwright.sync_api import Page
 
-WORKSHOP_DIR = Path(os.environ.get("PREFLIGHT_WORKSHOP_DIR",
-                                   Path(__file__).resolve().parents[3]))
+WORKSHOP_DIR = Path(os.environ.get("PREFLIGHT_WORKSHOP_DIR", Path(__file__).resolve().parents[3]))
 OUT_DIR = Path(os.environ.get("PREFLIGHT_OUT_DIR", "/tmp/preflight-out"))
 
 # 127.0.0.1 instead of localhost: some macOS + Docker setups break Chromium's
 # loopback resolution. The HTTP server on the host is reachable via 127.0.0.1.
-GRAFANA = os.environ.get("GRAFANA_URL_LAYER_C",
-                         os.environ.get("GRAFANA_URL", "http://localhost:3000")
-                         .replace("localhost", "127.0.0.1"))
+GRAFANA = os.environ.get(
+    "GRAFANA_URL_LAYER_C", os.environ.get("GRAFANA_URL", "http://localhost:3000").replace("localhost", "127.0.0.1")
+)
 GRAFANA_USER = os.environ.get("GRAFANA_USER", "admin")
 GRAFANA_PASSWORD = os.environ.get("GRAFANA_PASSWORD", "admin")
 
@@ -70,8 +70,7 @@ def login(ctx) -> None:
 
 
 def resolve_uid(ctx, title: str) -> str:
-    r = ctx.request.get(f"{GRAFANA}/api/search",
-                        params={"query": title, "type": "dash-db"}, timeout=15_000)
+    r = ctx.request.get(f"{GRAFANA}/api/search", params={"query": title, "type": "dash-db"}, timeout=15_000)
     for it in r.json():
         if it.get("title") == title:
             return it["uid"]
@@ -96,8 +95,7 @@ def capture_panel(page: Page, dashboard_uid: str, panel_id: int, device: str, ou
     url = f"{GRAFANA}/d-solo/{dashboard_uid}?orgId=1&panelId={panel_id}&var-device={device}&{WINDOW}"
     page.goto(url, wait_until="commit", timeout=20_000)
     with contextlib.suppress(Exception):
-        page.wait_for_selector("[data-testid='data-testid panel content']",
-                               timeout=10_000, state="visible")
+        page.wait_for_selector("[data-testid='data-testid panel content']", timeout=10_000, state="visible")
     page.wait_for_timeout(SETTLE_MS)
     page.screenshot(path=str(out_path), full_page=False)
 
@@ -106,10 +104,12 @@ def main() -> int:
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
-        print("Layer C — playwright not installed. Run:\n"
-              "  uv add --dev playwright\n"
-              "  uv run playwright install chromium\n"
-              "Or skip Layer C with `nobs autocon5 preflight --skip-c`.")
+        print(
+            "Layer C — playwright not installed. Run:\n"
+            "  uv add --dev playwright\n"
+            "  uv run playwright install chromium\n"
+            "Or skip Layer C with `nobs autocon5 preflight --skip-c`."
+        )
         return 1
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -163,28 +163,32 @@ def main() -> int:
                         fail_count += 1
 
                     marker = {"PASS": "OK  ", "WARN": "WARN", "FAIL": "FAIL"}[verdict]
-                    print(f"  [{marker}] panel #{panel_id:2d} {panel_type:14s} "
-                          f"device={device:5s} {panel_title[:40]!r:42s} → {detail}", flush=True)
-                    captures.append({
-                        "dashboard": dashboard_path.stem,
-                        "dashboard_title": title,
-                        "uid": uid,
-                        "panel_id": panel_id,
-                        "panel_title": panel_title,
-                        "panel_type": panel_type,
-                        "device": device,
-                        "verdict": verdict,
-                        "detail": detail,
-                        "screenshot": str(out_path),
-                        "bytes": out_path.stat().st_size if out_path.exists() else 0,
-                    })
+                    print(
+                        f"  [{marker}] panel #{panel_id:2d} {panel_type:14s} "
+                        f"device={device:5s} {panel_title[:40]!r:42s} → {detail}",
+                        flush=True,
+                    )
+                    captures.append(
+                        {
+                            "dashboard": dashboard_path.stem,
+                            "dashboard_title": title,
+                            "uid": uid,
+                            "panel_id": panel_id,
+                            "panel_title": panel_title,
+                            "panel_type": panel_type,
+                            "device": device,
+                            "verdict": verdict,
+                            "detail": detail,
+                            "screenshot": str(out_path),
+                            "bytes": out_path.stat().st_size if out_path.exists() else 0,
+                        }
+                    )
 
         browser.close()
 
     manifest.write_text(json.dumps(captures, indent=2))
     elapsed = round(time.time() - started, 1)
-    print(f"\nLayer C — PASS={pass_count} WARN={warn_count} FAIL={fail_count} "
-          f"({len(captures)} captures in {elapsed}s)")
+    print(f"\nLayer C — PASS={pass_count} WARN={warn_count} FAIL={fail_count} ({len(captures)} captures in {elapsed}s)")
     print(f"Layer C — manifest: {manifest}")
     print(f"Layer C — screenshots: {screenshots}/")
     return 0 if fail_count == 0 else 1

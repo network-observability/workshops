@@ -1,4 +1,5 @@
 """Entrypoint for the AutoCon5 webhook receiver."""
+
 from __future__ import annotations
 
 import logging

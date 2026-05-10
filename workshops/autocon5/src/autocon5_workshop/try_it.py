@@ -3,6 +3,7 @@
 Python rewrite of the original `scripts/try-it.sh`, with Rich panels +
 progress so each step is a clearer story for the audience.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -145,7 +146,7 @@ def _pause(auto: bool) -> None:
 def _preflight(prom_url: str, loki_url: str, am_url: str, infrahub_url: str) -> None:
     targets = [
         ("Prometheus", f"{prom_url.rstrip('/')}/-/ready"),
-        ("Loki",       f"{loki_url.rstrip('/')}/ready"),
+        ("Loki", f"{loki_url.rstrip('/')}/ready"),
         ("Alertmanager", f"{am_url.rstrip('/')}/-/ready"),
     ]
     console.print(Panel.fit("Checking the stack is reachable...", title="Pre-flight", border_style="cyan"))
@@ -195,22 +196,32 @@ def _set_maintenance(device: str, state: bool, infrahub_url: str, token: str) ->
 def _post_alert(webhook_url: str, status: str, device: str, peer: str, fingerprint: str) -> None:
     now = dt.datetime.now(dt.UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
     payload = {
-        "version": "4", "groupKey": f"try-it-{fingerprint}", "truncatedAlerts": 0,
-        "status": status, "receiver": "webhook-receiver",
+        "version": "4",
+        "groupKey": f"try-it-{fingerprint}",
+        "truncatedAlerts": 0,
+        "status": status,
+        "receiver": "webhook-receiver",
         "groupLabels": {"alertname": "BgpSessionNotUp", "device": device, "peer_address": peer},
         "commonLabels": {"alertname": "BgpSessionNotUp"},
         "commonAnnotations": {},
         "externalURL": "http://localhost:9093",
-        "alerts": [{
-            "status": status,
-            "labels": {
-                "alertname": "BgpSessionNotUp", "device": device, "peer_address": peer,
-                "afi_safi_name": "ipv4-unicast", "name": "default",
-            },
-            "annotations": {},
-            "startsAt": now, "endsAt": now if status == "resolved" else "0001-01-01T00:00:00Z",
-            "generatorURL": "", "fingerprint": fingerprint,
-        }],
+        "alerts": [
+            {
+                "status": status,
+                "labels": {
+                    "alertname": "BgpSessionNotUp",
+                    "device": device,
+                    "peer_address": peer,
+                    "afi_safi_name": "ipv4-unicast",
+                    "name": "default",
+                },
+                "annotations": {},
+                "startsAt": now,
+                "endsAt": now if status == "resolved" else "0001-01-01T00:00:00Z",
+                "generatorURL": "",
+                "fingerprint": fingerprint,
+            }
+        ],
     }
     try:
         # 15s, not 5s: the webhook calls run_deployment(timeout=10) which

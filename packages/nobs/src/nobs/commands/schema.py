@@ -1,4 +1,5 @@
 """`nobs schema load` - wrap `infrahubctl schema load`."""
+
 from __future__ import annotations
 
 import os
@@ -42,10 +43,7 @@ def load(
     # inherited shell PATH won't include `.venv/bin/`, so `shutil.which`
     # misses it. Resolve via `sys.executable`'s sibling first.
     same_venv_ctl = Path(sys.executable).parent / "infrahubctl"
-    infrahubctl = (
-        str(same_venv_ctl) if same_venv_ctl.is_file()
-        else shutil.which("infrahubctl")
-    )
+    infrahubctl = str(same_venv_ctl) if same_venv_ctl.is_file() else shutil.which("infrahubctl")
     if infrahubctl is None:
         fail("`infrahubctl` is not on PATH. Did you run `uv sync --all-packages` (or `nobs setup`)?")
         raise typer.Exit(code=1)

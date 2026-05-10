@@ -1,4 +1,5 @@
 """`nobs status` - quick health snapshot of the running stack."""
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -64,8 +65,7 @@ def status(
     console.print(table)
     if any_down:
         console.print(
-            "\n[warn]Some services aren't ready yet - give them a minute, "
-            "or check `nobs <workshop> logs`.[/]"
+            "\n[warn]Some services aren't ready yet - give them a minute, or check `nobs <workshop> logs`.[/]"
         )
         raise typer.Exit(code=1)
 
@@ -81,9 +81,7 @@ def status_for(ws: Workshop) -> Callable[..., None]:
         prom_url: Annotated[str, typer.Option(envvar="PROMETHEUS_URL")] = "http://localhost:9090",
         loki_url: Annotated[str, typer.Option(envvar="LOKI_URL")] = "http://localhost:3001",
         am_url: Annotated[str, typer.Option(envvar="ALERTMANAGER_URL")] = "http://localhost:9093",
-        infrahub_url: Annotated[
-            str, typer.Option(envvar="INFRAHUB_ADDRESS")
-        ] = "http://localhost:8000",
+        infrahub_url: Annotated[str, typer.Option(envvar="INFRAHUB_ADDRESS")] = "http://localhost:8000",
         grafana_url: Annotated[str, typer.Option()] = "http://localhost:3000",
         prefect_url: Annotated[str, typer.Option()] = "http://localhost:4200",
         sonda_url: Annotated[str, typer.Option()] = "http://localhost:8085",

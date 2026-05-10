@@ -4,6 +4,7 @@ Polls Prometheus + Loki until expected series counts arrive, calls the
 in-process flap-interface + maintenance helpers to seed events, and
 sleeps for `[2m]` rate windows to fill. Writes layer_a.json.
 """
+
 from __future__ import annotations
 
 import json
@@ -14,8 +15,7 @@ from pathlib import Path
 import requests
 
 # preflight/layer_a.py -> workshops/autocon5/
-WORKSHOP_DIR = Path(os.environ.get("PREFLIGHT_WORKSHOP_DIR",
-                                   Path(__file__).resolve().parents[3]))
+WORKSHOP_DIR = Path(os.environ.get("PREFLIGHT_WORKSHOP_DIR", Path(__file__).resolve().parents[3]))
 OUT_DIR = Path(os.environ.get("PREFLIGHT_OUT_DIR", "/tmp/preflight-out"))
 
 PROM = os.environ.get("PROMETHEUS_URL", "http://localhost:9090")
@@ -68,16 +68,20 @@ def wait(label: str, predicate, timeout: int = TIMEOUT_DEFAULT, expected: str = 
             if ok:
                 elapsed = time.time() - start
                 print(f"  [{elapsed:5.1f}s] OK   {label} — {detail}", flush=True)
-                return {"label": label, "ok": True, "elapsed_s": round(elapsed, 1),
-                        "detail": detail, "expected": expected}
+                return {
+                    "label": label,
+                    "ok": True,
+                    "elapsed_s": round(elapsed, 1),
+                    "detail": detail,
+                    "expected": expected,
+                }
         except Exception as e:  # noqa: BLE001
             last_err = f"{type(e).__name__}: {e}"
         time.sleep(PROBE_INTERVAL)
     elapsed = time.time() - start
     detail = last_detail or last_err or "no data"
     print(f"  [{elapsed:5.1f}s] FAIL {label} — {detail}", flush=True)
-    return {"label": label, "ok": False, "elapsed_s": round(elapsed, 1),
-            "detail": detail, "expected": expected}
+    return {"label": label, "ok": False, "elapsed_s": round(elapsed, 1), "detail": detail, "expected": expected}
 
 
 def main() -> int:
@@ -90,36 +94,47 @@ def main() -> int:
     Q_BGP = 'count(bgp_oper_state{pipeline=~".+"})'
     Q_INTF = 'count(interface_oper_state{intf_role="peer", pipeline=~".+"})'
     Q_LOKI_UPDOWN = '{vendor_facility_process="UPDOWN"}'
-    Q_LOKI_FLAP = ('{device="srl1", vendor_facility_process="UPDOWN"} '
-                   '|~ "Interface .* changed state"')
+    Q_LOKI_FLAP = '{device="srl1", vendor_facility_process="UPDOWN"} |~ "Interface .* changed state"'
     Q_LOKI_CONFIG = '{device="srl1", source="workshop-trigger", event="config-push"}'
 
-    results.append(wait(
-        "bgp_oper_state pipeline convergence",
-        lambda: (prom_count(Q_BGP) >= 6, f"count = {prom_count(Q_BGP)}"),
-        expected=">= 6 series",
-    ))
-    results.append(wait(
-        "interface_oper_state intf_role=peer convergence",
-        lambda: (prom_count(Q_INTF) >= 6, f"count = {prom_count(Q_INTF)}"),
-        expected=">= 6 series",
-    ))
-    results.append(wait(
-        "logs pipeline convergence (UPDOWN)",
-        lambda: ({"direct", "vector"}.issubset(loki_pipelines_seen(Q_LOKI_UPDOWN)),
-                 f"pipelines = {sorted(loki_pipelines_seen(Q_LOKI_UPDOWN))}"),
-        expected="{direct, vector}",
-    ))
+    results.append(
+        wait(
+            "bgp_oper_state pipeline convergence",
+            lambda: (prom_count(Q_BGP) >= 6, f"count = {prom_count(Q_BGP)}"),
+            expected=">= 6 series",
+        )
+    )
+    results.append(
+        wait(
+            "interface_oper_state intf_role=peer convergence",
+            lambda: (prom_count(Q_INTF) >= 6, f"count = {prom_count(Q_INTF)}"),
+            expected=">= 6 series",
+        )
+    )
+    results.append(
+        wait(
+            "logs pipeline convergence (UPDOWN)",
+            lambda: (
+                {"direct", "vector"}.issubset(loki_pipelines_seen(Q_LOKI_UPDOWN)),
+                f"pipelines = {sorted(loki_pipelines_seen(Q_LOKI_UPDOWN))}",
+            ),
+            expected="{direct, vector}",
+        )
+    )
 
     # In-process triggers — call the workshop's command functions directly
     # rather than re-spawning `nobs`. Both functions are Typer-decorated but
     # callable as plain Python with explicit kwargs.
     print("Layer A — flap-interface (in-process, --no-cascade)", flush=True)
     from autocon5_workshop.flap import flap_interface
+
     flap_interface(
-        device="srl1", interface="ethernet-1/1",
+        device="srl1",
+        interface="ethernet-1/1",
         no_cascade=True,
-        duration="30s", up_duration="3s", down_duration="3s",
+        duration="30s",
+        up_duration="3s",
+        down_duration="3s",
         cascade_delay="10s",
         sonda_url=os.environ.get("SONDA_SERVER_URL", "http://localhost:8085"),
         prom_url=os.environ.get(
@@ -133,8 +148,11 @@ def main() -> int:
 
     print("Layer A — maintenance toggle (in-process)", flush=True)
     from nobs.commands.maintenance import maintenance
+
     maintenance(
-        device="srl1", state=True, kind="WorkshopDevice",
+        device="srl1",
+        state=True,
+        kind="WorkshopDevice",
         address=os.environ.get("INFRAHUB_ADDRESS", "http://localhost:8000"),
         token=os.environ.get("INFRAHUB_API_TOKEN", ""),
         loki_url=os.environ.get("LOKI_URL", "http://localhost:3001"),
@@ -145,24 +163,30 @@ def main() -> int:
         print(f"  ... {remaining}s left", flush=True)
         time.sleep(20)
 
-    results.append(wait(
-        "Loki has UPDOWN events from both producers",
-        lambda: (loki_count(Q_LOKI_UPDOWN) >= 8,
-                 f"events last 5m = {loki_count(Q_LOKI_UPDOWN)}"),
-        timeout=30, expected=">= 8 events",
-    ))
-    results.append(wait(
-        "Interface Flap annotation source has lines",
-        lambda: (loki_count(Q_LOKI_FLAP) >= 4,
-                 f"flap lines = {loki_count(Q_LOKI_FLAP)}"),
-        timeout=30, expected=">= 4 lines",
-    ))
-    results.append(wait(
-        "Device Config Push annotation source has lines",
-        lambda: (loki_count(Q_LOKI_CONFIG) >= 1,
-                 f"config-push lines = {loki_count(Q_LOKI_CONFIG)}"),
-        timeout=30, expected=">= 1 line",
-    ))
+    results.append(
+        wait(
+            "Loki has UPDOWN events from both producers",
+            lambda: (loki_count(Q_LOKI_UPDOWN) >= 8, f"events last 5m = {loki_count(Q_LOKI_UPDOWN)}"),
+            timeout=30,
+            expected=">= 8 events",
+        )
+    )
+    results.append(
+        wait(
+            "Interface Flap annotation source has lines",
+            lambda: (loki_count(Q_LOKI_FLAP) >= 4, f"flap lines = {loki_count(Q_LOKI_FLAP)}"),
+            timeout=30,
+            expected=">= 4 lines",
+        )
+    )
+    results.append(
+        wait(
+            "Device Config Push annotation source has lines",
+            lambda: (loki_count(Q_LOKI_CONFIG) >= 1, f"config-push lines = {loki_count(Q_LOKI_CONFIG)}"),
+            timeout=30,
+            expected=">= 1 line",
+        )
+    )
 
     out.write_text(json.dumps(results, indent=2))
     print(f"\nLayer A — wrote {out}", flush=True)

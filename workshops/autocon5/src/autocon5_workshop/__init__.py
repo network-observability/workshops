@@ -5,6 +5,7 @@ This package self-registers with `nobs` at import time. Importing
 `nobs.workshops.register(WORKSHOP)` and the per-workshop subcommand group
 (`nobs autocon5 ...`) becomes available.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

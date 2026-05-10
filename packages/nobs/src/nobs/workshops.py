@@ -18,6 +18,7 @@ WORKSHOP = Workshop(
 register(WORKSHOP)
 ```
 """
+
 from __future__ import annotations
 
 import re
@@ -30,9 +31,21 @@ _NAME_RE = re.compile(r"^[a-z][a-z0-9-]{1,30}$")
 
 VALID_CAPABILITIES: frozenset[str] = frozenset({"status", "alerts", "maintenance", "schema"})
 
-_RESERVED_EXTRA_NAMES: frozenset[str] = frozenset({
-    "up", "down", "destroy", "restart", "ps", "logs", "exec", "build",
-}) | VALID_CAPABILITIES
+_RESERVED_EXTRA_NAMES: frozenset[str] = (
+    frozenset(
+        {
+            "up",
+            "down",
+            "destroy",
+            "restart",
+            "ps",
+            "logs",
+            "exec",
+            "build",
+        }
+    )
+    | VALID_CAPABILITIES
+)
 
 
 class Workshop(BaseModel):
@@ -58,10 +71,7 @@ class Workshop(BaseModel):
         examples=["AutoCon5 - Modern Network Observability"],
     )
     dir: Path = Field(
-        description=(
-            "Workshop directory (where docker-compose.yml + .env live). "
-            "Resolved once at registration time."
-        ),
+        description=("Workshop directory (where docker-compose.yml + .env live). Resolved once at registration time."),
         examples=[Path("/repo/workshops/autocon5")],
     )
     compose_file: Path | None = Field(
@@ -100,10 +110,7 @@ class Workshop(BaseModel):
     def _check_capabilities(cls, v: frozenset[str]) -> frozenset[str]:
         unknown = v - VALID_CAPABILITIES
         if unknown:
-            raise ValueError(
-                f"Unknown capability/capabilities: {sorted(unknown)}. "
-                f"Valid: {sorted(VALID_CAPABILITIES)}"
-            )
+            raise ValueError(f"Unknown capability/capabilities: {sorted(unknown)}. Valid: {sorted(VALID_CAPABILITIES)}")
         return v
 
     @field_validator("extra_commands")
