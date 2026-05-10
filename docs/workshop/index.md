@@ -163,6 +163,40 @@ A few key panels from the workshop dashboards. Light or dark Grafana theme follo
 
 </figure>
 
+<figure class="section-preview" markdown>
+
+![Prefect flow runs list](../assets/screenshots/prefect-flow-runs-list-light.png#only-light){ .screenshot loading=lazy }
+![Prefect flow runs list](../assets/screenshots/prefect-flow-runs-list-dark.png#only-dark){ .screenshot loading=lazy }
+
+<figcaption><strong>Prefect — Runs</strong> · `localhost:4200/runs`. Every alert payload the webhook handed off shows up here as a completed flow run. Click one and you see the task graph below.</figcaption>
+
+</figure>
+
+<figure class="section-preview" markdown>
+
+![Prefect flow run detail](../assets/screenshots/prefect-flow-run-detail-light.png#only-light){ .screenshot loading=lazy }
+![Prefect flow run detail](../assets/screenshots/prefect-flow-run-detail-dark.png#only-dark){ .screenshot loading=lazy }
+
+<figcaption><strong>Prefect — Flow run detail</strong> · the task graph for `quarantine_bgp` (collect_evidence → evaluate_policy → annotate_decision → ai_rca → quarantine → annotate_action) with the per-task log feed underneath. The audit trail with a UI on top.</figcaption>
+
+</figure>
+
+<figure class="section-preview" markdown>
+
+![Infrahub WorkshopDevice srl1](../assets/screenshots/infrahub-device-detail.png){ .screenshot loading=lazy }
+
+<figcaption><strong>Infrahub — `WorkshopDevice/srl1`</strong> · `localhost:8000`. The intent the flow consults: ASN, Maintenance, Site Name, Role, plus Interfaces and BGP Sessions on the tabs above. Toggle Maintenance here and the next alert for this device is skipped by the policy.</figcaption>
+
+</figure>
+
+<figure class="section-preview" markdown>
+
+![Infrahub GraphQL Sandbox](../assets/screenshots/infrahub-graphql.png){ .screenshot loading=lazy }
+
+<figcaption><strong>Infrahub — GraphQL Sandbox</strong> · `localhost:8000/graphql`. The exact `DeviceIntent` query the Prefect flow runs against Infrahub. No secret access — anyone can run this and see what the policy sees.</figcaption>
+
+</figure>
+
 ## Driving an incident — `nobs autocon5 flap-interface`
 
 The lab ships with one canonical incident: a BGP cascade triggered by an interface flap. Run `nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1` and over four minutes you'll watch the interface go down, the BGP session collapse on the hold-down timer, dashboards turn red, alerts fire, and the automation pick it up. Use `--no-cascade` for a flap that only trips `PeerInterfaceFlapping` without bringing a BGP session down — that's the variant Part 1 uses while you're still building the mental model.

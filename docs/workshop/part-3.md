@@ -30,6 +30,15 @@ A real alert lands while your senior narrates. Walk the four canonical paths the
 
 </figure>
 
+<figure class="section-preview" markdown>
+
+![Prefect flow run detail — quarantine_bgp task graph](../assets/screenshots/prefect-flow-run-detail-light.png#only-light){ .screenshot loading=lazy }
+![Prefect flow run detail — quarantine_bgp task graph](../assets/screenshots/prefect-flow-run-detail-dark.png#only-dark){ .screenshot loading=lazy }
+
+<figcaption>What the flow looks like once it runs: the `quarantine_bgp` task graph (collect_evidence → evaluate_policy → annotate_decision → ai_rca → quarantine → annotate_action) plus the per-task log feed. You'll open this during the Prefect UI tour at the end of Step 2.</figcaption>
+
+</figure>
+
 {%
   include-markdown "../../workshops/autocon5/guides/part-3-alerts-automation-ai.md"
   start="## What you'll do here"
