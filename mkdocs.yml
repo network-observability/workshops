@@ -1,5 +1,5 @@
-site_name: Network Observability Workshops
-site_description: Self-contained, laptop-friendly hands-on workshops for Modern Network Observability — the book, the talks, the lab.
+site_name: AutoCon5 · Modern Network Observability
+site_description: The AutoCon5 hands-on workshop on Modern Network Observability — one continuous on-call investigation, the whole stack on your laptop.
 site_url: https://network-observability.github.io/workshops/
 repo_url: https://github.com/network-observability/workshops
 repo_name: network-observability/workshops
@@ -60,6 +60,9 @@ theme:
     repo: fontawesome/brands/github
     edit: material/pencil
     view: material/eye
+
+extra_css:
+  - stylesheets/autocon5.css
 
 plugins:
   - search

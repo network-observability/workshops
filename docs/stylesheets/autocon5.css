@@ -1,0 +1,131 @@
+/* ===========================================================================
+ * AutoCon5 theme — Modern Network Observability workshop
+ *
+ * Layered on top of Material's teal/cyan palette. Three additions:
+ *   1. AutoCon5 hero block (gradient banner + wordmark + tagline).
+ *   2. Color refinement — slightly more vivid teal/cyan than Material defaults.
+ *   3. AutoCon5 wordmark utility class for inline use in markdown.
+ * =========================================================================== */
+
+:root {
+  --autocon5-gradient-start: #00897b;
+  --autocon5-gradient-mid: #009688;
+  --autocon5-gradient-end: #00bcd4;
+  --autocon5-accent: #00e5ff;
+}
+
+[data-md-color-scheme="slate"] {
+  --autocon5-gradient-start: #004d40;
+  --autocon5-gradient-mid: #00695c;
+  --autocon5-gradient-end: #006064;
+  --autocon5-accent: #4dd0e1;
+}
+
+/* ---------- Hero block ----------------------------------------------------- */
+
+.autocon5-hero {
+  background: linear-gradient(
+    135deg,
+    var(--autocon5-gradient-start) 0%,
+    var(--autocon5-gradient-mid) 50%,
+    var(--autocon5-gradient-end) 100%
+  );
+  color: #fff;
+  border-radius: 12px;
+  padding: 2.5rem 2rem;
+  margin: 1rem 0 2rem;
+  box-shadow: 0 8px 24px rgba(0, 137, 123, 0.18);
+}
+
+.autocon5-hero__badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  padding: 0.25rem 0.75rem;
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  margin-bottom: 1rem;
+}
+
+.autocon5-hero__title {
+  font-size: 2.6rem;
+  font-weight: 700;
+  line-height: 1.1;
+  margin: 0 0 0.5rem;
+  color: #fff;
+}
+
+.autocon5-hero__subtitle {
+  font-size: 1.4rem;
+  font-weight: 400;
+  opacity: 0.95;
+  margin: 0 0 1rem;
+}
+
+.autocon5-hero__lead {
+  font-size: 1.05rem;
+  line-height: 1.6;
+  margin: 0 0 1.5rem;
+  max-width: 56rem;
+}
+
+.autocon5-hero__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  font-size: 0.9rem;
+  opacity: 0.85;
+  margin-top: 1.25rem;
+}
+
+.autocon5-hero__meta span::before {
+  content: "› ";
+  opacity: 0.6;
+  margin-right: 0.25rem;
+}
+
+/* CTAs sit below the hero (markdown-rendered .md-button) — keep as-is.
+   On the hero itself we use a lighter button variant. */
+.autocon5-hero a.md-button {
+  background: #fff;
+  color: var(--autocon5-gradient-start);
+  border-color: #fff;
+  font-weight: 600;
+}
+
+.autocon5-hero a.md-button--primary {
+  background: var(--autocon5-accent);
+  color: #002b30;
+  border-color: var(--autocon5-accent);
+}
+
+.autocon5-hero a.md-button:hover,
+.autocon5-hero a.md-button:focus {
+  background: var(--autocon5-accent);
+  color: #002b30;
+  border-color: var(--autocon5-accent);
+}
+
+/* ---------- Inline AutoCon5 wordmark --------------------------------------- */
+
+.autocon5-mark {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: linear-gradient(
+    90deg,
+    var(--autocon5-gradient-start),
+    var(--autocon5-gradient-end)
+  );
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* ---------- Subtle palette tightening -------------------------------------- */
+
+[data-md-color-scheme="default"] {
+  /* slightly punchier accent on the light scheme */
+  --md-accent-fg-color: #00bcd4;
+}
