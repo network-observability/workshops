@@ -21,6 +21,14 @@ A post-mortem email lands. Last night's page lost ten minutes because a flap-rat
 
 </div>
 
+<figure class="section-preview" markdown>
+
+[![Workshop Lab dashboard — where you build the flap-rate panel](../assets/screenshots/workshop-lab.png){ .screenshot loading=lazy }](../assets/screenshots/workshop-lab.png)
+
+<figcaption>The Workshop Lab dashboard — your scratchpad for Part 2. The flap-rate panel you build lands here, alongside the existing Interface Admin / Operational / Traffic / Logs panels. Click for full size.</figcaption>
+
+</figure>
+
 {%
   include-markdown "../../workshops/autocon5/guides/part-2-dashboards.md"
   start="## What you'll do here"

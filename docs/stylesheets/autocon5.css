@@ -312,3 +312,41 @@
   /* slightly punchier accent on the light scheme */
   --md-accent-fg-color: #00bcd4;
 }
+
+/* ---------- Screenshots ---------------------------------------------------- */
+/* Rounded-corner Grafana shots used in the visual reference gallery and at
+ * the top of each part page. Click-to-zoom behavior comes from wrapping the
+ * <img> in an <a> that points at the same image. */
+
+.md-typeset img.screenshot {
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.md-typeset a:hover img.screenshot {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 22px rgba(0, 137, 123, 0.18);
+}
+
+[data-md-color-scheme="slate"] .md-typeset img.screenshot {
+  border-color: rgba(255, 255, 255, 0.10);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.40);
+}
+
+/* Per-part section preview — a single screenshot right after the section
+ * hero, tighter caption, full width of the content area. */
+.md-typeset figure.section-preview {
+  margin: 0 0 2rem;
+  text-align: center;
+}
+
+.md-typeset figure.section-preview figcaption {
+  font-size: 0.85rem;
+  color: var(--md-default-fg-color--light);
+  margin-top: 0.5rem;
+  font-style: italic;
+}

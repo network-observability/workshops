@@ -21,6 +21,14 @@ The optional capstone. Triage with PromQL and LogQL, contain with maintenance, f
 
 </div>
 
+<figure class="section-preview" markdown>
+
+[![Device Health srl1 mid-cascade](../assets/screenshots/device-health-srl1.png){ .screenshot loading=lazy }](../assets/screenshots/device-health-srl1.png)
+
+<figcaption>Device Health for srl1, mid-cascade — interface DOWN, BGP collapsing, UPDOWN events streaming. The picture you triage from at 02:14. Click for full size.</figcaption>
+
+</figure>
+
 {%
   include-markdown "../../workshops/autocon5/guides/advanced-cascades.md"
   start="## What you'll do here"

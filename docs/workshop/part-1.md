@@ -21,6 +21,14 @@ Your senior buddy walks you through the lab's telemetry shape — what *normal* 
 
 </div>
 
+<figure class="section-preview" markdown>
+
+[![Device Health for srl1 — the dashboard you query in Part 1](../assets/screenshots/device-health-srl1.png){ .screenshot loading=lazy }](../assets/screenshots/device-health-srl1.png)
+
+<figcaption>Device Health for srl1 — the dashboard you'll query against. The interface state matrix and BGP-peer panels are where the broken peer lives. Click for full size.</figcaption>
+
+</figure>
+
 {%
   include-markdown "../../workshops/autocon5/guides/part-1-telemetry-and-queries.md"
   start="## What you'll do here"

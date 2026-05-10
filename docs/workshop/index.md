@@ -119,6 +119,30 @@ In words: synthetic telemetry from sonda lands in Prometheus and Loki. Alerting 
 
 The telemetry shape (metric names, labels, log streams) is real — sonda emits the same patterns a Nokia SR Linux device would. That's why the queries, dashboards, and alerts you build look exactly like what you'd write against a production network.
 
+## Visual reference — the dashboards you'll be in
+
+Click any thumbnail to open the full view.
+
+<div class="grid cards" markdown>
+
+-   [![Workshop Home dashboard](../assets/screenshots/workshop-home.png){ .screenshot loading=lazy }](../assets/screenshots/workshop-home.png)
+
+    **Workshop Home** — health row at the top, recent UPDOWN events streaming in the middle, currently firing alerts table, starter queries at the bottom. Your landing dashboard for the morning.
+
+-   [![Device Health srl1 dashboard](../assets/screenshots/device-health-srl1.png){ .screenshot loading=lazy }](../assets/screenshots/device-health-srl1.png)
+
+    **Device Health (srl1)** — per-device deep-dive: BGP peers, interface state matrix, traffic, logs, and the side-by-side gNMI vs SNMP collection labels. Where you spend most of Parts 1 and 2.
+
+-   [![Device Health srl2 dashboard](../assets/screenshots/device-health-srl2.png){ .screenshot loading=lazy }](../assets/screenshots/device-health-srl2.png)
+
+    **Device Health (srl2)** — same dashboard, different upstream shape. srl2 is SNMP-collected with logs shipped through Vector; the canonical metrics + queries are identical to srl1.
+
+-   [![Workshop Lab dashboard](../assets/screenshots/workshop-lab.png){ .screenshot loading=lazy }](../assets/screenshots/workshop-lab.png)
+
+    **Workshop Lab** — focused interface admin/operational state, traffic graph, and filtered logs. Your scratchpad for the Part 1 unguided exercises and the panel you build in Part 2.
+
+</div>
+
 ## Driving an incident — `nobs autocon5 flap-interface`
 
 The lab ships with one canonical incident: a BGP cascade triggered by an interface flap. Run `nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1` and over four minutes you'll watch the interface go down, the BGP session collapse on the hold-down timer, dashboards turn red, alerts fire, and the automation pick it up. Use `--no-cascade` for a flap that only trips `PeerInterfaceFlapping` without bringing a BGP session down — that's the variant Part 1 uses while you're still building the mental model.

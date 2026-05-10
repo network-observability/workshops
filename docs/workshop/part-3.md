@@ -21,6 +21,14 @@ A real alert lands while your senior narrates. Walk the four canonical paths the
 
 </div>
 
+<figure class="section-preview" markdown>
+
+[![Workshop Home with alerts firing](../assets/screenshots/workshop-home.png){ .screenshot loading=lazy }](../assets/screenshots/workshop-home.png)
+
+<figcaption>Workshop Home during a live cascade — recent UPDOWN events streaming, the "Currently firing alerts" table populated, the automation about to fan out. The view your senior narrates from at the top of Part 3. Click for full size.</figcaption>
+
+</figure>
+
 {%
   include-markdown "../../workshops/autocon5/guides/part-3-alerts-automation-ai.md"
   start="## What you'll do here"
