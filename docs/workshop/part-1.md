@@ -23,11 +23,12 @@ Your senior buddy walks you through the lab's telemetry shape — what *normal* 
 
 {%
   include-markdown "../../workshops/autocon5/guides/part-1-telemetry-and-queries.md"
+  start="## What you'll do here"
 %}
 
 <nav class="autocon5-nav-footer" markdown>
 
-<a class="autocon5-nav-footer__placeholder" href="index.md"></a>
+<div class="autocon5-nav-footer__placeholder" aria-hidden="true"></div>
 
 <a class="autocon5-nav-footer__next" href="part-2.md">
   <span class="autocon5-nav-footer__label">Next →</span>

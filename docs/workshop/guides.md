@@ -12,6 +12,12 @@ title: One workday, one investigation
 
 You arrive on a new on-call rotation. Learn the lab's baseline. Build the dashboard your team needed yesterday. Walk through how the automation handles a real alert. A senior engineer is at your shoulder all morning. By the time the lunch break lands, you're ready for the page that arrives at 02:14 that night — the optional advanced capstone.
 
+<p class="autocon5-section-hero__meta">
+  <span>~4 hours total (with breaks)</span>
+  <span>One continuous story, three parts</span>
+  <span>Capstone is optional</span>
+</p>
+
 </div>
 
 | Part | Guide | What you'll do |

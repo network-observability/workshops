@@ -23,6 +23,7 @@ The optional capstone. Triage with PromQL and LogQL, contain with maintenance, f
 
 {%
   include-markdown "../../workshops/autocon5/guides/advanced-cascades.md"
+  start="## What you'll do here"
 %}
 
 <nav class="autocon5-nav-footer" markdown>
@@ -32,9 +33,9 @@ The optional capstone. Triage with PromQL and LogQL, contain with maintenance, f
   <span class="autocon5-nav-footer__title">Part 3 — Alerts, automation, AI</span>
 </a>
 
-<a class="autocon5-nav-footer__next" href="index.md">
-  <span class="autocon5-nav-footer__label">Workshop home →</span>
-  <span class="autocon5-nav-footer__title">Overview &amp; pre-flight</span>
+<a class="autocon5-nav-footer__next" href="https://github.com/network-observability/network-observability-lab">
+  <span class="autocon5-nav-footer__label">After the workshop →</span>
+  <span class="autocon5-nav-footer__title">network-observability-lab — the deeper companion lab</span>
 </a>
 
 </nav>

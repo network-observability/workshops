@@ -17,14 +17,14 @@ hide:
 You arrive on a new on-call rotation. Over four hours you learn the lab's telemetry, build the dashboard your team needed yesterday, and watch the automation handle a real alert — with a senior engineer over your shoulder until lunch. By the time you close the laptop you've queried real-shape telemetry, made a Grafana panel answer an operational question, walked through how Alertmanager → Prefect routes a live alert, and decided which paths you'd trust an LLM-assisted RCA on at 02:14.
 </p>
 
-[Quickstart :material-arrow-right:](quickstart.md){ .md-button .md-button--primary }
+[Open the workshop :material-arrow-right:](workshop/index.md){ .md-button .md-button--primary }
+[Quickstart :material-arrow-right:](quickstart.md){ .md-button }
 [Install Docker and uv :material-arrow-right:](install.md){ .md-button }
-[Open the workshop :material-arrow-right:](workshop/index.md){ .md-button }
 
 <p class="autocon5-hero__meta">
-  <span>Four hours · ~80% hands-on</span>
-  <span>Whole stack runs locally</span>
-  <span>No shared backend, no live network gear</span>
+  <span>~4 hours total (with breaks)</span>
+  <span>~80% hands-on</span>
+  <span>Whole stack runs locally — no shared backend, no live gear</span>
 </p>
 
 </div>
@@ -71,7 +71,7 @@ You arrive on a new on-call rotation. Over four hours you learn the lab's teleme
 
 ---
 
-## Why this workshop is different :sparkles:
+## Why this workshop is different
 
 <div class="grid cards" markdown>
 
@@ -133,7 +133,7 @@ The first `up` pulls 3–5 GB of images. After that, restarts are seconds.
 
 !!! info "What runs locally"
 
-    Prometheus, Loki, Grafana, Alertmanager, Telegraf, Vector, Infrahub, Prefect, a FastAPI webhook receiver, and [`sonda`](https://github.com/davidban77/sonda) generating the synthetic telemetry. About 21 containers, ~5.5 GB of RAM while the stack is running, fully torn down by `nobs autocon5 destroy`.
+    Prometheus, Loki, Grafana, Alertmanager, Telegraf, Vector, Infrahub, Prefect, a FastAPI webhook receiver, and `sonda` generating the synthetic telemetry. About 21 containers, ~5.5 GB of RAM while the stack is running, fully torn down by `nobs autocon5 destroy`.
 
 ??? question "What if I've never written PromQL or LogQL?"
 
@@ -141,13 +141,8 @@ The first `up` pulls 3–5 GB of images. After that, restarts are seconds.
 
 ---
 
-## Want the deeper lab? :books:
+## Want the deeper lab?
 
 The companion repo [**`network-observability-lab`**](https://github.com/network-observability/network-observability-lab) is the book's full chapter-by-chapter playground — every collector, every variant, every scenario, with real cEOS / SR Linux containers in the loop. Larger surface area, more RAM, more network-engineering depth.
 
 This workshops repo is the opposite trade-off: one CLI, one `docker compose`, one observability stack, one investigation arc. Pick it up if you want a tight four-hour on-ramp; pick the lab up if you want the full book experience.
-
----
-
-[:material-rocket-launch: Start the quickstart](quickstart.md){ .md-button .md-button--primary }
-[:material-book-open-variant: Read the workshop overview](workshop/index.md){ .md-button }

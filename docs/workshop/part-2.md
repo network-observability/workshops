@@ -23,6 +23,7 @@ A post-mortem email lands. Last night's page lost ten minutes because a flap-rat
 
 {%
   include-markdown "../../workshops/autocon5/guides/part-2-dashboards.md"
+  start="## What you'll do here"
 %}
 
 <nav class="autocon5-nav-footer" markdown>
