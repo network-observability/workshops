@@ -350,3 +350,61 @@
   margin-top: 0.5rem;
   font-style: italic;
 }
+
+/* ---------- Wider layout ---------------------------------------------------- */
+/* Material's default content max-width is ~61rem (~976px). On modern displays
+ * that leaves a lot of whitespace on either side and shrinks screenshots to
+ * unreadable. Bump to 1400px while keeping body line-length comfortable via
+ * a tighter inner `.md-content` max-width. */
+
+.md-grid {
+  max-width: 1400px;
+}
+
+/* Keep the prose readable by capping inner content width while letting the
+ * shell (nav rails, header, footer) use the full grid. */
+.md-content {
+  max-width: 60rem;
+  margin-right: auto;
+}
+
+/* On very wide viewports, push the TOC against the right gutter so the
+ * content sits naturally between the two rails. */
+@media screen and (min-width: 1400px) {
+  .md-sidebar--secondary {
+    margin-left: auto;
+  }
+}
+
+/* ---------- Search bar polish ---------------------------------------------- */
+/* Make the header search input feel more like a discrete control (rounded
+ * pill, subtle border, hover affordance) rather than a barely-there strip. */
+
+.md-search__form {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.md-search__form:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+[dir="ltr"] .md-search__input {
+  padding-left: 2.6rem;
+}
+
+.md-search__icon[for="__search"] {
+  opacity: 0.9;
+}
+
+[data-md-toggle="search"]:checked ~ .md-header .md-search__form,
+.md-search__form:focus-within {
+  background: #fff;
+  color: var(--md-default-fg-color);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.18);
+}
+
+.md-search__form:focus-within .md-search__input::placeholder {
+  color: var(--md-default-fg-color--light);
+}
