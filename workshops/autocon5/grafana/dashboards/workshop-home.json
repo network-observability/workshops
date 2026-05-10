@@ -24,13 +24,13 @@
           "showLineNumbers": false,
           "showMiniMap": false
         },
-        "content": "# Network Observability Workshop\n\n**Hybrid pipelines \u00b7 BGP & interfaces \u00b7 Automation**\n\nWelcome. The status row below shows lab health at a glance \u2014 the navigation tiles drop you straight into a device's health view, the lab scratchpad, or the runbook. Recent flap and config-push events are streamed at the bottom; firing alerts are surfaced in the table beneath."
+        "content": "# Network Observability Workshop\n\n**Where you are in the arc:** [Part 1 \u2014 Telemetry & queries](https://network-observability.github.io/workshops/workshop/part-1/) \u00b7 [Part 2 \u2014 Dashboards](https://network-observability.github.io/workshops/workshop/part-2/) \u00b7 [Part 3 \u2014 Alerts, automation, AI](https://network-observability.github.io/workshops/workshop/part-3/) \u00b7 [Advanced](https://network-observability.github.io/workshops/workshop/advanced/)\n\nWelcome. The status row below shows lab health at a glance \u2014 the navigation tiles drop you straight into a device's health view, the lab scratchpad, or the runbook. Recent flap and config-push events are streamed at the bottom; firing alerts are surfaced in the table beneath. The starter queries at the bottom give you ready-to-run PromQL and LogQL for the canonical curriculum questions."
       },
       "gridPos": {
         "x": 0,
         "y": 0,
         "w": 24,
-        "h": 4
+        "h": 5
       },
       "pluginVersion": "13.0.1"
     },
@@ -95,7 +95,7 @@
       ],
       "gridPos": {
         "x": 0,
-        "y": 4,
+        "y": 5,
         "w": 6,
         "h": 4
       },
@@ -162,7 +162,7 @@
       ],
       "gridPos": {
         "x": 6,
-        "y": 4,
+        "y": 5,
         "w": 6,
         "h": 4
       },
@@ -229,7 +229,7 @@
       ],
       "gridPos": {
         "x": 12,
-        "y": 4,
+        "y": 5,
         "w": 6,
         "h": 4
       },
@@ -295,7 +295,7 @@
       ],
       "gridPos": {
         "x": 18,
-        "y": 4,
+        "y": 5,
         "w": 6,
         "h": 4
       },
@@ -321,7 +321,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 8,
+        "y": 9,
         "w": 6,
         "h": 5
       },
@@ -347,7 +347,7 @@
       },
       "gridPos": {
         "x": 6,
-        "y": 8,
+        "y": 9,
         "w": 6,
         "h": 5
       },
@@ -373,7 +373,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 8,
+        "y": 9,
         "w": 6,
         "h": 5
       },
@@ -399,7 +399,7 @@
       },
       "gridPos": {
         "x": 18,
-        "y": 8,
+        "y": 9,
         "w": 6,
         "h": 5
       },
@@ -438,7 +438,7 @@
       ],
       "gridPos": {
         "x": 0,
-        "y": 13,
+        "y": 14,
         "w": 24,
         "h": 8
       }
@@ -554,9 +554,35 @@
       ],
       "gridPos": {
         "x": 0,
-        "y": 21,
+        "y": 22,
         "w": 24,
         "h": 6
+      },
+      "pluginVersion": "13.0.1"
+    },
+    {
+      "id": 30,
+      "type": "text",
+      "title": "Starter queries",
+      "transparent": false,
+      "datasource": {
+        "type": "datasource",
+        "uid": "grafana"
+      },
+      "options": {
+        "mode": "markdown",
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "Copy any of these into Grafana \u2192 **Explore** to see the live data behind the curriculum's recurring questions. Switch the data source dropdown at the top of Explore between **Prometheus** and **Loki** as noted.\n\n**1 \u2014 Every UPDOWN event across the lab** (Loki)\n```logql\n{vendor_facility_process=\"UPDOWN\"}\n```\nAll interface UP/DOWN events, regardless of device or pipeline. Sanity check: scenarios should be emitting these on every flap.\n\n**2 \u2014 BGP peers that changed state recently** (Prometheus)\n```promql\nchanges(bgp_oper_state[5m]) > 0\n```\nPeers whose session state flipped at least once in the last 5 minutes. Bridge to the corresponding logs by filtering Loki on the same `device` and `peer_address` labels.\n\n**3 \u2014 Logs that flowed through Vector** (Loki)\n```logql\n{pipeline=\"vector\"}\n```\nOnly the syslog leg shipped via Vector \u2014 i.e. the SNMP-collected device's log path. Compare against `{pipeline=\"loki-push\"}` for the direct-push leg.\n\n**4 \u2014 Three-pipeline mental model rollup** (Prometheus)\n```promql\ncount by (pipeline) (bgp_oper_state)\n```\nHow many BGP series each pipeline is contributing \u2014 `direct`, `telegraf`, `vector`. Useful for confirming that the curriculum's three-pipeline story is still wired up after a stack restart.\n\n[Open Explore \u2192](/explore)"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 24,
+        "h": 14
       },
       "pluginVersion": "13.0.1"
     }
