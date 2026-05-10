@@ -21,6 +21,15 @@ The optional capstone. Triage with PromQL and LogQL, contain with maintenance, f
 
 </div>
 
+<figure class="section-preview" markdown>
+
+![Interfaces State — srl1 during a cascade](../assets/screenshots/device-health-interfaces-state-light.png#only-light){ .screenshot loading=lazy }
+![Interfaces State — srl1 during a cascade](../assets/screenshots/device-health-interfaces-state-dark.png#only-dark){ .screenshot loading=lazy }
+
+<figcaption>srl1's Interfaces State timeline during a cascade — the flapping interface visible, neighbouring interfaces holding steady. The view you triage from at 02:14.</figcaption>
+
+</figure>
+
 {%
   include-markdown "../../workshops/autocon5/guides/advanced-cascades.md"
   start="## What you'll do here"

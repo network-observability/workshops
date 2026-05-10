@@ -21,6 +21,15 @@ A real alert lands while your senior narrates. Walk the four canonical paths the
 
 </div>
 
+<figure class="section-preview" markdown>
+
+![Currently firing alerts — Alertmanager state during a cascade](../assets/screenshots/workshop-home-firing-alerts-light.png#only-light){ .screenshot loading=lazy }
+![Currently firing alerts — Alertmanager state during a cascade](../assets/screenshots/workshop-home-firing-alerts-dark.png#only-dark){ .screenshot loading=lazy }
+
+<figcaption>What lands in Alertmanager when the cascade kicks off — severity, device, peer, interface, the canonical labels. This table is the input the Prefect automation reasons over in each of the four paths you walk in Part 3.</figcaption>
+
+</figure>
+
 {%
   include-markdown "../../workshops/autocon5/guides/part-3-alerts-automation-ai.md"
   start="## What you'll do here"

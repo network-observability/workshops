@@ -119,6 +119,46 @@ In words: synthetic telemetry from sonda lands in Prometheus and Loki. Alerting 
 
 The telemetry shape (metric names, labels, log streams) is real — sonda emits the same patterns a Nokia SR Linux device would. That's why the queries, dashboards, and alerts you build look exactly like what you'd write against a production network.
 
+## Visual reference — the panels you'll be looking at
+
+A few key panels from the workshop dashboards. Light or dark Grafana theme follows your site preference.
+
+<figure class="section-preview" markdown>
+
+![BGP States panel](../assets/screenshots/device-health-bgp-states-light.png#only-light){ .screenshot loading=lazy }
+![BGP States panel](../assets/screenshots/device-health-bgp-states-dark.png#only-dark){ .screenshot loading=lazy }
+
+<figcaption><strong>BGP States</strong> · Device Health (srl1) — three peers, two ESTABLISHED (green) and one stuck in ACTIVE (orange). That orange row is the deliberately-broken peer you find in Part 1 with a single intent-vs-reality query.</figcaption>
+
+</figure>
+
+<figure class="section-preview" markdown>
+
+![Recent events panel](../assets/screenshots/workshop-home-recent-events-light.png#only-light){ .screenshot loading=lazy }
+![Recent events panel](../assets/screenshots/workshop-home-recent-events-dark.png#only-dark){ .screenshot loading=lazy }
+
+<figcaption><strong>Recent events</strong> · Workshop Home — every interface UPDOWN log line shows up here, regardless of which device or pipeline emitted it. The feed you watch when you trigger <code>flap-interface</code>.</figcaption>
+
+</figure>
+
+<figure class="section-preview" markdown>
+
+![Currently firing alerts panel](../assets/screenshots/workshop-home-firing-alerts-light.png#only-light){ .screenshot loading=lazy }
+![Currently firing alerts panel](../assets/screenshots/workshop-home-firing-alerts-dark.png#only-dark){ .screenshot loading=lazy }
+
+<figcaption><strong>Currently firing alerts</strong> · Workshop Home — what Alertmanager has live right now. The input the Prefect automation reasons over in Part 3.</figcaption>
+
+</figure>
+
+<figure class="section-preview" markdown>
+
+![Interface Operational Status panel](../assets/screenshots/workshop-lab-interface-oper-light.png#only-light){ .screenshot loading=lazy }
+![Interface Operational Status panel](../assets/screenshots/workshop-lab-interface-oper-dark.png#only-dark){ .screenshot loading=lazy }
+
+<figcaption><strong>Interface Operational Status</strong> · Workshop Lab — the state timeline for srl1's interfaces. You'll learn to read this in Part 1 and add a flap-rate panel right next to it in Part 2.</figcaption>
+
+</figure>
+
 ## Driving an incident — `nobs autocon5 flap-interface`
 
 The lab ships with one canonical incident: a BGP cascade triggered by an interface flap. Run `nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1` and over four minutes you'll watch the interface go down, the BGP session collapse on the hold-down timer, dashboards turn red, alerts fire, and the automation pick it up. Use `--no-cascade` for a flap that only trips `PeerInterfaceFlapping` without bringing a BGP session down — that's the variant Part 1 uses while you're still building the mental model.

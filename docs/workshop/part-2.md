@@ -21,6 +21,15 @@ A post-mortem email lands. Last night's page lost ten minutes because a flap-rat
 
 </div>
 
+<figure class="section-preview" markdown>
+
+![Interface Operational Status — what you augment in Part 2](../assets/screenshots/workshop-lab-interface-oper-light.png#only-light){ .screenshot loading=lazy }
+![Interface Operational Status — what you augment in Part 2](../assets/screenshots/workshop-lab-interface-oper-dark.png#only-dark){ .screenshot loading=lazy }
+
+<figcaption>The Interface Operational Status panel from the Workshop Lab dashboard. The flap-rate panel you build in Part 2 lands right next to this one — same time range, same device variable, thresholds aligned with the alert rule.</figcaption>
+
+</figure>
+
 {%
   include-markdown "../../workshops/autocon5/guides/part-2-dashboards.md"
   start="## What you'll do here"
