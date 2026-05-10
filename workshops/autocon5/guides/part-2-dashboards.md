@@ -24,7 +24,7 @@ A dashboard is an operational tool, not wall decor. One dashboard, one story. Th
 
 ## Setup check
 
-Reset to known-good baseline (idempotent — safe to skip if you ran it earlier this morning) and confirm the stack is healthy:
+Reset workshop state (idempotent — safe to skip if you ran it earlier this morning) and confirm the stack is healthy:
 
 ```bash
 nobs autocon5 reset
@@ -67,15 +67,21 @@ Choose **`loki`** in the datasource picker. Flap rate is a *log-derived metric*,
 In the Loki query box, paste:
 
 ```logql
-sum by (interface)(count_over_time({device="$device", vendor_facility_process="UPDOWN"}[1m]))
+sum by (interface)(count_over_time({device="$device", vendor_facility_process="UPDOWN"}[2m]))
 ```
 
 Two things to notice:
 
 - `$device` is the dashboard variable. Grafana substitutes it before sending the query, so this panel becomes `srl1`-aware or `srl2`-aware automatically.
-- `count_over_time(...[1m])` counts UPDOWN log lines per minute. `sum by (interface)` groups so each interface gets its own line.
+- `count_over_time(...[2m])` counts UPDOWN log lines in a rolling 2-minute window — the same window the `PeerInterfaceFlapping` alert rule uses. `sum by (interface)` groups so each interface gets its own line.
 
-Click **Run query**. **You should see one or two flat lines near zero** — sonda's continuous emitter trickles a low background of UPDOWN events to keep the alert pipeline warm without tripping anything. With `$device=srl1` you'll typically see a flat line for `ethernet-1/11` (the always-broken interface) and possibly a label-less line at value `1`. With `$device=srl2` you'll see flat lines for each of the three interfaces. None of them should be near the alert threshold yet. If you see "No data," check the dropdown variable above the dashboard is set to a real device.
+Click **Run query**. **You should see one or two flat lines near zero.** With `$device=srl1` you'll typically see a flat line for `ethernet-1/11` (the always-broken interface). With `$device=srl2`, flat lines for each of the three interfaces. None of them should be near the alert threshold yet.
+
+??? info "Why is there a label-less line at the bottom?"
+
+    sonda emits a continuous low-rate UPDOWN trickle from a stream that doesn't carry an `interface` Loki label (it carries a generic syslog-style payload to keep the alert pipeline warm without tripping anything). When you `sum by (interface)`, that stream collapses into a series with no `interface` label — hence the label-less line. It's expected, harmless, and stays well below the threshold.
+
+    If you see "No data" instead of the expected lines, check the `Device` dropdown above the dashboard is set to a real device.
 
 ### 4. Pick the panel type
 
@@ -89,8 +95,8 @@ In the right-hand options panel, panel-type dropdown at the top: choose **Time s
 
 Scroll the right-hand options to **Panel options**:
 
-- **Title**: `Flap rate (per minute)`
-- **Description**: `UPDOWN log events per interface, counted in a 1-minute window. Above 3 in 2 minutes, the PeerInterfaceFlapping alert fires.`
+- **Title**: `Flap rate (per 2 minutes)`
+- **Description**: `UPDOWN log events per interface in a rolling 2-minute window. Above 3, the PeerInterfaceFlapping alert fires — the panel uses the same window so the red threshold line is the alert condition.`
 
 Description shows up as a small `i` icon on the panel — students hovering it later get the context without leaving the dashboard.
 
@@ -131,8 +137,8 @@ This kicks off a 4-minute cascade with the interface cycling 30s up, 60s down. U
 **What you should see, in order:**
 
 - **Within ~30 seconds** of the CLI returning: a line for `interface=ethernet-1/1` starts climbing. It crosses the orange threshold (1) almost immediately, then the red threshold (3) within another 10–20 seconds.
-- **By ~60 seconds** in: `ethernet-1/1` is well above red — typically around `10` events per minute during the down window.
-- **After ~90 seconds** (interface returns up, gate closes): the line trickles back down toward zero as the 1-minute window ages out the down-phase events.
+- **By ~60 seconds** in: `ethernet-1/1` is well above red — typically `15–30` events in the rolling 2-minute window during the down phase.
+- **After ~90 seconds** (interface returns up, gate closes): the line trickles back down toward zero as the 2-minute window ages out the down-phase events.
 - **Cycle 2 around t+120s**: the same ramp/cool-down pattern repeats.
 
 > Your senior taps the screen. *"Watch the orange line — that's where the alert is starting to fire. Watch the red line — that's where someone's pager goes off. The panel makes both moments visible without a separate alerts pane."*
@@ -155,11 +161,15 @@ Watch the spike land on `srl2`'s `ethernet-1/10` line — same ramp shape, same 
 
 **Stop and notice.** One panel, two devices. That's what the dashboard variable bought you. If you'd hard-coded `device="srl1"` in the query, you'd need a duplicate panel for every device you ever add — and one to maintain per device when the schema changes.
 
-There's a second thing happening here that's easy to miss: `srl1` and `srl2` arrive in Loki and Prometheus through *different* upstream pipelines. `srl1`'s metrics emit as raw gNMI shapes (`srl_*` field names) and Telegraf-srl1 normalizes them; `srl2`'s metrics emit as raw SNMP shapes (`ifHC*`, `bgpPeer*`) and Telegraf-srl2 normalizes them. By the time your panel queries them, both look identical — same metric names, same label keys. **That's normalization paying off at the dashboard layer.** Hover the **Collection Type** panel on the Device Health dashboard if you want to see which raw shape each device came in as.
+Worth noting: `srl1` and `srl2` arrive through different upstream pipelines (gNMI vs SNMP), but the panel queries them identically — that's normalization paying off at the dashboard layer.
+
+??? tip "Bonus — same panel, two pipelines"
+
+    `srl1`'s metrics emit as raw gNMI shapes (`srl_*` field names) and Telegraf-srl1 normalizes them; `srl2`'s metrics emit as raw SNMP shapes (`ifHC*`, `bgpPeer*`) and Telegraf-srl2 normalizes them. By the time your panel queries them, both look identical — same metric names, same label keys. Hover the **Collection Type** panel on the Device Health dashboard to see which raw shape each device came in as.
 
 > Your senior nods at the screen. *"That's the panel. Six hours from now when somebody on the rotation gets paged on a similar shape, this view is on screen the moment they open the dashboard. Ten minutes saved off the next triage. That's the work."*
 
-## Stretch goals
+## Stretch goals (optional — pick one if you have time)
 
 ### Extend the Interface Traffic panel with a per-device aggregate
 
