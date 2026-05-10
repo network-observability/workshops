@@ -2,12 +2,23 @@
 title: AutoCon5 — Modern Network Observability
 ---
 
-# AutoCon5 — Modern Network Observability
+<div class="autocon5-section-hero" markdown>
 
-A four-hour, laptop-friendly workshop. You bring a laptop with Docker; we bring a self-contained observability stack (Prometheus, Loki, Grafana, Alertmanager) plus a synthetic telemetry generator that stands in for a small network. By lunchtime you'll have queried real-shaped telemetry, made a dashboard answer an operational question, watched alerts route through an automated workflow, and seen what an opt-in AI RCA step does next to that workflow.
+<span class="autocon5-section-hero__badge">Workshop overview · Pre-flight</span>
 
-!!! abstract "Format"
-    ~20% framing and guided demos, ~80% hands-on. The whole stack runs locally — no shared backend, no live network gear.
+<h1 class="autocon5-section-hero__title">Welcome &mdash; here's the day</h1>
+
+<p class="autocon5-section-hero__subtitle">A four-hour, laptop-friendly workshop. You bring Docker; we bring the rest.</p>
+
+By lunchtime you'll have queried real-shaped telemetry, made a dashboard answer an operational question, watched alerts route through an automated workflow, and seen what an opt-in AI RCA step does next to that workflow.
+
+<p class="autocon5-section-hero__meta">
+  <span>~20% framing &amp; guided demos, ~80% hands-on</span>
+  <span>Whole stack runs locally</span>
+  <span>No shared backend, no live network gear</span>
+</p>
+
+</div>
 
 ## FAQ
 
@@ -108,11 +119,13 @@ In words: synthetic telemetry from sonda lands in Prometheus and Loki. Alerting 
 
 The telemetry shape (metric names, labels, log streams) is real — sonda emits the same patterns a Nokia SR Linux device would. That's why the queries, dashboards, and alerts you build look exactly like what you'd write against a production network.
 
-## Driving the BGP cascade (`flap-interface`)
+## Driving an incident — `nobs autocon5 flap-interface`
 
-`nobs autocon5 flap-interface` posts a single declarative cascade scenario to sonda's `/scenarios` endpoint. The interface flap drives `interface_oper_state` via the `enum: oper_state` shorthand on sonda's `flap` generator (UP=1, DOWN=2 — gNMI / openconfig convention); the BGP per-peer metrics and a UPDOWN log stream are gated by a `while: { ref: primary_flap, op: ">", value: 1 }` clause with `delay.open: 10s` (the BGP hold-down). When the gate closes, each gated entry writes one literal recovery sample via `delay.close.snap_to` (e.g. `bgp_oper_state=1`, prefix counters back to `10`), so dashboards snap green within seconds and `BgpSessionNotUp` resolves on the next scrape cycle. The default cascade runs for 4 minutes with 30s up / 60s down cycles. The static reference YAML for the default demo target (`srl1:ethernet-1/1`, peer `10.1.2.2`) lives at [`sonda/scenarios/cascade-incident.yaml`](https://github.com/network-observability/workshops/blob/main/workshops/autocon5/sonda/scenarios/cascade-incident.yaml); the CLI rebuilds the body in memory whenever a different `--device`/`--interface` is requested.
+The lab ships with one canonical incident: a BGP cascade triggered by an interface flap. Run `nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1` and over four minutes you'll watch the interface go down, the BGP session collapse on the hold-down timer, dashboards turn red, alerts fire, and the automation pick it up. Use `--no-cascade` for a flap that only trips `PeerInterfaceFlapping` without bringing a BGP session down — that's the variant Part 1 uses while you're still building the mental model.
 
-Pass `--no-cascade` to emit the interface flap and UPDOWN log stream alone (no BGP collapse) — useful for the Part 1 exercise that trips `PeerInterfaceFlapping` without bringing a session down. The UPDOWN log stream emits at a steady cadence during each down window (one line every two seconds, ~30 events across a 60s down phase) rather than one log per state transition — the alert query (`count_over_time UPDOWN > 3 in 2m`) still fires, but the per-line content is a single down-state template rather than alternating up/down events. Counters such as `interface_in_octets` / `interface_out_octets` keep their last-observed values during a flap; sonda's gated value coupling is not in scope today.
+??? info "How the cascade is wired (operator detail)"
+
+    The cascade is one declarative sonda scenario. `interface_oper_state` is driven by a `flap` generator; BGP per-peer metrics and the UPDOWN log stream are gated on the interface state with a `while:` clause and a 10-second hold-down. When the gate closes, each gated entry writes one literal recovery sample so dashboards snap green within a scrape cycle. Default duration: 4 minutes (30s up / 60s down). The reference YAML lives at [`sonda/scenarios/cascade-incident.yaml`](https://github.com/network-observability/workshops/blob/main/workshops/autocon5/sonda/scenarios/cascade-incident.yaml); the CLI rebuilds the body in memory for any `--device` / `--interface` you pass.
 
 ## The four parts
 
@@ -152,14 +165,14 @@ Pass `--no-cascade` to emit the interface flap and UPDOWN log stream alone (no B
 
 </div>
 
-## Going deeper
+??? info "For instructors and forkers — operator documentation"
 
-For maintainers, instructors, and anyone forking this workshop, the operator documentation lives in the repo:
+    Maintainers, instructors, and anyone forking this workshop have a parallel set of operator docs in the repo:
 
-- [`docs/`](https://github.com/network-observability/workshops/tree/main/workshops/autocon5/docs) — operator documentation index (architecture diagram, `.env` lifecycle, repo layout, troubleshooting).
-- [`docs/env-lifecycle.md`](https://github.com/network-observability/workshops/blob/main/workshops/autocon5/docs/env-lifecycle.md) — who creates `.env`, who reads it, and the host-vs-container nuance.
-- [`docs/troubleshooting.md`](https://github.com/network-observability/workshops/blob/main/workshops/autocon5/docs/troubleshooting.md) — the recurring failure modes and exact recovery commands.
-- [`docs/repo-layout.md`](https://github.com/network-observability/workshops/blob/main/workshops/autocon5/docs/repo-layout.md) — what every directory contributes and where to look when tracing a flow.
-- [`docs/data-pipelines.md`](https://github.com/network-observability/workshops/blob/main/workshops/autocon5/docs/data-pipelines.md) — the two-pipeline pattern (direct vs shipper) for metrics and logs, with curl commands to inspect raw vs normalized shapes.
-- [`docs/preflight.md`](https://github.com/network-observability/workshops/blob/main/workshops/autocon5/docs/preflight.md) — `nobs autocon5 preflight` regression check (Layer A data-shape waits, Layer B per-panel `/api/ds/query`, Layer C headless Grafana screenshots).
-- [`infrahub/README.md`](https://github.com/network-observability/workshops/blob/main/workshops/autocon5/infrahub/README.md) — the source-of-truth schema walkthrough: what the three node types are, why they look the way they do, how the upstream Nautobot model maps onto them, and the GraphQL queries Grafana + the Prefect flow run against them.
+    - [`docs/`](https://github.com/network-observability/workshops/tree/main/workshops/autocon5/docs) — operator documentation index.
+    - [`docs/env-lifecycle.md`](https://github.com/network-observability/workshops/blob/main/workshops/autocon5/docs/env-lifecycle.md) — who creates `.env`, who reads it, and the host-vs-container nuance.
+    - [`docs/troubleshooting.md`](https://github.com/network-observability/workshops/blob/main/workshops/autocon5/docs/troubleshooting.md) — recurring failure modes and exact recovery commands.
+    - [`docs/repo-layout.md`](https://github.com/network-observability/workshops/blob/main/workshops/autocon5/docs/repo-layout.md) — what every directory contributes and where to look when tracing a flow.
+    - [`docs/data-pipelines.md`](https://github.com/network-observability/workshops/blob/main/workshops/autocon5/docs/data-pipelines.md) — the two-pipeline pattern (direct vs shipper) for metrics and logs, with curl commands to inspect raw vs normalized shapes.
+    - [`docs/preflight.md`](https://github.com/network-observability/workshops/blob/main/workshops/autocon5/docs/preflight.md) — `nobs autocon5 preflight` regression check (data-shape waits, per-panel `/api/ds/query`, headless Grafana screenshots).
+    - [`infrahub/README.md`](https://github.com/network-observability/workshops/blob/main/workshops/autocon5/infrahub/README.md) — source-of-truth schema walkthrough.

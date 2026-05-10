@@ -2,9 +2,23 @@
 title: One workday, one investigation
 ---
 
-# One workday, one investigation
+<div class="autocon5-section-hero" markdown>
 
-The workshop is one continuous investigation. Over four hours, you'll arrive on a new on-call rotation, learn the lab's baseline, build the dashboard your team needed yesterday, and walk through how the automation handles a real alert. A senior engineer is showing you around all morning. By the time the lunch break lands, you'll be ready for the page that arrives at 02:14 that night — that's the optional advanced capstone.
+<span class="autocon5-section-hero__badge">The arc · Four parts · One investigation</span>
+
+<h1 class="autocon5-section-hero__title">One workday, one investigation</h1>
+
+<p class="autocon5-section-hero__subtitle">Not four disconnected exercises — the same broken peer, the same dashboard, the same alert, followed across the morning.</p>
+
+You arrive on a new on-call rotation. Learn the lab's baseline. Build the dashboard your team needed yesterday. Walk through how the automation handles a real alert. A senior engineer is at your shoulder all morning. By the time the lunch break lands, you're ready for the page that arrives at 02:14 that night — the optional advanced capstone.
+
+<p class="autocon5-section-hero__meta">
+  <span>~4 hours total (with breaks)</span>
+  <span>One continuous story, three parts</span>
+  <span>Capstone is optional</span>
+</p>
+
+</div>
 
 | Part | Guide | What you'll do |
 |------|-------|----------------|
