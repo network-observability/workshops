@@ -29,6 +29,16 @@ volumes:
   infrahub_storage_data:
   sonda_shared:
 
+# Bypass any HTTP proxy a runtime might inject into containers for internal
+# service-to-service traffic. OrbStack injects HTTP_PROXY=proxy.orb.internal
+# into every container by default; that proxy returns 502 for inter-container
+# hostnames (e.g. sonda-server:8080) because it doesn't know how to route them.
+# Setting NO_PROXY="*" tells curl/python urllib/most HTTP clients to bypass any
+# proxy entirely. Harmless on Docker Desktop / Colima where no proxy is set.
+x-no-proxy: &no-proxy
+  NO_PROXY: "*"
+  no_proxy: "*"
+
 services:
   # =========================================================================
   # Sonda — synthetic telemetry generation
@@ -43,6 +53,7 @@ services:
     entrypoint: ["/sonda"]
     command: ["run", "--scenario", "/scenarios/srl1-metrics.yaml"]
     environment:
+      <<: *no-proxy
       # Custom packs (srlinux_gnmi_bgp_raw, srlinux_gnmi_interface_raw) load
       # from the bind-mount; SONDA_PACK_PATH adds them to the discovery path
       # alongside the image's built-ins.
@@ -63,6 +74,7 @@ services:
     image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.6.4}
     command: ["--port", "8080", "--bind", "0.0.0.0"]
     environment:
+      <<: *no-proxy
       SONDA_PACK_PATH: "/packs:/sonda/packs"
       SONDA_SCENARIO_PATH: "/scenarios"
     volumes:
@@ -79,6 +91,7 @@ services:
     image: python:3.12-slim
     entrypoint: ["/bin/bash", "/scripts/sonda-setup.sh"]
     environment:
+      <<: *no-proxy
       SONDA_SERVER_URL: "http://sonda-server:8080"
       SCENARIOS_DIR: "/scenarios"
     volumes:
@@ -99,6 +112,7 @@ services:
     entrypoint: ["/sonda"]
     command: ["run", "--scenario", "/scenarios/all-logs.yaml"]
     environment:
+      <<: *no-proxy
       SONDA_PACK_PATH: "/packs:/sonda/packs"
       SONDA_SCENARIO_PATH: "/scenarios"
     volumes:
@@ -135,6 +149,8 @@ services:
     expose:
       - "1316"
       - "9005"
+    environment:
+      <<: *no-proxy
 
   # telegraf-srl2: scrapes SNMP-raw (`ifHC*`, `bgpPeer*`) from sonda-server's
   # per-scenario /metrics endpoints, renames to canonical, exposes a Prom
@@ -155,6 +171,7 @@ services:
     expose:
       - "9005"
     environment:
+      <<: *no-proxy
       SONDA_SERVER_URL: "http://sonda-server:8080"
     depends_on:
       sonda-setup:
@@ -176,6 +193,8 @@ services:
       - "8686:8686"
     expose:
       - "1514/udp"
+    environment:
+      <<: *no-proxy
     depends_on:
       loki:
         condition: service_started
@@ -195,6 +214,8 @@ services:
       - ./loki/loki-config.yml:/etc/loki/loki-config.yml
       - ./loki/rules/:/rules/fake/
       - loki_data:/loki:rw
+    environment:
+      <<: *no-proxy
 
   prometheus:
     container_name: prometheus
@@ -210,6 +231,8 @@ services:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
       - ./prometheus/rules/:/etc/prometheus/rules/
       - prometheus_data:/prometheus
+    environment:
+      <<: *no-proxy
 
   # =========================================================================
   # Visualization & alerting
@@ -224,6 +247,8 @@ services:
     volumes:
       - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
       - alertmanager_data:/data
+    environment:
+      <<: *no-proxy
 
   grafana:
     container_name: grafana
@@ -237,6 +262,7 @@ services:
       - ./grafana/grafana.ini:/etc/grafana/grafana.ini
       - grafana_data:/grafana
     environment:
+      <<: *no-proxy
       GF_INSTALL_PLUGINS: natel-discrete-panel,yesoreyeram-infinity-datasource,volkovlabs-echarts-panel
       # Disable Grafana 13's bundled promo apps so the dashboards aren't
       # cluttered with Pyroscope / DrillDown nav entries the workshop never uses.
@@ -264,6 +290,7 @@ services:
     container_name: infrahub-db
     image: neo4j:5-community
     environment:
+      <<: *no-proxy
       NEO4J_AUTH: neo4j/admin
       NEO4J_dbms_security_auth__minimum__password__length: "4"
     healthcheck:
@@ -280,12 +307,15 @@ services:
     image: redis:7.2
     volumes:
       - infrahub_cache_data:/data
+    environment:
+      <<: *no-proxy
 
   # AMQP message bus between the Infrahub API server and the git-agent.
   infrahub-message-queue:
     container_name: infrahub-message-queue
     image: rabbitmq:3.13-management-alpine
     environment:
+      <<: *no-proxy
       RABBITMQ_DEFAULT_USER: infrahub
       RABBITMQ_DEFAULT_PASS: infrahub
     healthcheck:
@@ -303,6 +333,7 @@ services:
     ports:
       - "8000:8000"
     environment:
+      <<: *no-proxy
       INFRAHUB_PRODUCTION: "true"
       # In-process workflow execution. The workshop only exercises schema
       # CRUD + GraphQL reads, so the worker-pool path isn't needed.
@@ -338,6 +369,7 @@ services:
     # Background worker for branch / changeset / repository operations.
     command: infrahub git-agent start
     environment:
+      <<: *no-proxy
       INFRAHUB_PRODUCTION: "true"
       INFRAHUB_WORKFLOW_DRIVER: local
       INFRAHUB_DB_TYPE: neo4j
@@ -374,6 +406,7 @@ services:
       - "9997:9997"
     tty: true
     environment:
+      <<: *no-proxy
       PREFECT_API_URL: "http://prefect-server:4200/api"
 
   # =========================================================================
@@ -386,6 +419,7 @@ services:
     container_name: prefect-postgres
     image: postgres:14
     environment:
+      <<: *no-proxy
       POSTGRES_USER: prefect
       POSTGRES_PASSWORD: prefect
       POSTGRES_DB: prefect
@@ -407,6 +441,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    environment:
+      <<: *no-proxy
 
   prefect-server:
     container_name: prefect-server
@@ -417,6 +453,7 @@ services:
       prefect-redis:
         condition: service_healthy
     environment:
+      <<: *no-proxy
       PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://prefect:prefect@prefect-postgres:5432/prefect
       PREFECT_SERVER_API_HOST: 0.0.0.0
       PREFECT_MESSAGING_BROKER: prefect_redis.messaging
@@ -437,6 +474,7 @@ services:
       prefect-redis:
         condition: service_healthy
     environment:
+      <<: *no-proxy
       PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://prefect:prefect@prefect-postgres:5432/prefect
       PREFECT_MESSAGING_BROKER: prefect_redis.messaging
       PREFECT_MESSAGING_CACHE: prefect_redis.messaging
@@ -452,6 +490,7 @@ services:
       prefect-server:
         condition: service_started
     environment:
+      <<: *no-proxy
       PREFECT_API_URL: http://prefect-server:4200/api
     command: prefect worker start --pool local-pool
     # `prefect-server: condition: service_started` only waits for the container
@@ -469,6 +508,7 @@ services:
       dockerfile: ./automation/flows.Dockerfile
     command: ["python", "/app/serve.py"]
     environment:
+      <<: *no-proxy
       PREFECT_API_URL: http://prefect-server:4200/api
       INFRAHUB_ADDRESS: ${INFRAHUB_ADDRESS:-http://infrahub-server:8000}
       INFRAHUB_API_TOKEN: ${INFRAHUB_API_TOKEN}

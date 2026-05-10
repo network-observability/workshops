@@ -4,6 +4,30 @@ The recurring failure modes when running, extending, or handing off the workshop
 Each entry names the symptom, says **why** it happens, and gives the exact recovery command.
 If you hit something not in here, add it — future-you will thank present-you.
 
+## `sonda-setup` fails with "ERROR: sonda-server not healthy after 30 attempts"
+
+**Symptom.** `nobs autocon5 up` reports `service "sonda-setup" didn't complete successfully: exit 1`. The `sonda-setup` container loops `Retry 1/30...` for 60 seconds, even though `docker compose logs sonda-server` clearly shows it bound `0.0.0.0:8080` immediately.
+
+**Why.** OrbStack auto-injects `HTTP_PROXY=proxy.orb.internal` into every container. Python's `urllib.request.urlopen` (used by the wait loop) honours that env var and routes the request through OrbStack's proxy, which doesn't know how to resolve Docker-internal hostnames like `sonda-server` and returns `502 Bad Gateway`. The wait loop swallows the error with `2>/dev/null` and keeps retrying.
+
+**Fix.** The compose file sets `NO_PROXY=*` on every service via the `x-no-proxy` YAML anchor at the top of `docker-compose.yml`. If you're on a fork that predates that change, either:
+
+```bash
+# Per-shell override (cleanest for local-only work)
+export NO_PROXY="*"
+nobs autocon5 destroy && nobs autocon5 up
+```
+
+Or disable OrbStack's proxy management entirely in OrbStack → Settings → Network.
+
+To confirm the proxy is in fact the culprit on your box, run:
+
+```bash
+docker run --rm --network workshop-autocon5 alpine sh -c 'env | grep -i proxy'
+```
+
+If `HTTP_PROXY` shows up there, you've got it.
+
 ## `nobs autocon5 up` succeeds but Grafana can't reach Infrahub
 
 **Why.** First boot of `infrahub-server` runs migrations and seeds the admin token.
