@@ -28,21 +28,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 _NAME_RE = re.compile(r"^[a-z][a-z0-9-]{1,30}$")
 
-#: Operational primitives a workshop can opt into via `Workshop.capabilities`.
-#: Each one corresponds to a `commands/<name>.py` module in `nobs` and gets
-#: mounted into the workshop's subcommand group when present in the set.
-#: If a fifth capability is added, also wire it in `nobs.main._register_workshop_commands`.
 VALID_CAPABILITIES: frozenset[str] = frozenset({"status", "alerts", "maintenance", "schema"})
 
-#: Names that the lifecycle / capability machinery already owns inside the
-#: workshop subgroup. `extra_commands` cannot reuse these — a future workshop
-#: registering a function called `up` would silently shadow the docker-compose
-#: lifecycle wrapper. Root primitives (`setup`, `preflight`, `workshops`) are
-#: NOT reserved here: workshop-level `setup` is a meaningful override (it's
-#: the per-workshop bootstrap), and `preflight` is a load-bearing extra for
-#: at least one shipped workshop. Both resolve fine via the explicit prefix
-#: (`nobs <ws> preflight`); the auto-mount's skip set keeps the meta version
-#: at root.
 _RESERVED_EXTRA_NAMES: frozenset[str] = frozenset({
     "up", "down", "destroy", "restart", "ps", "logs", "exec", "build",
 }) | VALID_CAPABILITIES
@@ -94,14 +81,8 @@ class Workshop(BaseModel):
         description="Workshop-specific Typer command callables added to the subcommand group.",
     )
     capabilities: frozenset[str] = Field(
-        default_factory=lambda: frozenset({"status", "alerts", "maintenance", "schema"}),
-        description=(
-            "Operational primitives this workshop exposes. Each entry mounts the "
-            "corresponding shared command into the workshop's subcommand group. "
-            "A workshop without Alertmanager would drop 'alerts'; without "
-            "Infrahub-shaped source-of-truth, drop 'maintenance' and 'schema'. "
-            "Defaults to all four for back-compat with the original AutoCon5-shaped stack."
-        ),
+        default_factory=lambda: VALID_CAPABILITIES,
+        description="Operational primitives this workshop exposes. See `VALID_CAPABILITIES`.",
         examples=[frozenset({"status", "alerts", "maintenance", "schema"})],
     )
 
@@ -112,7 +93,6 @@ class Workshop(BaseModel):
             return v
         if isinstance(v, (list, set, tuple)):
             return frozenset(str(x) for x in v)
-        # ValueError (not TypeError) so Pydantic wraps it into ValidationError.
         raise ValueError(f"capabilities must be a collection of strings, got {type(v).__name__}")
 
     @field_validator("capabilities")
