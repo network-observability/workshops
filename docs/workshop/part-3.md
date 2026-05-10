@@ -45,12 +45,12 @@ A real alert lands while your senior narrates. Walk the four canonical paths the
 
 <nav class="autocon5-nav-footer" markdown>
 
-<a href="part-2.md">
+<a href="../part-2/">
   <span class="autocon5-nav-footer__label">← Previous</span>
   <span class="autocon5-nav-footer__title">Part 2 — Dashboards</span>
 </a>
 
-<a class="autocon5-nav-footer__next" href="advanced.md">
+<a class="autocon5-nav-footer__next" href="../advanced/">
   <span class="autocon5-nav-footer__label">Next →</span>
   <span class="autocon5-nav-footer__title">Advanced — The 02:14 page</span>
 </a>

@@ -28,12 +28,12 @@ A post-mortem email lands. Last night's page lost ten minutes because a flap-rat
 
 <nav class="autocon5-nav-footer" markdown>
 
-<a href="part-1.md">
+<a href="../part-1/">
   <span class="autocon5-nav-footer__label">← Previous</span>
   <span class="autocon5-nav-footer__title">Part 1 — Telemetry and queries</span>
 </a>
 
-<a class="autocon5-nav-footer__next" href="part-3.md">
+<a class="autocon5-nav-footer__next" href="../part-3/">
   <span class="autocon5-nav-footer__label">Next →</span>
   <span class="autocon5-nav-footer__title">Part 3 — Alerts, automation, AI</span>
 </a>

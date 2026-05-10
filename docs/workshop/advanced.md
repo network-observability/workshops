@@ -28,7 +28,7 @@ The optional capstone. Triage with PromQL and LogQL, contain with maintenance, f
 
 <nav class="autocon5-nav-footer" markdown>
 
-<a href="part-3.md">
+<a href="../part-3/">
   <span class="autocon5-nav-footer__label">← Previous</span>
   <span class="autocon5-nav-footer__title">Part 3 — Alerts, automation, AI</span>
 </a>
