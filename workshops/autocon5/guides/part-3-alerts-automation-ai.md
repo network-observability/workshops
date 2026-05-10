@@ -106,6 +106,19 @@ Open **Workshop Home** and look at the **Recent events** feed. You should see fo
 
 Returns the audit trail for every payload the flow handled. Each line carries a `decision` label — `proceed`, `skip`, or `resolved`.
 
+#### Tour the Prefect UI
+
+> Your senior nods at the Loki feed. *"That's the audit trail. The flow itself has a UI on top of it — go look."*
+
+Open Prefect at <http://localhost:4200/runs/flow-runs>. Sort by **Start Time** (newest first) and you'll see four `quarantine_bgp | …` (or `resolved_bgp | …`) flow runs from the `try-it` you just ran. Click the most recent `quarantine_bgp` run. You'll see:
+
+- The **task graph** — `collect_evidence` → `evaluate_policy` → `annotate_decision` → `ai_rca`, plus (if the path was `proceed`) `quarantine` → `annotate_action`. The same pipeline you read about earlier, drawn for you.
+- Per-task **state** and **duration** — which tasks ran, in what order, how long each took.
+- Per-task **logs** — every `print()` and `get_run_logger()` line, indexed by task. Same content as `nobs autocon5 logs prefect-flows`, but searchable per task.
+- **Tags** on each task: `device:srl1`, `peer_address:10.1.99.2`, `afi_safi:ipv4-unicast`, `action:quarantine`. These are how a future operator filters "all flows that touched this peer" at 02:14.
+
+**Stop and notice.** The Loki annotations are the audit *record*; the Prefect UI is the audit *workshop*. Annotations are searchable but flat; the UI lets you drill into a specific task's logs without writing a LogQL query.
+
 ### 3. Drive mismatch → proceed by hand
 
 > *"Now do it slowly so you see the moving parts. Same path, but you're driving."*
@@ -142,6 +155,20 @@ nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1 --no-cascade
 
 That one call emits the interface flap and UPDOWN log stream alone, with no BGP gated entries — `PeerInterfaceFlapping` trips on the UPDOWN volume but `BgpSessionNotUp` stays clean.
 
+??? tip "Trigger the same flow without an alert"
+
+    The webhook is one event source. The Prefect deployment is the universal handle — you can run it from the UI's **Run** button or directly from the CLI:
+
+    ```bash
+    docker compose --project-name autocon5 exec prefect-flows \
+      prefect deployment run alert-receiver/alert-receiver \
+      --param alertname=BgpSessionNotUp \
+      --param status=firing \
+      --param 'alert_group={"alerts":[{"labels":{"device":"srl1","peer_address":"10.1.99.2","afi_safi_name":"ipv4-unicast"}}],"groupLabels":{"alertname":"BgpSessionNotUp"},"status":"firing"}'
+    ```
+
+    Same flow, same decision, no alert. Useful when you're iterating on the policy and don't want to wait for Alertmanager.
+
 **Stop and notice.** From "press Enter on a CLI" to "alert fired, flow ran, action recorded" is under 60 seconds end-to-end. The cascade matches the shape of a real outage — interface degrades, BGP follows, prefixes drop, recovery snaps everything back — so the alert path you're exercising is the same one your on-call would face in production, just compressed in time.
 
 ### 4. Drive in-maintenance → skip
@@ -161,13 +188,46 @@ You should see:
    The next alert for this device will be SKIPPED by the policy.
 ```
 
-This sets `srl1.maintenance=true` in Infrahub and writes a `Configured from CLI: srl1.maintenance = True` line to Loki. You can confirm:
+This sets `srl1.maintenance=true` in Infrahub and writes a `Configured from CLI: srl1.maintenance = True` line to Loki. You can confirm two ways:
 
-```logql
-{source="workshop-trigger"} |~ "maintenance"
-```
+1. **In Loki** —
 
-You should see the most recent line ending in `srl1.maintenance = True`.
+    ```logql
+    {source="workshop-trigger"} |~ "maintenance"
+    ```
+
+    The most recent line should end in `srl1.maintenance = True`.
+
+2. **In the Infrahub UI** — open <http://localhost:8000>, navigate to **Object Management → WorkshopDevice → srl1**. The `maintenance` attribute has just flipped to `true`. Notice the surrounding attributes: `intended_peer` / `expected_state` / `reason` / `asn` / `role` / `site_name`. Those are the schema fields the flow's policy reads when deciding `proceed` vs `skip` — the same shape you saw in Step 5's evidence bundle's first section, but at the source.
+
+    If you prefer queries to UIs, the GraphQL playground is at <http://localhost:8000/graphql>. The flow runs this exact query against it (see `automation/workshop_sdk.py`):
+
+    ```graphql
+    query DeviceIntent {
+      WorkshopDevice(name__value: "srl1") {
+        edges {
+          node {
+            name { value }
+            maintenance { value }
+            site_name { value }
+            role { value }
+            bgp_sessions {
+              edges {
+                node {
+                  peer_address { value }
+                  expected_state { value }
+                  remote_as { value }
+                  reason { value }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    ```
+
+    Run it and you'll see the same answer the policy got — the flow doesn't have secret access to Infrahub, just this query.
 
 Now re-trigger the flap:
 
@@ -211,6 +271,26 @@ nobs autocon5 evidence srl1 10.1.99.2
 4. **Policy hint** — what the deterministic policy *would* decide given the bundle above (`proceed` / `skip` / `resolved`), with the reason it would attach.
 
 **Stop and notice.** This bundle is the input to *both* the deterministic policy *and* (when it's enabled) the AI RCA step. Same evidence, two consumers — one decides mechanically, one writes a narrative. Neither sees more than what the other sees.
+
+??? info "What does the flow actually look like in Python?"
+
+    `quarantine_bgp_flow` in `automation/flows.py` is short enough to read end-to-end. The six task calls match the task graph you saw in the Prefect UI:
+
+    ```python
+    @flow(log_prints=True, flow_run_name="quarantine_bgp | {device}:{peer_address}")
+    def quarantine_bgp_flow(device, peer_address, ...):
+        ev = collect_bgp_evidence_task(device=device, peer_address=peer_address, ...)
+        decision = evaluate_policy_task(device=device, peer_address=peer_address, ev=ev)
+        annotate_decision_task(workflow="autocon5_quarantine_bgp", ..., decision=decision)
+        rca_text = ai_rca_task(workflow="autocon5_quarantine_bgp", ..., ev=ev)
+        if decision.decision != "proceed":
+            return {...}
+        silence_id = quarantine_task(device=device, peer_address=peer_address, minutes=20)
+        annotate_action_task(...)
+        return {...}
+    ```
+
+    Six function calls. The `@flow` / `@task` decorators do the rest — retries, state transitions, the UI view, the tag-based search you used in Step 2. "Automation" here is a Python function with decorators on top.
 
 ### 6. Your turn — find what the flow actually did
 
@@ -295,6 +375,7 @@ There's no single right answer. The point is that the same tool isn't equally va
 - **Compare evidence between a healthy peer and a broken one.** `nobs autocon5 evidence srl1 10.1.2.2` (a healthy peer) vs `nobs autocon5 evidence srl1 10.1.99.2` (a broken one). Pay attention to which fields differ — that's the signal the deterministic policy keys on.
 - **Toggle maintenance on srl2 instead of srl1.** Re-run `try-it --auto` after toggling. Confirm the maintenance-skip path swaps which device gets skipped. (Reset with `--clear` afterwards.)
 - **Watch a path's annotations in Loki directly.** `{source="prefect"} | json` in Explore. Filter by `workflow="autocon5_quarantine_bgp"` and watch annotations land while you trigger paths.
+- **Wire a Prefect automation on the quarantine action.** In the Prefect UI at <http://localhost:4200/automations>, click **New automation**. Trigger: `Flow run state changed` → `quarantine_bgp_flow` → `Completed`. Action: `Send a notification` (or `Run a deployment` if you want to chain flows). Re-trigger a flap and confirm the automation fires. Same intent → match → action pattern as the alert pipeline, one layer up.
 
 ## What you took away
 
