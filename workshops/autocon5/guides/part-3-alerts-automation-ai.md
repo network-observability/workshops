@@ -30,7 +30,7 @@ You should see two rows:
 | BgpSessionNotUp | warning  | srl2 → 10.1.11.1 | firing | ... |
 ```
 
-If you see fewer than two, give the stack 60 seconds and try again — alert evaluation has a `for: 30s` clause.
+If you see fewer than two, give the stack 60 seconds and try again — alert evaluation has a `for: 30s` clause. If you see *more* than two — common after running Part 2 — give it about five minutes for the prior cascade's `PeerInterfaceFlapping` and `InterfaceAdminUpOperDown` alerts to age out. None of the residue blocks the four paths below.
 
 Open **Workshop Home** at <http://localhost:3000/d/workshop-home>. The **Currently firing alerts** table at the bottom should show those same two rows. Keep this dashboard open in a tab — you'll watch it react to your CLI commands throughout this part.
 
@@ -124,9 +124,9 @@ nobs autocon5 alerts
 
 **What you should see, in order:**
 
-- **Within ~30 seconds**: a `PeerInterfaceFlapping` row appears (the rule fires on `> 3 UPDOWN events in a 2-minute window`, and the down window emits one UPDOWN line every two seconds — about 30 lines per 60s down).
-- **Within ~40-50 seconds**: `InterfaceAdminUpOperDown` for `srl1` appears (the alert needs the oper-state to be `2` consistently for `for: 2m`).
-- **Once the interface drops and the 10s hold-down expires**: `BgpSessionNotUp` *also* fires for `srl1 ↔ 10.1.2.2` because the BGP session's `bgp_oper_state` is now `2`.
+- **Within ~40–60 seconds**: a `PeerInterfaceFlapping` row appears. The rule needs `> 3 UPDOWN events in a 2-minute window`, plus a `for: 30s` clause and a Loki ruler eval cycle on top.
+- **Within ~2 minutes**: `InterfaceAdminUpOperDown` for `srl1` appears (the alert needs the oper-state to be `2` consistently for `for: 2m`).
+- **About a minute after the BGP session collapses**: `BgpSessionNotUp` *also* fires for `srl1 ↔ 10.1.2.2`. The chain is the 10s hold-down → next Prometheus scrape (≤15s) → `for: 30s` accumulation → ~55 seconds total before the alert is firing.
 
 Open **Workshop Home** in your browser — the **Currently firing alerts** table populates with all of these. The webhook flow has already run by the time you look; check **Recent events** for the new `decision=proceed` annotation on `srl1 ↔ 10.1.2.2`.
 
@@ -203,67 +203,16 @@ The flow doesn't decide blindly. It pulls a correlated bundle of evidence — re
 nobs autocon5 evidence srl1 10.1.99.2
 ```
 
-**You should see a printed bundle with three sections:**
+**You should see a printed bundle with four sections:**
 
-```
-╭─── Source of truth (Infrahub) ───╮
-│ device          srl1   site=lab  role=edge
-│ maintenance     false
-│ intended peer   yes
-│ expected state  established
-│ reason          ip-mismatch-demo
-│ remote_as       65102
-╰──────────────────────────────────╯
-
-   BGP metrics snapshot (Prometheus)
-| Metric            | Value | Decoded |
-| admin_state       |     1 | enable  |
-| oper_state        |     5 | active  |
-| received_routes   |     0 |   —     |
-| ...
-
-╭─── Loki — last 20 relevant line(s) ───╮
-│ {... "labels":{"decision":"resolved", "device":"srl1", "peer_address":"10.1.99.2", ...}}
-│ {... BGP-related log lines for that peer ...}
-╰────────────────────────────────────────╯
-```
-
-The metrics row tells you the peer is configured to be up (`admin_state=1`) but operationally trying-to-establish (`oper_state=5`) and receiving zero prefixes — exactly the mismatch the alert fires on. The Infrahub block tells you intent (`expected_state=established`, `reason=ip-mismatch-demo`). The Loki block carries both the broken-peer's BGP log lines AND prior Prefect annotations for this same peer — that's the audit trail.
+1. **Source of truth (Infrahub)** — device + intent: `expected_state=established`, `reason=ip-mismatch-demo`, `remote_as=65102`, `maintenance=false`.
+2. **BGP metrics snapshot (Prometheus)** — a small table with `admin_state=1` (enable), `oper_state=5` (active — i.e. trying to establish), `received_routes=0`. Exactly the mismatch the alert fires on.
+3. **Loki — last 20 relevant line(s)** — raw JSON log lines for the broken peer's BGP traffic *plus* prior Prefect annotations for this same peer (the audit trail). Verbose by design — every log line in full so you can grep / inspect labels.
+4. **Policy hint** — what the deterministic policy *would* decide given the bundle above (`proceed` / `skip` / `resolved`), with the reason it would attach.
 
 **Stop and notice.** This bundle is the input to *both* the deterministic policy *and* (when it's enabled) the AI RCA step. Same evidence, two consumers — one decides mechanically, one writes a narrative. Neither sees more than what the other sees.
 
-### 6. Toggle the AI RCA step
-
-> *"Would the LLM narrative have helped you at 2am? Let's turn it on and find out."*
-
-By default, the AI step runs but writes a "AI RCA disabled" annotation — the flow finishes end-to-end either way.
-
-To turn it on, edit `.env` in the workshop directory:
-
-```bash
-ENABLE_AI_RCA=true
-AI_RCA_PROVIDER=openai          # or anthropic
-AI_RCA_MODEL=gpt-4o-mini        # or e.g. claude-haiku-4-5-20251001
-OPENAI_API_KEY=sk-...           # only the one matching AI_RCA_PROVIDER is required
-```
-
-`nobs autocon5 up` reuses the cached image, so the new env vars won't reach Prefect until you restart the flows container:
-
-```bash
-nobs autocon5 restart prefect-flows
-```
-
-Re-trigger any path — the easiest is `nobs autocon5 try-it --auto`. Watch the **Recent events** feed. For each path you'll now see two annotations: the deterministic policy result, and the LLM's narrative explanation right next to it. The LLM annotation carries an `ai_rca` label so you can isolate it:
-
-```logql
-{source="prefect", ai_rca!=""} | json
-```
-
-If you don't have an API key handy, leave `ENABLE_AI_RCA=false`. Look at the disabled-fallback annotation — that itself is the lesson: the workflow runs end-to-end whether or not the AI step is enabled. The AI is opt-in commentary, not load-bearing.
-
-**Stop and notice.** The LLM gets the same evidence bundle as the deterministic policy. It can't see the network, the runbooks, or last week's incident. Its output is annotated *next to* the policy result, not in place of it. The policy decided what action to take; the LLM wrote a paragraph about why the situation might exist. Two different jobs, both grounded in the same evidence.
-
-### Your turn — find what the flow actually did
+### 6. Your turn — find what the flow actually did
 
 > Your senior gestures at the screen. *"You've watched the paths run. Now show me — without scrolling the dashboard — how many alert payloads the flow has handled in the last 30 minutes, broken down by decision. One LogQL line. The annotations carry everything you need."*
 
@@ -281,12 +230,51 @@ Take a minute on it before you scroll. Two hints if you're stuck:
 | proceed   |   1-3 |
 | skip      |   1-2 |
 | resolved  |   1-2 |
-| (empty)   |   1-3 |  ← side annotations without a decision label
+| (empty)   |   1-3 |  ← AI RCA annotations, which carry an `ai_rca` label, not `decision`
 ```
 
 The exact counts depend on how many paths you've driven by hand on top of `try-it`. If you get a single row, you've collapsed too aggressively. If you get dozens of rows, you've left a high-cardinality label unaggregated.
 
-### 7. Reflection (no clicking — just think)
+### 7. Toggle the AI RCA step
+
+> *"Would the LLM narrative have helped you at 2am? Let's turn it on and find out."*
+
+By default, the AI step runs but writes a "AI RCA disabled" annotation — the flow finishes end-to-end either way.
+
+!!! info "No API key handy? Skip the toggle, the lesson still lands."
+
+    Look at the disabled-fallback annotation in Step 5's evidence bundle — that itself is the lesson. The workflow runs end-to-end whether or not the AI step is enabled. The AI is opt-in commentary, not load-bearing. Read this section as reference, then go straight to Step 8.
+
+To turn it on, edit `.env` in the workshop directory:
+
+```bash
+ENABLE_AI_RCA=true
+AI_RCA_PROVIDER=openai          # or anthropic
+AI_RCA_MODEL=gpt-4o-mini        # or e.g. claude-haiku-4-5-20251001
+OPENAI_API_KEY=sk-...           # only the one matching AI_RCA_PROVIDER is required
+```
+
+Container env is baked at create-time, so `docker compose restart` won't pick up the new values — `prefect-flows` needs to be re-created. The cleanest way is to re-run `up` (it reads `.env` again and re-creates services whose effective config changed):
+
+```bash
+nobs autocon5 up
+```
+
+Or, if you want to force just the one container without touching anything else:
+
+```bash
+docker compose --project-name autocon5 up -d --force-recreate prefect-flows
+```
+
+Re-trigger any path — the easiest is `nobs autocon5 try-it --auto`. Watch the **Recent events** feed. For each path you'll now see two annotations: the deterministic policy result, and the LLM's narrative explanation right next to it. The LLM annotation carries an `ai_rca` label so you can isolate it:
+
+```logql
+{source="prefect", ai_rca!=""} | json
+```
+
+**Stop and notice.** The LLM gets the same evidence bundle as the deterministic policy. It can't see the network, the runbooks, or last week's incident. Its output is annotated *next to* the policy result, not in place of it. The policy decided what action to take; the LLM wrote a paragraph about why the situation might exist. Two different jobs, both grounded in the same evidence.
+
+### 8. Reflection (no clicking — just think)
 
 > Your senior leans back. *"Last one's a thinking exercise. Pick any of the paths you just ran and answer this for yourself."*
 
@@ -301,7 +289,7 @@ Some hints to guide the discussion:
 
 There's no single right answer. The point is that the same tool isn't equally valuable for all four paths, and you should know which is which before you trust the narrative in the heat of an incident.
 
-## Stretch goals
+## Stretch goals (optional — pick one if you have time)
 
 - **Tail the Prefect flow logs in real time.** `nobs autocon5 logs prefect-flows`. Re-run `try-it --auto` and watch the flow narrate each path from the inside.
 - **Compare evidence between a healthy peer and a broken one.** `nobs autocon5 evidence srl1 10.1.2.2` (a healthy peer) vs `nobs autocon5 evidence srl1 10.1.99.2` (a broken one). Pay attention to which fields differ — that's the signal the deterministic policy keys on.
