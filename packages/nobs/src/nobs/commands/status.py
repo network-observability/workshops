@@ -88,7 +88,6 @@ def status_for(ws: Workshop) -> Callable[..., None]:
         prefect_url: Annotated[str, typer.Option()] = "http://localhost:4200",
         sonda_url: Annotated[str, typer.Option()] = "http://localhost:8085",
     ) -> None:
-        _env.load_env(ws.dir)
         status(
             prom_url=prom_url,
             loki_url=loki_url,

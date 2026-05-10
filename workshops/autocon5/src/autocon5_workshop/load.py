@@ -46,9 +46,10 @@ def load_infrahub(
     """Apply the workshop schema and seed lab_vars.yml into Infrahub.
 
     Idempotent. Re-running updates existing nodes rather than duplicating.
-    The schema apply step delegates to `nobs schema load`; the data upsert
-    is workshop-specific (it knows the `WorkshopDevice` / `WorkshopInterface`
-    / `WorkshopBgpSession` schema and the `lab_vars.yml` shape).
+    The schema apply step delegates to the shared schema apply in
+    `nobs/commands/schema.py`; the data upsert is workshop-specific (it
+    knows the `WorkshopDevice` / `WorkshopInterface` / `WorkshopBgpSession`
+    schema and the `lab_vars.yml` shape).
     """
     schema = _detect_default(schema)
     lab_vars = _detect_default(lab_vars)

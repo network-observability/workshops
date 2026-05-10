@@ -72,6 +72,9 @@ uv run nobs autocon5 status     # repeat until every row says 'ok'
 uv run nobs autocon5 load-infrahub
 ```
 
+> **Tip — drop the prefix from inside this directory.**
+> Examples below pin `nobs autocon5` for clarity, but from inside `workshops/autocon5/` you can drop the workshop name: `nobs up`, `nobs status`, `nobs alerts` resolve to the same commands via cwd auto-mount.
+
 Once the stack is up and Infrahub is seeded, you'll have:
 
 | Service | URL | Notes |

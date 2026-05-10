@@ -10,7 +10,6 @@ from rich.table import Table
 
 from .._console import console, fail
 from ..clients import AlertmanagerClient
-from ..lifecycle import env as _env
 from ..workshops import Workshop
 
 
@@ -147,7 +146,6 @@ def alerts_for(ws: Workshop) -> Callable[..., None]:
             bool, typer.Option("--inhibited/--no-inhibited", help="Include inhibited alerts.")
         ] = True,
     ) -> None:
-        _env.load_env(ws.dir)
         alerts(
             am_url=am_url,
             label=label,

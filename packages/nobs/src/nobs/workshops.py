@@ -28,6 +28,25 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 _NAME_RE = re.compile(r"^[a-z][a-z0-9-]{1,30}$")
 
+#: Operational primitives a workshop can opt into via `Workshop.capabilities`.
+#: Each one corresponds to a `commands/<name>.py` module in `nobs` and gets
+#: mounted into the workshop's subcommand group when present in the set.
+#: If a fifth capability is added, also wire it in `nobs.main._register_workshop_commands`.
+VALID_CAPABILITIES: frozenset[str] = frozenset({"status", "alerts", "maintenance", "schema"})
+
+#: Names that the lifecycle / capability machinery already owns inside the
+#: workshop subgroup. `extra_commands` cannot reuse these — a future workshop
+#: registering a function called `up` would silently shadow the docker-compose
+#: lifecycle wrapper. Root primitives (`setup`, `preflight`, `workshops`) are
+#: NOT reserved here: workshop-level `setup` is a meaningful override (it's
+#: the per-workshop bootstrap), and `preflight` is a load-bearing extra for
+#: at least one shipped workshop. Both resolve fine via the explicit prefix
+#: (`nobs <ws> preflight`); the auto-mount's skip set keeps the meta version
+#: at root.
+_RESERVED_EXTRA_NAMES: frozenset[str] = frozenset({
+    "up", "down", "destroy", "restart", "ps", "logs", "exec", "build",
+}) | VALID_CAPABILITIES
+
 
 class Workshop(BaseModel):
     """Self-describing handle a workshop registers with `nobs`.
@@ -93,15 +112,36 @@ class Workshop(BaseModel):
             return v
         if isinstance(v, (list, set, tuple)):
             return frozenset(str(x) for x in v)
-        raise TypeError(f"capabilities must be a collection of strings, got {type(v).__name__}")
+        # ValueError (not TypeError) so Pydantic wraps it into ValidationError.
+        raise ValueError(f"capabilities must be a collection of strings, got {type(v).__name__}")
 
     @field_validator("capabilities")
     @classmethod
     def _check_capabilities(cls, v: frozenset[str]) -> frozenset[str]:
-        valid = {"status", "alerts", "maintenance", "schema"}
-        unknown = v - valid
+        unknown = v - VALID_CAPABILITIES
         if unknown:
-            raise ValueError(f"Unknown capability/capabilities: {sorted(unknown)}. Valid: {sorted(valid)}")
+            raise ValueError(
+                f"Unknown capability/capabilities: {sorted(unknown)}. "
+                f"Valid: {sorted(VALID_CAPABILITIES)}"
+            )
+        return v
+
+    @field_validator("extra_commands")
+    @classmethod
+    def _check_extra_commands(cls, v: list[Callable]) -> list[Callable]:
+        seen: set[str] = set()
+        for cmd in v:
+            name = getattr(cmd, "__name__", "").replace("_", "-")
+            if not name:
+                raise ValueError("extra_commands entry has no __name__")
+            if name in _RESERVED_EXTRA_NAMES:
+                raise ValueError(
+                    f"extra_commands name {name!r} collides with a reserved "
+                    f"lifecycle/capability slot. Reserved: {sorted(_RESERVED_EXTRA_NAMES)}"
+                )
+            if name in seen:
+                raise ValueError(f"extra_commands has duplicate command name {name!r}")
+            seen.add(name)
         return v
 
     @field_validator("name")

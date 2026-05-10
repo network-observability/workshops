@@ -6,6 +6,11 @@ Top-level subcommands
     nobs preflight          # host environment check (Docker, RAM, disk, network)
     nobs workshops          # list registered workshops as a Rich tree
 
+The bare root surface intentionally excludes `status`, `alerts`,
+`maintenance`, and `schema`: those are workshop-scoped operational
+primitives. Reach them via the explicit prefix (`nobs autocon5 alerts`)
+or via the cwd auto-mount (described below).
+
 Per-workshop subcommand groups (e.g. `nobs autocon5 ...`) are built
 dynamically from each registered Workshop. Each group ships:
 
@@ -27,7 +32,18 @@ commands are also mounted at the root level so the workshop name can be
 elided. Example: from `workshops/autocon5/`, `nobs alerts` works the same
 as `nobs autocon5 alerts`. The three root primitives (`setup`, `preflight`,
 `workshops`) are NOT shadowed by the auto-mount — they always mean the
-top-level meta versions.
+top-level meta versions. As a consequence, an `extra_command` named
+`preflight` (e.g. autocon5's workshop-preflight) is only reachable as
+`nobs <workshop> preflight` even from inside the workshop dir.
+
+Env loading
+-----------
+A root-level callback loads the auto-detected workshop's `.env` once
+before each command runs, so envvar-driven option defaults (`--am-url`,
+`--infrahub-url`, etc.) resolve to the workshop's stack. Per-workshop
+subgroups have an analogous callback for the explicit-prefix path. The
+underlying `*_for(ws)` callables no longer load `.env` themselves — the
+callback layer is the single source of truth.
 """
 from __future__ import annotations
 
@@ -54,13 +70,14 @@ from .workshops import Workshop  # noqa: E402
 _ROOT_PRIMITIVES: frozenset[str] = frozenset({"setup", "preflight", "workshops"})
 
 
-def _detect_current_workshop() -> Workshop | None:
-    """Return the workshop whose `dir` contains cwd, or None.
+def _detect_current_workshop(cwd: Path | None = None) -> Workshop | None:
+    """Return the workshop whose `dir` contains `cwd`, or None.
 
-    Used to auto-mount a workshop's commands at the root level when the
-    operator is already cd'd into the workshop directory.
+    Pure function — `cwd` is an explicit parameter so the auto-mount logic
+    is unit-testable without monkeypatching `os.getcwd`. Defaults to
+    `Path.cwd()` for the runtime call sites.
     """
-    cwd = Path.cwd().resolve()
+    cwd = (cwd or Path.cwd()).resolve()
     for ws in _workshops_module.REGISTRY:
         try:
             cwd.relative_to(ws.dir)
@@ -70,7 +87,9 @@ def _detect_current_workshop() -> Workshop | None:
     return None
 
 
-def _register_workshop_commands(target: typer.Typer, ws: Workshop, *, skip: frozenset[str] = frozenset()) -> None:
+def _register_workshop_commands(
+    target: typer.Typer, ws: Workshop, *, skip: frozenset[str] = frozenset()
+) -> None:
     """Mount a workshop's commands on `target` (a Typer app or subgroup).
 
     `skip` excludes specific command names — used when auto-mounting at
@@ -81,6 +100,11 @@ def _register_workshop_commands(target: typer.Typer, ws: Workshop, *, skip: froz
         if name in skip:
             return
         target.command(name)(fn)
+
+    def add_group(name: str, sub_app: typer.Typer) -> None:
+        if name in skip:
+            return
+        target.add_typer(sub_app, name=name)
 
     # Lifecycle (always available)
     add("setup", setup_module.run_for(ws))
@@ -100,8 +124,8 @@ def _register_workshop_commands(target: typer.Typer, ws: Workshop, *, skip: froz
         add("alerts", alerts.alerts_for(ws))
     if "maintenance" in ws.capabilities:
         add("maintenance", maintenance.maintenance_for(ws))
-    if "schema" in ws.capabilities and "schema" not in skip:
-        target.add_typer(schema.app_for(ws), name="schema")
+    if "schema" in ws.capabilities:
+        add_group("schema", schema.app_for(ws))
 
     # Workshop-specific commands
     for cmd in ws.extra_commands:
@@ -125,7 +149,8 @@ def _root_callback() -> None:
     Runs before every command. When cwd resolves to a registered workshop,
     its `.env` is loaded so any envvar-driven option default (e.g.
     `--am-url`, `--infrahub-url`) resolves to the workshop's stack rather
-    than the user's shell-level environment.
+    than the user's shell-level environment. This is the single source of
+    `.env` loading — `*_for(ws)` callables no longer load themselves.
     """
     ws = _detect_current_workshop()
     if ws:
@@ -140,9 +165,9 @@ app.command("workshops")(lifecycle.list_workshops)
 
 # Per-workshop subcommand group (always available with prefix).
 def _make_callback(ws: Workshop):
-    """Workshop subgroup callback — loads the workshop's `.env` before
-    Typer parses any subcommand. Mirrors the root callback for the
-    explicit-prefix invocation path."""
+    """Workshop subgroup callback — loads the workshop's `.env` for the
+    explicit-prefix invocation path (`nobs <ws> ...`). Mirrors the root
+    callback for the auto-mount path (`nobs ...` from inside the dir)."""
 
     def _cb() -> None:
         _env.load_env(ws.dir)

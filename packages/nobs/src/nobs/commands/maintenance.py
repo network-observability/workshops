@@ -136,7 +136,6 @@ def maintenance_for(ws: Workshop) -> Callable[..., None]:
             str, typer.Option("--loki-url", envvar="LOKI_URL")
         ] = "http://localhost:3001",
     ) -> None:
-        _env.load_env(ws.dir)
         maintenance(
             device=device,
             state=state,

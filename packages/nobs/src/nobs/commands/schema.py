@@ -89,7 +89,6 @@ def app_for(ws: Workshop) -> typer.Typer:
             typer.Option("--token", envvar="INFRAHUB_API_TOKEN", help="Infrahub API token."),
         ] = "",
     ) -> None:
-        _env.load_env(ws.dir)
         load(path=path, address=address, token=token)
 
     load_ws.__doc__ = f"Apply an Infrahub schema YAML against the {ws.title} stack."

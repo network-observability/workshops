@@ -45,18 +45,15 @@ See [`../infrahub/README.md`](../infrahub/README.md) for the schema walkthrough.
 **"How does `.env` flow into all of this?"** Two independent loaders; see [`env-lifecycle.md`](env-lifecycle.md).
 
 **"Where do the workshop commands live?"** `src/autocon5_workshop/` — workshop-specific commands (`load-infrahub`, `evidence`, `try-it`, `flap-interface`, `scenarios`).
-The generic ones (`status`, `alerts`, `schema load`, `maintenance`, plus the compose lifecycle) live in [`../../../packages/nobs/`](../../../packages/nobs/) and are exposed under the `nobs autocon5` subcommand group.
+The generic ones (`status`, `alerts`, `schema load`, `maintenance`, plus the compose lifecycle) live in [`../../../packages/nobs/`](../../../packages/nobs/) and mount under the `nobs autocon5` subcommand group, gated by the workshop's declared `capabilities`.
 
 ## One CLI, one workspace
 
 `nobs setup` (or `uv sync` from the repo root) installs the single CLI:
 
 - **`nobs`** — the operator toolkit.
-  Generic commands (`nobs status`, `nobs alerts`, `nobs maintenance`, `nobs schema load`) work against any stack via env-defined URLs.
-  Per-workshop subcommand groups (`nobs autocon5 ...`) are built dynamically from each registered workshop.
+  The bare root keeps three workshop-agnostic primitives: `nobs setup`, `nobs preflight`, `nobs workshops`. Workshop ops (`status`, `alerts`, `maintenance`, `schema load`, the docker-compose lifecycle, and any workshop-specific extras) live on each workshop's subgroup, e.g. `nobs autocon5 alerts`. From inside a workshop directory the prefix is optional — `cd workshops/autocon5 && nobs alerts` resolves to the same command via the cwd auto-mount.
   Lives at `packages/nobs/`; the `nobs` console script lands in `.venv/bin/`.
 
 `autocon5_workshop` is **not** a CLI — it's a Python plugin package that imports `nobs.workshops.register(WORKSHOP)` at module load.
-When `nobs.main` imports `autocon5_workshop`, the plugin registers a `Workshop` instance describing autocon5's directory, bootstrap hook, and extra commands; `nobs` then attaches an `autocon5` Typer subcommand group with the generic lifecycle (`up`, `down`, `restart`, `ps`, `logs`, `exec`, `build`) plus the workshop-specific commands.
-
-For ad-hoc work outside any workshop — applying a schema to a different Infrahub instance, for example — the top-level commands keep working: `uv run nobs schema load some-other-schema.yml`.
+When `nobs.main` imports `autocon5_workshop`, the plugin registers a `Workshop` instance describing autocon5's directory, bootstrap hook, capabilities, and extra commands; `nobs` then attaches an `autocon5` Typer subcommand group with the generic lifecycle (`up`, `down`, `restart`, `ps`, `logs`, `exec`, `build`) plus the workshop-specific commands.

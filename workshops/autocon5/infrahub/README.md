@@ -35,10 +35,10 @@ nobs autocon5 up           # bring the stack online; wait ~60s for first boot
 nobs autocon5 load-infrahub
 ```
 
-`nobs autocon5 load-infrahub` calls `nobs schema load infrahub/schema.yml`
-to apply the schema, then walks `lab_vars.yml` and idempotently upserts
-devices, interfaces, and BGP sessions. Both halves of the work print
-Rich-styled summary tables.
+`nobs autocon5 load-infrahub` runs `nobs autocon5 schema load infrahub/schema.yml`
+under the hood to apply the schema, then walks `lab_vars.yml` and
+idempotently upserts devices, interfaces, and BGP sessions. Both halves
+of the work print Rich-styled summary tables.
 
 ## The model
 
@@ -324,11 +324,11 @@ new option.
 |------|---------|
 | `infrahub/schema.yml` | The source of truth for the schema. |
 | `lab_vars.yml` | The data fed into the schema (devices, interfaces, BGP intent). |
-| `src/autocon5_workshop/load.py` | Workshop loader behind `nobs autocon5 load-infrahub`. Idempotent upsert from `lab_vars.yml`; the schema apply step delegates to `nobs schema load`. |
+| `src/autocon5_workshop/load.py` | Workshop loader behind `nobs autocon5 load-infrahub`. Idempotent upsert from `lab_vars.yml`; the schema apply step delegates to the shared schema apply in `nobs/commands/schema.py`. |
 | `src/autocon5_workshop/evidence.py` | `nobs autocon5 evidence DEVICE PEER` — Rich panels of the SoT gate, metrics snapshot, log lines, and policy hint for a (device, peer) pair. |
 | `../../packages/nobs/src/nobs/clients/infrahub.py` | Generic Infrahub GraphQL client used by `nobs` and the workshop plugins. |
-| `../../packages/nobs/src/nobs/commands/schema.py` | `nobs schema load PATH` — generic schema apply (wraps `infrahubctl`). |
-| `../../packages/nobs/src/nobs/commands/maintenance.py` | `nobs maintenance` (also exposed as `nobs autocon5 maintenance`) — generic over `--kind`, defaults to `WorkshopDevice`. |
+| `../../packages/nobs/src/nobs/commands/schema.py` | Schema apply (wraps `infrahubctl`). Surfaces as `nobs autocon5 schema load PATH`. |
+| `../../packages/nobs/src/nobs/commands/maintenance.py` | `nobs autocon5 maintenance` — generic over `--kind`, defaults to `WorkshopDevice`. |
 | `automation/workshop_sdk.py` | `InfrahubClient` + policy gate inside the Prefect container (kept standalone so the Prefect image stays small). |
 | `grafana/datasources.yml` | Provisioned `infrahub` GraphQL datasource for dashboards. |
 

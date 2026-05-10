@@ -29,7 +29,7 @@ You arrive on a new on-call rotation. Learn the lab's baseline. Build the dashbo
 
 !!! tip "Before you start"
 
-    Run `nobs autocon5 status` from the repo root. Every row should say `ok`. If anything is yellow or red, ask the instructor — the guides assume the stack is healthy.
+    Run `nobs autocon5 status` (from anywhere in the repo). Every row should say `ok`. If anything is yellow or red, ask the instructor — the guides assume the stack is healthy.
 
 The lab keeps working between parts. You don't need to tear anything down. The story arc carries through — Parts 1 to 3 are one workday with a senior over your shoulder; the advanced guide is the page that lands hours later when you're alone on the rotation. If you fall behind in one part, skim the **What you took away** bullets at the end and join the next part fresh.
 

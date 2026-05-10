@@ -54,7 +54,7 @@ workshops/
 **One CLI: `nobs`.**
 Workshops are subcommand groups (`nobs autocon5 ...`).
 Each workshop ships a small Python plugin under `workshops/<name>/src/<name>_workshop/` that registers itself with `nobs` at import time and contributes its workshop-specific commands.
-Generic commands (`nobs status`, `nobs alerts`, `nobs maintenance`, `nobs schema load`) keep working without a workshop prefix for ad-hoc ops against any stack.
+The bare root surface keeps three workshop-agnostic primitives — `nobs setup`, `nobs preflight`, `nobs workshops` — and stops there. Workshop ops (`status`, `alerts`, `maintenance`, `schema load`, plus the docker-compose lifecycle) live on the workshop's subgroup. From inside a workshop directory you can drop the prefix entirely: `cd workshops/autocon5 && nobs alerts` is the same as `nobs autocon5 alerts`.
 
 ```bash
 nobs setup                                          # uv sync + bootstrap + preflight
