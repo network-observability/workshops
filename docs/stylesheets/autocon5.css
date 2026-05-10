@@ -408,3 +408,14 @@
 .md-search__form:focus-within .md-search__input::placeholder {
   color: var(--md-default-fg-color--light);
 }
+
+/* ---------- Header logo (book cover) -------------------------------------- */
+/* The book cover is portrait (406x500); Material's header is 2.4rem tall.
+ * Constrain to a square so the cover doesn't stretch the header bar. */
+.md-header__button.md-logo img,
+.md-header__button.md-logo svg {
+  height: 1.8rem;
+  width: 1.8rem;
+  object-fit: contain;
+  border-radius: 2px;
+}

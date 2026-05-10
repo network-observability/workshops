@@ -56,6 +56,8 @@ theme:
   font:
     text: Inter
     code: JetBrains Mono
+  logo: assets/book-cover.jpg
+  favicon: assets/book-cover.jpg
   icon:
     repo: fontawesome/brands/github
     edit: material/pencil
