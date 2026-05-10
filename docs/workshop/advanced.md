@@ -23,9 +23,10 @@ The optional capstone. Triage with PromQL and LogQL, contain with maintenance, f
 
 <figure class="section-preview" markdown>
 
-[![Device Health srl1 mid-cascade](../assets/screenshots/device-health-srl1.png){ .screenshot loading=lazy }](../assets/screenshots/device-health-srl1.png)
+![Interfaces State — srl1 during a cascade](../assets/screenshots/device-health-interfaces-state-light.png#only-light){ .screenshot loading=lazy }
+![Interfaces State — srl1 during a cascade](../assets/screenshots/device-health-interfaces-state-dark.png#only-dark){ .screenshot loading=lazy }
 
-<figcaption>Device Health for srl1, mid-cascade — interface DOWN, BGP collapsing, UPDOWN events streaming. The picture you triage from at 02:14. Click for full size.</figcaption>
+<figcaption>srl1's Interfaces State timeline during a cascade — the flapping interface visible, neighbouring interfaces holding steady. The view you triage from at 02:14.</figcaption>
 
 </figure>
 

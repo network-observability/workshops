@@ -23,9 +23,10 @@ A post-mortem email lands. Last night's page lost ten minutes because a flap-rat
 
 <figure class="section-preview" markdown>
 
-[![Workshop Lab dashboard — where you build the flap-rate panel](../assets/screenshots/workshop-lab.png){ .screenshot loading=lazy }](../assets/screenshots/workshop-lab.png)
+![Interface Operational Status — what you augment in Part 2](../assets/screenshots/workshop-lab-interface-oper-light.png#only-light){ .screenshot loading=lazy }
+![Interface Operational Status — what you augment in Part 2](../assets/screenshots/workshop-lab-interface-oper-dark.png#only-dark){ .screenshot loading=lazy }
 
-<figcaption>The Workshop Lab dashboard — your scratchpad for Part 2. The flap-rate panel you build lands here, alongside the existing Interface Admin / Operational / Traffic / Logs panels. Click for full size.</figcaption>
+<figcaption>The Interface Operational Status panel from the Workshop Lab dashboard. The flap-rate panel you build in Part 2 lands right next to this one — same time range, same device variable, thresholds aligned with the alert rule.</figcaption>
 
 </figure>
 

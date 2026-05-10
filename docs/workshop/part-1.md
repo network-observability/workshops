@@ -23,9 +23,10 @@ Your senior buddy walks you through the lab's telemetry shape — what *normal* 
 
 <figure class="section-preview" markdown>
 
-[![Device Health for srl1 — the dashboard you query in Part 1](../assets/screenshots/device-health-srl1.png){ .screenshot loading=lazy }](../assets/screenshots/device-health-srl1.png)
+![BGP States — three peers, one stuck in ACTIVE](../assets/screenshots/device-health-bgp-states-light.png#only-light){ .screenshot loading=lazy }
+![BGP States — three peers, one stuck in ACTIVE](../assets/screenshots/device-health-bgp-states-dark.png#only-dark){ .screenshot loading=lazy }
 
-<figcaption>Device Health for srl1 — the dashboard you'll query against. The interface state matrix and BGP-peer panels are where the broken peer lives. Click for full size.</figcaption>
+<figcaption>The visual you'll be aiming for: srl1's three BGP peers — two ESTABLISHED, one stuck in ACTIVE. The intent-vs-reality query in Part 1 lifts that one orange row out of the dashboard with a single PromQL line.</figcaption>
 
 </figure>
 

@@ -119,29 +119,45 @@ In words: synthetic telemetry from sonda lands in Prometheus and Loki. Alerting 
 
 The telemetry shape (metric names, labels, log streams) is real — sonda emits the same patterns a Nokia SR Linux device would. That's why the queries, dashboards, and alerts you build look exactly like what you'd write against a production network.
 
-## Visual reference — the dashboards you'll be in
+## Visual reference — the panels you'll be looking at
 
-Click any thumbnail to open the full view.
+A few key panels from the workshop dashboards. Light or dark Grafana theme follows your site preference.
 
-<div class="grid cards" markdown>
+<figure class="section-preview" markdown>
 
--   [![Workshop Home dashboard](../assets/screenshots/workshop-home.png){ .screenshot loading=lazy }](../assets/screenshots/workshop-home.png)
+![BGP States panel](../assets/screenshots/device-health-bgp-states-light.png#only-light){ .screenshot loading=lazy }
+![BGP States panel](../assets/screenshots/device-health-bgp-states-dark.png#only-dark){ .screenshot loading=lazy }
 
-    **Workshop Home** — health row at the top, recent UPDOWN events streaming in the middle, currently firing alerts table, starter queries at the bottom. Your landing dashboard for the morning.
+<figcaption><strong>BGP States</strong> · Device Health (srl1) — three peers, two ESTABLISHED (green) and one stuck in ACTIVE (orange). That orange row is the deliberately-broken peer you find in Part 1 with a single intent-vs-reality query.</figcaption>
 
--   [![Device Health srl1 dashboard](../assets/screenshots/device-health-srl1.png){ .screenshot loading=lazy }](../assets/screenshots/device-health-srl1.png)
+</figure>
 
-    **Device Health (srl1)** — per-device deep-dive: BGP peers, interface state matrix, traffic, logs, and the side-by-side gNMI vs SNMP collection labels. Where you spend most of Parts 1 and 2.
+<figure class="section-preview" markdown>
 
--   [![Device Health srl2 dashboard](../assets/screenshots/device-health-srl2.png){ .screenshot loading=lazy }](../assets/screenshots/device-health-srl2.png)
+![Recent events panel](../assets/screenshots/workshop-home-recent-events-light.png#only-light){ .screenshot loading=lazy }
+![Recent events panel](../assets/screenshots/workshop-home-recent-events-dark.png#only-dark){ .screenshot loading=lazy }
 
-    **Device Health (srl2)** — same dashboard, different upstream shape. srl2 is SNMP-collected with logs shipped through Vector; the canonical metrics + queries are identical to srl1.
+<figcaption><strong>Recent events</strong> · Workshop Home — every interface UPDOWN log line shows up here, regardless of which device or pipeline emitted it. The feed you watch when you trigger <code>flap-interface</code>.</figcaption>
 
--   [![Workshop Lab dashboard](../assets/screenshots/workshop-lab.png){ .screenshot loading=lazy }](../assets/screenshots/workshop-lab.png)
+</figure>
 
-    **Workshop Lab** — focused interface admin/operational state, traffic graph, and filtered logs. Your scratchpad for the Part 1 unguided exercises and the panel you build in Part 2.
+<figure class="section-preview" markdown>
 
-</div>
+![Currently firing alerts panel](../assets/screenshots/workshop-home-firing-alerts-light.png#only-light){ .screenshot loading=lazy }
+![Currently firing alerts panel](../assets/screenshots/workshop-home-firing-alerts-dark.png#only-dark){ .screenshot loading=lazy }
+
+<figcaption><strong>Currently firing alerts</strong> · Workshop Home — what Alertmanager has live right now. The input the Prefect automation reasons over in Part 3.</figcaption>
+
+</figure>
+
+<figure class="section-preview" markdown>
+
+![Interface Operational Status panel](../assets/screenshots/workshop-lab-interface-oper-light.png#only-light){ .screenshot loading=lazy }
+![Interface Operational Status panel](../assets/screenshots/workshop-lab-interface-oper-dark.png#only-dark){ .screenshot loading=lazy }
+
+<figcaption><strong>Interface Operational Status</strong> · Workshop Lab — the state timeline for srl1's interfaces. You'll learn to read this in Part 1 and add a flap-rate panel right next to it in Part 2.</figcaption>
+
+</figure>
 
 ## Driving an incident — `nobs autocon5 flap-interface`
 
