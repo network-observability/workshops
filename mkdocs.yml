@@ -5,7 +5,7 @@ repo_url: https://github.com/network-observability/workshops
 repo_name: network-observability/workshops
 edit_uri: edit/main/
 
-copyright: Copyright &copy; 2026 — Modern Network Observability
+copyright: Part of the <a href="https://network-observability.github.io/" target="_blank" rel="noopener">Modern Network Observability</a> ecosystem &middot; Copyright &copy; 2026
 
 theme:
   name: material
@@ -132,9 +132,13 @@ nav:
       - Part 2 — Dashboards: workshop/part-2.md
       - Part 3 — Alerts, automation, AI: workshop/part-3.md
       - Advanced — End-to-end investigation: workshop/advanced.md
+  - "Modern Network Observability hub ↗": https://network-observability.github.io/
 
 extra:
   social:
+    - icon: material/home-circle
+      link: https://network-observability.github.io/
+      name: Modern Network Observability hub
     - icon: fontawesome/brands/github
       link: https://github.com/network-observability/workshops
       name: workshops on GitHub
