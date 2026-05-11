@@ -125,11 +125,11 @@ Six lines now. srl2's healthy interfaces hit **~12,500 bytes/sec**, the broken `
 nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1
 ```
 
-One invocation posts a single declarative cascade scenario to sonda. Sonda's runtime drives the rest. By default the scenario runs for 4 minutes, walking through cycles of 30 seconds up, then 60 seconds down. While the interface is down, BGP follows: `bgp_oper_state` drops to `2`, `bgp_neighbor_state` drops to `1` (idle), and the prefix counters (`bgp_prefixes_accepted`, `bgp_received_routes`, `bgp_sent_routes`, `bgp_active_routes`) drop to `0`. There's a 10-second hold-down between the interface going down and BGP collapsing — real interface flaps don't take BGP down instantly, and the cascade reflects that.
+One invocation posts a single declarative cascade to sonda — interface flaps for 4 minutes on a 30s-up / 60s-down cadence, BGP follows after a 10s hold-down (real flaps don't take BGP down instantly), and every gated metric snaps back the moment the interface returns. The bullet list further down spells out the per-signal beats; you don't drive the recovery, the cascade does.
 
-When the interface comes back up, BGP restores automatically: each gated metric writes one recovery sample (`bgp_oper_state=1`, prefix counters back to `10`, etc.), so dashboards snap green within seconds of the gate closing. You don't have to wait for a separate restore phase — it's built into the cascade.
+??? tip "Trip just the flap, not BGP"
 
-If you only want the log + metric flap (no BGP cascade), pass `--no-cascade`. That's the right knob for the "I just want to trip `PeerInterfaceFlapping` without bringing BGP down" exercise.
+    Pass `--no-cascade` and the same call emits the interface flap and UPDOWN log stream alone — no BGP gated entries. Useful when you want `PeerInterfaceFlapping` to trip but `BgpSessionNotUp` to stay clean.
 
 To watch the cascade react, open three Explore tabs (or one tab and toggle):
 
@@ -205,7 +205,7 @@ Returns rows for *both* devices, *both* collection types. A dashboard panel quer
 
 **Stop and notice.** The `collection_type` label is for inspecting the normalization itself: *"which raw shape did this sample come from, is that path healthy?"* It's not for branching your query logic. If you write `bgp_oper_state{collection_type="gnmi"}` into a dashboard, you've narrowed to one vendor — useful for debugging that pipeline, but you'll miss every device whose data arrives via any other protocol. Default to collection-type-agnostic queries; reach for the label when you're debugging the normalization, not the network.
 
-#### Your turn — find the busiest interface
+#### Your turn (unguided) — find the busiest interface
 
 > Your senior leans back. *"You've got the basic queries. Now answer one yourself, no scaffolding: which interface is moving the most bytes per second right now, across the whole lab? Get me the answer in one PromQL line."*
 
@@ -340,7 +340,7 @@ You'll see BGP-related lines for that specific peer. Add a filter to narrow:
 
 > *"Same query shape works on srl2 — try it. Different `peer_address`, same answer-the-why pattern. The fact that one device's metric came in as gNMI and the other's came in as SNMP doesn't change the bridge query at all."*
 
-## Stretch goals
+## Stretch goals (optional — pick one if you have time)
 
 - **Find the busiest interface in the last 5 minutes.** Combine `topk` with `rate()` on `interface_in_octets`. Hint: `topk(3, rate(interface_in_octets[5m]))`.
 - **List every distinct severity level present in srl1 logs in the last hour.** LogQL: parse with `| json`, then check the unique values of `severity` — the Explore log inspector shows distinct values per parsed field after a JSON parse stage.

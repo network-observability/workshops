@@ -143,7 +143,7 @@ This kicks off a 4-minute cascade with the interface cycling 30s up, 60s down. U
 
 > Your senior taps the screen. *"Watch the orange line — that's where the alert is starting to fire. Watch the red line — that's where someone's pager goes off. The panel makes both moments visible without a separate alerts pane."*
 
-**Stop and notice.** This is the same query pattern that drives the alert. The panel isn't decoration — it's a visual representation of the rule that's about to fire in Part 3. When the on-call gets paged, this panel is what they look at first.
+**Stop and notice.** This is the same query pattern that drives the `PeerInterfaceFlapping` alert in Part 3. The panel isn't decoration — it's a visual representation of the rule that's about to fire. When the on-call gets paged, this panel is what they look at first.
 
 ### 9. Switch device variable
 
