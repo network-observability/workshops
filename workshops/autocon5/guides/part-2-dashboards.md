@@ -75,11 +75,11 @@ Two things to notice:
 - `$device` is the dashboard variable. Grafana substitutes it before sending the query, so this panel becomes `srl1`-aware or `srl2`-aware automatically.
 - `count_over_time(...[2m])` counts UPDOWN log lines in a rolling 2-minute window — the same window the `PeerInterfaceFlapping` alert rule uses. `sum by (interface)` groups so each interface gets its own line.
 
-Click **Run query**. **You should see one or two flat lines near zero.** With `$device=srl1` you'll typically see a flat line for `ethernet-1/11` (the always-broken interface). With `$device=srl2`, flat lines for each of the three interfaces. None of them should be near the alert threshold yet.
+Click **Run query**. **You should see flat lines near zero** — typically hovering at 0 or 1. With `$device=srl1` you'll see a quiet line for `ethernet-1/11` (the always-broken interface). With `$device=srl2`, similar near-zero lines for one or two interfaces. None should be anywhere near the alert threshold (3) in steady state.
 
-??? info "Why is there a label-less line at the bottom?"
+??? info "Why does srl1 sometimes show a label-less line?"
 
-    sonda emits a continuous low-rate UPDOWN trickle from a stream that doesn't carry an `interface` Loki label (it carries a generic syslog-style payload to keep the alert pipeline warm without tripping anything). When you `sum by (interface)`, that stream collapses into a series with no `interface` label — hence the label-less line. It's expected, harmless, and stays well below the threshold.
+    `srl1` ships UPDOWN logs via Loki's direct push API, which doesn't promote the per-event `interface` tag to a Loki label. When you `sum by (interface)`, those events collapse into a series with no `interface` label — that's the label-less line. `srl2` ships its UPDOWN logs through Vector (syslog → Vector → Loki), and Vector promotes the `interface` label cleanly, so each interface gets its own line. Two valid ingestion pipelines, slightly different label shapes downstream — a curious side-effect worth knowing about.
 
     If you see "No data" instead of the expected lines, check the `Device` dropdown above the dashboard is set to a real device.
 
@@ -136,10 +136,11 @@ This kicks off a 4-minute cascade with the interface cycling 30s up, 60s down. U
 
 **What you should see, in order:**
 
-- **Within ~30 seconds** of the CLI returning: a line for `interface=ethernet-1/1` starts climbing. It crosses the orange threshold (1) almost immediately, then the red threshold (3) within another 10–20 seconds.
-- **By ~60 seconds** in: `ethernet-1/1` is well above red — typically `15–30` events in the rolling 2-minute window during the down phase.
-- **After ~90 seconds** (interface returns up, gate closes): the line trickles back down toward zero as the 2-minute window ages out the down-phase events.
-- **Cycle 2 around t+120s**: the same ramp/cool-down pattern repeats.
+- **First ~45 seconds** are quiet. The cascade starts the interface in the *up* state and walks through one 30-second up phase before the first down phase begins. UPDOWN log emission begins ~10 seconds into the down phase.
+- **Around t+60s**: a line for `interface=ethernet-1/1` appears at about `10`. It's already past both the orange (1) and red (3) thresholds — the down phase's emission rate (~one log every two seconds) means the rolling 2-minute count climbs fast.
+- **Around t+90s**: the line reaches `25` — well above red, matching the alert rule's "> 3 events in 2 minutes" condition many times over.
+- **Between cycles 1 and 2**: the line **plateaus** around `25` rather than dropping. The rolling 2-minute window still contains the events from cycle 1's down phase — they haven't aged out yet.
+- **Cycle 2 around t+120s**: cycle 2's down-phase events stack onto the still-in-window events from cycle 1, so the count climbs higher — typically `35–40`. The plateau-then-climb shape is what real flap-rate dashboards look like during an active flap.
 
 > Your senior taps the screen. *"Watch the orange line — that's where the alert is starting to fire. Watch the red line — that's where someone's pager goes off. The panel makes both moments visible without a separate alerts pane."*
 
@@ -149,7 +150,7 @@ This kicks off a 4-minute cascade with the interface cycling 30s up, 60s down. U
 
 > *"Now the proof that the variable was worth it. Toggle to srl2 and drive a flap there. No editing the panel — the dashboard does the work."*
 
-Toggle the `Device` dropdown to `srl2`. The flap-rate panel re-queries and now shows `srl2`'s steady-state lines (the broken `ethernet-1/11` plus normal trickle).
+Toggle the `Device` dropdown to `srl2`. The flap-rate panel re-queries and now shows `srl2`'s steady-state lines — quiet, near zero, similar to what `srl1` looked like before you triggered its flap.
 
 Trigger:
 
