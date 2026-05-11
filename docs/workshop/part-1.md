@@ -30,6 +30,15 @@ Your senior buddy walks you through the lab's telemetry shape — what *normal* 
 
 </figure>
 
+<figure class="section-preview" markdown>
+
+![Loki Explore — bridge query on the stuck peer](../assets/screenshots/loki-explore-bridge-light.png#only-light){ .screenshot loading=lazy }
+![Loki Explore — bridge query on the stuck peer](../assets/screenshots/loki-explore-bridge-dark.png#only-dark){ .screenshot loading=lazy }
+
+<figcaption>What the metric-to-log bridge looks like in Loki Explore — same labels, two query languages. The single most-cited pattern in this workshop.</figcaption>
+
+</figure>
+
 {%
   include-markdown "../../workshops/autocon5/guides/part-1-telemetry-and-queries.md"
   start="## What you'll do here"
