@@ -28,7 +28,7 @@ By lunchtime you'll have queried real-shaped telemetry, made a dashboard answer 
 
 ??? question "Do I need to know Prometheus, Loki, or Grafana already?"
 
-    A sketch-level idea of "metrics database" and "log database" is enough. Part 1 builds PromQL and LogQL from first principles against live data.
+    A sketch-level idea of "metrics database" and "log database" is enough. Part 1 builds PromQL and LogQL from scratch against live data.
 
 ??? question "What if I've never used Docker?"
 
@@ -36,7 +36,7 @@ By lunchtime you'll have queried real-shaped telemetry, made a dashboard answer 
 
 ??? question "Why do I need `uv` installed?"
 
-    We use [`uv`](https://docs.astral.sh/uv/) to install and run the workshop's `nobs` CLI — a thin wrapper that fronts every workshop command (`up`, `down`, `status`, `alerts`, `flap-interface`, and the rest). With `uv` set up the rest of the day flows through one-line commands instead of raw `docker compose` invocations. The same [Install page](../install.md) has the install one-liner.
+    We use [`uv`](https://docs.astral.sh/uv/) to install and run the workshop's `nobs` CLI — a thin wrapper that fronts every workshop command (`up`, `down`, `status`, `alerts`, `flap-interface`, and the rest). With `uv` set up the rest of the day flows through one-line commands instead of raw `docker compose` commands. The same [Install page](../install.md) has the install one-liner.
 
 ??? question "What if my laptop is on Windows?"
 
@@ -123,9 +123,11 @@ In words: synthetic telemetry from sonda lands in Prometheus and Loki. Alerting 
 
 The telemetry shape (metric names, labels, log streams) is real — sonda emits the same patterns a Nokia SR Linux device would. That's why the queries, dashboards, and alerts you build look exactly like what you'd write against a production network.
 
-## Visual reference — the panels you'll be looking at
+## Visual reference — the surfaces you'll be looking at
 
-A few key panels from the workshop dashboards. Light or dark Grafana theme follows your site preference.
+Light or dark theme follows your site preference where the source UI supports it (Grafana, Prefect). Infrahub ships a single theme.
+
+### Dashboards (Grafana)
 
 <figure class="section-preview" markdown>
 
@@ -163,9 +165,45 @@ A few key panels from the workshop dashboards. Light or dark Grafana theme follo
 
 </figure>
 
+### Automation surfaces (Prefect, Infrahub)
+
+<figure class="section-preview" markdown>
+
+![Prefect flow runs list](../assets/screenshots/prefect-flow-runs-list-light.png#only-light){ .screenshot loading=lazy }
+![Prefect flow runs list](../assets/screenshots/prefect-flow-runs-list-dark.png#only-dark){ .screenshot loading=lazy }
+
+<figcaption><strong>Prefect — Runs</strong> · `localhost:4200/runs`. Every alert payload the webhook handed off shows up here as a completed flow run. Click one and you see the task graph below.</figcaption>
+
+</figure>
+
+<figure class="section-preview" markdown>
+
+![Prefect flow run detail](../assets/screenshots/prefect-flow-run-detail-light.png#only-light){ .screenshot loading=lazy }
+![Prefect flow run detail](../assets/screenshots/prefect-flow-run-detail-dark.png#only-dark){ .screenshot loading=lazy }
+
+<figcaption><strong>Prefect — Flow run detail</strong> · the task graph for `quarantine_bgp` (collect_evidence → evaluate_policy → annotate_decision → ai_rca → quarantine → annotate_action) with the per-task log feed underneath. The audit trail with a UI on top.</figcaption>
+
+</figure>
+
+<figure class="section-preview" markdown>
+
+![Infrahub WorkshopDevice srl1](../assets/screenshots/infrahub-device-detail.png){ .screenshot loading=lazy }
+
+<figcaption><strong>Infrahub — `WorkshopDevice/srl1`</strong> · `localhost:8000`. The intent the flow consults: ASN, Maintenance, Site Name, Role, plus Interfaces and BGP Sessions on the tabs above. Toggle Maintenance here and the next alert for this device is skipped by the policy.</figcaption>
+
+</figure>
+
+<figure class="section-preview" markdown>
+
+![Infrahub GraphQL Sandbox](../assets/screenshots/infrahub-graphql.png){ .screenshot loading=lazy }
+
+<figcaption><strong>Infrahub — GraphQL Sandbox</strong> · `localhost:8000/graphql`. The exact `DeviceIntent` query the Prefect flow runs against Infrahub. No secret access — anyone can run this and see what the policy sees.</figcaption>
+
+</figure>
+
 ## Driving an incident — `nobs autocon5 flap-interface`
 
-The lab ships with one canonical incident: a BGP cascade triggered by an interface flap. Run `nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1` and over four minutes you'll watch the interface go down, the BGP session collapse on the hold-down timer, dashboards turn red, alerts fire, and the automation pick it up. Use `--no-cascade` for a flap that only trips `PeerInterfaceFlapping` without bringing a BGP session down — that's the variant Part 1 uses while you're still building the mental model.
+The lab ships with one main incident: a BGP cascade triggered by an interface flap. Run `nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1` and over four minutes you'll watch the interface go down, the BGP session collapse on the hold-down timer, dashboards turn red, alerts fire, and the automation pick it up. Use `--no-cascade` for a flap that only trips `PeerInterfaceFlapping` without bringing a BGP session down — that's the variant Part 1 uses while you're still building the mental model.
 
 ??? info "How the cascade is wired (operator detail)"
 
@@ -195,7 +233,7 @@ The lab ships with one canonical incident: a BGP cascade triggered by an interfa
 
     ---
 
-    Late morning, before lunch — a real alert lands while your senior narrates. Walk the four canonical paths the workflow handles, toggle the AI RCA step, and decide which paths you'd trust the LLM narrative on at 2am.
+    Late morning, before lunch — a real alert lands while your senior narrates. Walk the four paths the workflow handles, toggle the AI RCA step, and decide which paths you'd trust the LLM narrative on at 2am.
 
     [:octicons-arrow-right-24: Open Part 3](part-3.md)
 

@@ -23,7 +23,7 @@ nobs autocon5 reset
 nobs autocon5 status
 ```
 
-`reset` is idempotent — clears any leftover maintenance flags, expires workshop-related silences, removes any cascade scenarios from a prior run, and restarts the log shipper if it has gone quiet. `status` should show every row `ok`; if anything is yellow or red, flag it before continuing.
+`reset` is safe to run repeatedly — clears any leftover maintenance flags, expires workshop-related silences, removes any cascade scenarios from a prior run, and restarts the log shipper if it has gone quiet. `status` should show every row `ok`; if anything is yellow or red, flag it before continuing.
 
 Two browser tabs ready:
 
@@ -172,7 +172,7 @@ nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1 --no-cascade
 
 Within a minute the line for `ethernet-1/1` should climb past the orange threshold, and on a noisy moment past the red one — exactly the shape `PeerInterfaceFlapping` fires on.
 
-**Stop and notice.** Real on-call teams build dashboards in the wake of incidents, not before them. The panel you just added makes the alert rule's log-derived condition visible — so the next time someone gets paged on `PeerInterfaceFlapping`, they have a panel that *is* the alert condition rather than guessing what tripped it. That's how dashboards earn their keep: they encode the lessons of yesterday's incidents. The threshold lines in the panel match the rule's predicate, so reading the panel and reading the rule give the same answer.
+**Stop and notice.** Real on-call teams build dashboards in the wake of incidents, not before them. The panel you just added makes the alert rule's log-derived condition visible — so the next time someone gets paged on `PeerInterfaceFlapping`, they have a panel that *is* the alert condition rather than guessing what tripped it. That's how dashboards earn their keep: they encode the lessons of yesterday's incidents. The threshold lines in the panel match the rule's condition, so reading the panel and reading the rule give the same answer.
 
 ### Act 5 — Contain: silence the noise with maintenance
 
@@ -190,19 +190,19 @@ nobs autocon5 alerts
 
 The `BgpSessionNotUp` row is still in the firing list — that's expected. The alert isn't "fixed" by going into maintenance; what changes is the *response* path. The webhook flow consults Infrahub on every alert payload, sees `srl1.maintenance=true`, and decides `skip` (reason: `device under maintenance`) instead of `quarantine`. Open Workshop Home and look at the **Recent events** feed: the next time Alertmanager's webhook fires for this alert, the new annotation reads `skip` rather than `quarantine`. (If you don't want to wait for Alertmanager's `repeat_interval`, jump back to Part 3's `try-it` tour after this guide — Path 2 walks exactly this transition.)
 
-**Stop and notice.** Maintenance isn't a static config attribute on the device — it's a *containment primitive* the on-call uses live during an incident. Flipping the flag tells the automation "I'm in here; please don't fire automated actions while I'm working." The flow consults the source of truth at decision time, so the change has effect on the very next alert that arrives. This is what the workshop's source-of-truth integration was for.
+**Stop and notice.** Maintenance isn't a static config attribute on the device — it's a *containment lever* the on-call uses live during an incident. Flipping the flag tells the automation "I'm in here; please don't fire automated actions while I'm working." The flow consults the source of truth at decision time, so the change has effect on the very next alert that arrives. This is what the workshop's source-of-truth integration was for.
 
 ### Act 6 — Fix and recover
 
-Time to simulate the fix landing. Stop the cascade mid-flight — `nobs autocon5 reset` is the canonical way to clear in-flight cascade scenarios:
+Time to simulate the fix landing. Stop the cascade mid-flight — `nobs autocon5 reset` is the standard way to clear in-flight cascade scenarios:
 
 ```bash
 nobs autocon5 reset
 ```
 
-Reset is idempotent — it deletes any cascade scenarios still running, expires workshop-related Alertmanager silences, and clears any device maintenance flags. Watch the dashboards. Within ~30 seconds the cascade signals stop changing, the lab's continuous emitters take over, the panels drift back toward green. Latency drops on `incident_latency_ms`. `incident_backup_link_utilization` flatlines.
+Reset is safe to run repeatedly — it deletes any cascade scenarios still running, expires workshop-related Alertmanager silences, and clears any device maintenance flags. Watch the dashboards. Within ~30 seconds the cascade signals stop changing, the lab's continuous emitters take over, the panels drift back toward green. Latency drops on `incident_latency_ms`. `incident_backup_link_utilization` flatlines.
 
-Note that `reset` already cleared the maintenance flag for `srl1` as part of returning the lab to known-good state. Re-run `nobs autocon5 alerts`: the original `BgpSessionNotUp` is still firing — the deliberately broken peer hasn't been "fixed" because that's a configuration issue on the topology side, not what we just simulated. But the *response* path is back to default: the next alert payload routing through the flow will get the full deterministic policy treatment again.
+Note that `reset` already cleared the maintenance flag for `srl1` as part of returning the lab to known-good state. Re-run `nobs autocon5 alerts`: the original `BgpSessionNotUp` is still firing — the deliberately broken peer hasn't been "fixed" because that's a configuration issue on the topology side, not what we just simulated. But the *response* path is back to default: the next alert payload routing through the flow will get the full policy treatment again.
 
 **Stop and notice.** The dashboard goes green. Latency drops. The metrics tell the recovery story the same way they told the failure story — in causal order, with timing that matches what an operator's intuition would expect. Real fixes don't always look this clean — the lab's synthetic data lets us show recovery as a proper signal so you see the full arc, not just the degradation half.
 
@@ -237,7 +237,7 @@ Then re-read what you wrote.
 
 - **Drive the same investigation on srl2.** Re-run the cascade with `--device srl2`. Notice that the existing `BgpSessionNotUp` alert was for srl1's broken peer; on srl2 the broken peer is `10.1.11.1`. The triage decision tree from Act 2 works the same; only the device label changes. Confirm your runbook stub still applies — if it doesn't, either it was too device-specific or you've found a real shape difference worth writing down.
 - **Predict the customer-impact window.** Given the timing you observed (backup utilisation crossing 70% around t=2½ min, latency ramping from there toward 150ms over the next three minutes), at what point would a customer's response-time SLO break? Use the queries from Act 3 to back the answer with data, not feel.
-- **Compare the investigation arc to the automated path.** Run `nobs autocon5 try-it` from Part 3 — it walks the four canonical alert paths automatically. Contrast: `try-it` is the automation handling routine cases without you. The investigation game you just walked is what you do when *automation isn't enough* — when you need to know what the workflow would have done, why, and whether to override it.
+- **Compare the investigation arc to the automated path.** Run `nobs autocon5 try-it` from Part 3 — it walks the four alert paths automatically. Contrast: `try-it` is the automation handling routine cases without you. The investigation game you just walked is what you do when *automation isn't enough* — when you need to know what the workflow would have done, why, and whether to override it.
 
 ## What you took away
 
@@ -247,6 +247,6 @@ Then re-read what you wrote.
 - Empty panels at the start of an incident aren't a bug. Some signals only exist once an upstream failure has happened, and that gap is information — it tells you when each stage of the cascade actually fired.
 - Latency is almost always a symptom, not a cause. When latency alerts fire, walk *back* through the cascade to find the real failure.
 - Dashboards earn their keep when they encode lessons from real incidents. Build them after the page lands, not before. The thresholds on a panel should match the alert rule, so the line you see on screen *is* the alert condition.
-- Maintenance is a containment primitive, not a static attribute. Use it live to silence noise while you investigate; clear it the moment the device is back in production.
+- Maintenance is a containment lever, not a static attribute. Use it live to silence noise while you investigate; clear it the moment the device is back in production.
 - Recovery has a shape too. The metrics tell the resolution story the same way they told the failure story — in causal order. Watch for the dashboards going green as confirmation the fix landed.
 - Runbooks are the artefact every observability investment ultimately funnels into. Five good lines, written while the memory is fresh, beats a hundred mediocre ones written months later.

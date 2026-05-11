@@ -1,6 +1,6 @@
 ---
 title: Part 3 — Alerts, automation, AI
-description: Late morning. A real alert lands and your senior narrates how the workflow handles it. Walk the four canonical paths, toggle the AI RCA step.
+description: Late morning. A real alert lands and your senior narrates how the workflow handles it. Walk the four alert paths, toggle the AI RCA step.
 ---
 
 <div class="autocon5-section-hero" markdown>
@@ -11,11 +11,11 @@ description: Late morning. A real alert lands and your senior narrates how the w
 
 <p class="autocon5-section-hero__subtitle">Watch a real alert flow through Alertmanager → Prefect → Infrahub.</p>
 
-A real alert lands while your senior narrates. Walk the four canonical paths the workflow handles, toggle the AI RCA step, and decide which paths you'd trust the LLM narrative on at 02:14. Your senior signs off as the lunch break lands — you're ready to take primary on the rotation tomorrow.
+A real alert lands while your senior narrates. Walk the four paths the workflow handles, toggle the AI RCA step, and decide which paths you'd trust the LLM narrative on at 02:14. Your senior signs off as the lunch break lands — you're ready to take primary on the rotation tomorrow.
 
 <p class="autocon5-section-hero__meta">
   <span>~75 minutes</span>
-  <span>Four canonical paths walked end-to-end</span>
+  <span>Four paths walked end-to-end</span>
   <span>Optional AI-assisted RCA toggle</span>
 </p>
 
@@ -26,7 +26,16 @@ A real alert lands while your senior narrates. Walk the four canonical paths the
 ![Currently firing alerts — Alertmanager state during a cascade](../assets/screenshots/workshop-home-firing-alerts-light.png#only-light){ .screenshot loading=lazy }
 ![Currently firing alerts — Alertmanager state during a cascade](../assets/screenshots/workshop-home-firing-alerts-dark.png#only-dark){ .screenshot loading=lazy }
 
-<figcaption>What lands in Alertmanager when the cascade kicks off — severity, device, peer, interface, the canonical labels. This table is the input the Prefect automation reasons over in each of the four paths you walk in Part 3.</figcaption>
+<figcaption>What lands in Alertmanager when the cascade kicks off — severity, device, peer, interface, the standard labels. This table is the input the Prefect automation reasons over in each of the four paths you walk in Part 3.</figcaption>
+
+</figure>
+
+<figure class="section-preview" markdown>
+
+![Prefect flow run detail — quarantine_bgp task graph](../assets/screenshots/prefect-flow-run-detail-light.png#only-light){ .screenshot loading=lazy }
+![Prefect flow run detail — quarantine_bgp task graph](../assets/screenshots/prefect-flow-run-detail-dark.png#only-dark){ .screenshot loading=lazy }
+
+<figcaption>What the flow looks like once it runs: the `quarantine_bgp` task graph (collect_evidence → evaluate_policy → annotate_decision → ai_rca → quarantine → annotate_action) plus the per-task log feed. You'll open this during the Prefect UI tour at the end of Step 2.</figcaption>
 
 </figure>
 

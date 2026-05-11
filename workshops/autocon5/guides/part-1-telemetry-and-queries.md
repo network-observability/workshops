@@ -19,7 +19,7 @@ nobs autocon5 reset
 nobs autocon5 status
 ```
 
-`reset` is idempotent — it clears any leftover maintenance flags, expires any silences from a prior workshop run, removes any cascade scenarios still hanging around, and restarts the log shipper if it has gone quiet. Safe to run at the start of every part. `status` then confirms every row reports `ok`. If `prometheus`, `loki`, or `sonda` is anything else, flag it before continuing — your senior wants to know about a degraded stack before you lean on it.
+`reset` is safe to run repeatedly — it clears any leftover maintenance flags, expires any silences from a prior workshop run, removes any cascade scenarios still hanging around, and restarts the log shipper if it has gone quiet. Safe to run at the start of every part. `status` then confirms every row reports `ok`. If `prometheus`, `loki`, or `sonda` is anything else, flag it before continuing — your senior wants to know about a degraded stack before you lean on it.
 
 Open Grafana at <http://localhost:3000> (login `admin` / `admin` unless you changed `.env`). Click the compass icon in the left rail to open **Explore**. The datasource picker at the top is how you switch between Prometheus and Loki. You'll bounce between them throughout this part.
 
@@ -46,7 +46,7 @@ Click `Run query`. **You should see exactly 6 results** — three interfaces per
 - `intf_role` — `peer` for the three real ones
 - `collection_type` — `gnmi` (srl1) or `snmp` (srl2)
 - `pipeline` — `telegraf` (both devices route through Telegraf today)
-- `host`, `instance`, `job` — Prometheus scrape provenance
+- `host`, `instance`, `job` — where Prometheus scraped from
 
 > Your senior nods at the screen. *"Notice anything? Same metric name, same value semantics on both sides — but the `collection_type` label says one device emits gNMI and the other emits SNMP. That's the workshop's normalization story. We'll come back to it. For now: the metric is the same downstream regardless."*
 
@@ -125,11 +125,11 @@ Six lines now. srl2's healthy interfaces hit **~12,500 bytes/sec**, the broken `
 nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1
 ```
 
-One invocation posts a single declarative cascade scenario to sonda. Sonda's runtime drives the rest. By default the scenario runs for 4 minutes, walking through cycles of 30 seconds up, then 60 seconds down. While the interface is down, BGP follows: `bgp_oper_state` drops to `2`, `bgp_neighbor_state` drops to `1` (idle), and the prefix counters (`bgp_prefixes_accepted`, `bgp_received_routes`, `bgp_sent_routes`, `bgp_active_routes`) drop to `0`. There's a 10-second hold-down between the interface going down and BGP collapsing — real interface flaps don't take BGP down instantly, and the cascade reflects that.
+One run of the command posts a single declarative cascade to sonda — interface flaps for 4 minutes on a 30s-up / 60s-down cadence, BGP follows after a 10s hold-down (real flaps don't take BGP down instantly), and every gated metric snaps back the moment the interface returns. The bullet list further down spells out the per-signal beats; you don't drive the recovery, the cascade does.
 
-When the interface comes back up, BGP restores automatically: each gated metric writes one recovery sample (`bgp_oper_state=1`, prefix counters back to `10`, etc.), so dashboards snap green within seconds of the gate closing. You don't have to wait for a separate restore phase — it's built into the cascade.
+??? tip "Trip just the flap, not BGP"
 
-If you only want the log + metric flap (no BGP cascade), pass `--no-cascade`. That's the right knob for the "I just want to trip `PeerInterfaceFlapping` without bringing BGP down" exercise.
+    Pass `--no-cascade` and the same call emits the interface flap and UPDOWN log stream alone — no BGP gated entries. Useful when you want `PeerInterfaceFlapping` to trip but `BgpSessionNotUp` to stay clean.
 
 To watch the cascade react, open three Explore tabs (or one tab and toggle):
 
@@ -162,14 +162,14 @@ The log lines that drove the metric flip are right there with the same timestamp
 
 **Stop and notice.** One CLI command, multiple signals reacting in causal order, and a clean recovery beat when the gate closes. Synthetic data with real shapes — and you can drive it. The query bar reacts to lab state in real time, no batch refresh, no caching layer hiding your changes. The shape of this cascade — interface degrades → BGP follows → prefixes drop → interface recovers → BGP snaps back — is what real outages and recoveries look like in your network. Memorise the shape; it generalises.
 
-#### 6. Normalization — two raw shapes, one canonical schema
+#### 6. Normalization — two raw shapes, one shared schema
 
 > Your senior swivels their laptop toward you. *"Earlier I said `srl1` and `srl2` are wired through different pipelines on purpose. Now we look at it. This is the part that bites every operator who jumps from one vendor's network to another."*
 
 The two devices speak different protocols at the source:
 
-- **`srl1` emits gNMI** — that's the modern push-based telemetry SR Linux uses natively. Field names like `srl_interface_in_octets`, tags like `source`. **Telegraf-srl1** receives the push and renames `srl_*` to `interface_*`, `source` to `device`. Out the other side: the canonical schema this workshop's dashboards and alerts speak.
-- **`srl2` emits SNMP** — the classic poll-based protocol from IF-MIB / BGP4-MIB. Field names like `ifHCInOctets`, `bgpPeerState`, `cbgpPeerOperStatus`; tags like `agent_host`, `ifDescr`, `bgpPeerRemoteAddr`. **Telegraf-srl2** scrapes the raw SNMP shape and renames every field and every tag to the same canonical schema. Out the other side: byte-for-byte identical to what srl1 produces.
+- **`srl1` emits gNMI** — that's the modern push-based telemetry SR Linux uses natively. Field names like `srl_interface_in_octets`, tags like `source`. **Telegraf-srl1** receives the push and renames `srl_*` to `interface_*`, `source` to `device`. Out the other side: the shared schema this workshop's dashboards and alerts speak.
+- **`srl2` emits SNMP** — the classic poll-based protocol from IF-MIB / BGP4-MIB. Field names like `ifHCInOctets`, `bgpPeerState`, `cbgpPeerOperStatus`; tags like `agent_host`, `ifDescr`, `bgpPeerRemoteAddr`. **Telegraf-srl2** scrapes the raw SNMP shape and renames every field and every tag to the same shared schema. Out the other side: byte-for-byte identical to what srl1 produces.
 
 The label that records which raw shape a series came from is `collection_type`. Run this once per device:
 
@@ -190,7 +190,7 @@ Now click into a result on each side and compare the full label set — `device`
 That alignment is what "normalization" actually buys you:
 
 - The query layer doesn't see the dialects. `bgp_oper_state{device="srl1"}` and `bgp_oper_state{device="srl2"}` return rows in the same shape, even though one came in as gNMI and the other as SNMP.
-- Real fleets are heterogeneous. Nokia SR Linux via gNMI, Cisco IOS-XR via Model-Driven Telemetry, Juniper via OpenConfig, legacy boxes via SNMP — each speaks its own dialect. Without normalization, every dashboard, alert rule, and runbook fragments per vendor. With it, the *query layer* doesn't see the dialects at all.
+- Real fleets are mixed. Nokia SR Linux via gNMI, Cisco IOS-XR via Model-Driven Telemetry, Juniper via OpenConfig, legacy boxes via SNMP — each speaks its own dialect. Without normalization, every dashboard, alert rule, and runbook fragments per vendor. With it, the *query layer* doesn't see the dialects at all.
 - Telegraf is doing the renaming work for both devices in this lab. In production it might be Telegraf, OpenTelemetry collectors, custom processors — different tools, same job.
 
 Prove the normalization holds end-to-end:
@@ -199,13 +199,13 @@ Prove the normalization holds end-to-end:
 bgp_oper_state
 ```
 
-Returns rows for *both* devices, *both* collection types. A dashboard panel querying `bgp_oper_state{device="$device"}` doesn't care which protocol delivered the data — it asks for the canonical name and gets it.
+Returns rows for *both* devices, *both* collection types. A dashboard panel querying `bgp_oper_state{device="$device"}` doesn't care which protocol delivered the data — it asks for the shared name and gets it.
 
 > Your senior closes the laptop slightly. *"You'll meet engineers who hate normalization because it abstracts away vendor specifics. They're not wrong about the cost — but the cost of not normalizing, in this lab and in production, is that every alert rule has to be written six times and every dashboard has six panels for the same thing. Pick your trade. We've picked normalization."*
 
 **Stop and notice.** The `collection_type` label is for inspecting the normalization itself: *"which raw shape did this sample come from, is that path healthy?"* It's not for branching your query logic. If you write `bgp_oper_state{collection_type="gnmi"}` into a dashboard, you've narrowed to one vendor — useful for debugging that pipeline, but you'll miss every device whose data arrives via any other protocol. Default to collection-type-agnostic queries; reach for the label when you're debugging the normalization, not the network.
 
-#### Your turn — find the busiest interface
+#### Your turn (unguided) — find the busiest interface
 
 > Your senior leans back. *"You've got the basic queries. Now answer one yourself, no scaffolding: which interface is moving the most bytes per second right now, across the whole lab? Get me the answer in one PromQL line."*
 
@@ -340,13 +340,13 @@ You'll see BGP-related lines for that specific peer. Add a filter to narrow:
 
 > *"Same query shape works on srl2 — try it. Different `peer_address`, same answer-the-why pattern. The fact that one device's metric came in as gNMI and the other's came in as SNMP doesn't change the bridge query at all."*
 
-## Stretch goals
+## Stretch goals (optional — pick one if you have time)
 
 - **Find the busiest interface in the last 5 minutes.** Combine `topk` with `rate()` on `interface_in_octets`. Hint: `topk(3, rate(interface_in_octets[5m]))`.
 - **List every distinct severity level present in srl1 logs in the last hour.** LogQL: parse with `| json`, then check the unique values of `severity` — the Explore log inspector shows distinct values per parsed field after a JSON parse stage.
 - **Run the broken-peer query against srl2 only.** Same shape as #3 but scoped to one device. Confirm you get exactly one row (`peer_address=10.1.11.1`).
 - **Plot CPU and memory side by side.** Two queries in one panel: `cpu_used{device="srl1"}` and `memory_utilization{device="srl1"}`. The legend should show two lines.
-- **Inspect the raw shape Telegraf normalizes.** `docker exec telegraf-srl2 wget -qO- http://localhost:9005/metrics | grep -E '^(interface_|bgp_)'` shows what canonical names look like; `nobs autocon5 logs telegraf-srl2 | head -40` shows the raw SNMP-named samples *before* normalization. The rename ruleset that bridges them lives in `telegraf/telegraf-srl2.conf.toml`.
+- **Inspect the raw shape Telegraf normalizes.** `docker exec telegraf-srl2 wget -qO- http://localhost:9005/metrics | grep -E '^(interface_|bgp_)'` shows what the shared names look like; `nobs autocon5 logs telegraf-srl2 | head -40` shows the raw SNMP-named samples *before* normalization. The rename ruleset that bridges them lives in `telegraf/telegraf-srl2.conf.toml`.
 
 ## What you took away
 
