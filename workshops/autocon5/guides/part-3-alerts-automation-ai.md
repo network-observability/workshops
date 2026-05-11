@@ -200,7 +200,7 @@ This sets `srl1.maintenance=true` in Infrahub and writes a `Configured from CLI:
 
 2. **In the Infrahub UI** — open <http://localhost:8000>, navigate to **Object Management → WorkshopDevice → srl1**. The `maintenance` attribute has just flipped to `true`. Notice the surrounding attributes: `intended_peer` / `expected_state` / `reason` / `asn` / `role` / `site_name`. Those are the schema fields the flow's policy reads when deciding `proceed` vs `skip` — the same shape you saw in Step 5's evidence bundle's first section, but at the source.
 
-If you prefer queries to UIs, the same answer is one GraphQL call away — the playground at <http://localhost:8000/graphql> runs the exact query the flow uses. See the collapsible below for the full shape.
+If you prefer queries to UIs, the same answer is one GraphQL call away — the playground at <http://localhost:8000/graphql> runs the exact query the flow uses. The full query is below.
 
 ??? tip "See the exact query the flow runs"
 
@@ -326,6 +326,8 @@ By default, the AI step runs but writes a "AI RCA disabled" annotation — the f
 !!! info "No API key handy? Skip the toggle, the lesson still lands."
 
     Look at the disabled-fallback annotation in Step 5's evidence bundle — that itself is the lesson. The workflow runs end-to-end whether or not the AI step is enabled. The AI is opt-in commentary, not load-bearing. Read this section as reference, then go straight to Step 8.
+
+With it on, every annotation gets a paired LLM narrative right next to the deterministic decision — same evidence, two voices.
 
 To turn it on, edit `.env` in the workshop directory:
 
