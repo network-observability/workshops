@@ -123,9 +123,11 @@ In words: synthetic telemetry from sonda lands in Prometheus and Loki. Alerting 
 
 The telemetry shape (metric names, labels, log streams) is real — sonda emits the same patterns a Nokia SR Linux device would. That's why the queries, dashboards, and alerts you build look exactly like what you'd write against a production network.
 
-## Visual reference — the panels you'll be looking at
+## Visual reference — the surfaces you'll be looking at
 
-A few key panels from the workshop dashboards. Light or dark Grafana theme follows your site preference.
+Light or dark theme follows your site preference where the source UI supports it (Grafana, Prefect). Infrahub ships a single theme.
+
+### Dashboards (Grafana)
 
 <figure class="section-preview" markdown>
 
@@ -162,6 +164,8 @@ A few key panels from the workshop dashboards. Light or dark Grafana theme follo
 <figcaption><strong>Interface Operational Status</strong> · Workshop Lab — the state timeline for srl1's interfaces. You'll learn to read this in Part 1 and add a flap-rate panel right next to it in Part 2.</figcaption>
 
 </figure>
+
+### Automation surfaces (Prefect, Infrahub)
 
 <figure class="section-preview" markdown>
 

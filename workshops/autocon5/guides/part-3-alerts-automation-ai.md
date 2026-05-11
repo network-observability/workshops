@@ -110,12 +110,12 @@ Returns the audit trail for every payload the flow handled. Each line carries a 
 
 > Your senior nods at the Loki feed. *"That's the audit trail. The flow itself has a UI on top of it — go look."*
 
-Open Prefect at <http://localhost:4200/runs/flow-runs>. Sort by **Start Time** (newest first) and you'll see four `quarantine_bgp | …` (or `resolved_bgp | …`) flow runs from the `try-it` you just ran. Click the most recent `quarantine_bgp` run. You'll see:
+Open Prefect at <http://localhost:4200/runs>. Sort by **Start Time** (newest first) and you'll see four `quarantine_bgp | …` (or `resolved_bgp | …`) flow runs from the `try-it` you just ran. Click the most recent `quarantine_bgp` run. You'll see:
 
 - The **task graph** — `collect_evidence` → `evaluate_policy` → `annotate_decision` → `ai_rca`, plus (if the path was `proceed`) `quarantine` → `annotate_action`. The same pipeline you read about earlier, drawn for you.
 - Per-task **state** and **duration** — which tasks ran, in what order, how long each took.
 - Per-task **logs** — every `print()` and `get_run_logger()` line, indexed by task. Same content as `nobs autocon5 logs prefect-flows`, but searchable per task.
-- **Tags** on each task: `device:srl1`, `peer_address:10.1.99.2`, `afi_safi:ipv4-unicast`, `action:quarantine`. These are how a future operator filters "all flows that touched this peer" at 02:14.
+- **Tags** on each task: `device:srl1`, `peer_address:10.1.99.2`, `afi_safi:ipv4-unicast`, `action:quarantine`. These are how a future operator filters "all flows that touched this peer" without scrolling.
 
 **Stop and notice.** The Loki annotations are the audit *record*; the Prefect UI is the audit *workshop*. Annotations are searchable but flat; the UI lets you drill into a specific task's logs without writing a LogQL query.
 
@@ -200,7 +200,11 @@ This sets `srl1.maintenance=true` in Infrahub and writes a `Configured from CLI:
 
 2. **In the Infrahub UI** — open <http://localhost:8000>, navigate to **Object Management → WorkshopDevice → srl1**. The `maintenance` attribute has just flipped to `true`. Notice the surrounding attributes: `intended_peer` / `expected_state` / `reason` / `asn` / `role` / `site_name`. Those are the schema fields the flow's policy reads when deciding `proceed` vs `skip` — the same shape you saw in Step 5's evidence bundle's first section, but at the source.
 
-    If you prefer queries to UIs, the GraphQL playground is at <http://localhost:8000/graphql>. The flow runs this exact query against it (see `automation/workshop_sdk.py`):
+If you prefer queries to UIs, the same answer is one GraphQL call away — the playground at <http://localhost:8000/graphql> runs the exact query the flow uses. See the collapsible below for the full shape.
+
+??? tip "See the exact query the flow runs"
+
+    The Prefect flow asks Infrahub for intent via this GraphQL query (verbatim from `automation/workshop_sdk.py`). Paste it into the playground and you'll see the same answer the policy got — the flow has no secret access, just this query.
 
     ```graphql
     query DeviceIntent {
@@ -226,8 +230,6 @@ This sets `srl1.maintenance=true` in Infrahub and writes a `Configured from CLI:
       }
     }
     ```
-
-    Run it and you'll see the same answer the policy got — the flow doesn't have secret access to Infrahub, just this query.
 
 Now re-trigger the flap:
 
