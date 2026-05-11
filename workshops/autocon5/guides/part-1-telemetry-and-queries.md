@@ -75,9 +75,9 @@ One row, value `6`. Six BGP peer series total.
 > Your senior leans in. *"Two peers in this lab are wired to be broken on purpose — intent says they should be up, reality disagrees. Find them with one query. Two clauses, joined."*
 
 ```promql
-bgp_admin_state == 1
-  and on (device, peer_address)
 bgp_oper_state != 1
+  and on (device, peer_address)
+bgp_admin_state == 1
 ```
 
 You should get **exactly two rows**:
@@ -87,7 +87,7 @@ You should get **exactly two rows**:
 
 > Your senior leans back in their chair. *"You just found two peers that have been in mismatch for weeks. Each has a `BgpSessionNotUp` alert that's been firing the whole time and nobody's owned it. Welcome to on-call. We're not going to fix them today; we're going to learn from them. The shape of the query you just ran is the shape of the alert that's been paging the rotation."*
 
-**Stop and notice.** `and on (device, peer_address)` is the intent-vs-reality pattern. Left side: where admin says `enabled`. Right side: where operational state isn't `up`. Match them on the labels they share. This single query is the core of how the `BgpSessionNotUp` alert fires later in Part 3 — same intent-vs-reality, just with `for: 30s` wrapped around it.
+**Stop and notice.** `and on (device, peer_address)` is the intent-vs-reality pattern. Left side: where operational state isn't `up` (reality). Right side: where admin says `enabled` (intent). The result keeps the *left* side's value — that's why each row shows `5`, the oper_state, not `1`, the admin_state. Match them on the labels they share, and you've expressed "should be up, isn't" in one line. This single query is the core of how the `BgpSessionNotUp` alert fires later in Part 3 — same intent-vs-reality, just with `for: 30s` wrapped around it.
 
 #### 4. Rate of change on a counter
 
@@ -319,12 +319,22 @@ This is the payoff exercise. Use the broken-peer query from #3 to find a mismatc
 In the `prometheus` datasource:
 
 ```promql
-bgp_admin_state{device="srl1"} == 1
-  and on (device, peer_address)
 bgp_oper_state{device="srl1"} != 1
+  and on (device, peer_address)
+bgp_admin_state{device="srl1"} == 1
 ```
 
-Note the broken peer's `peer_address` — for `srl1` it's `10.1.99.2`. Switch to the `loki` datasource:
+On a clean lab, this returns **one row** — `peer_address=10.1.99.2`, value `5` (active, retrying). That's the deliberately broken peer.
+
+??? info "Seeing more than one row? Check the query type."
+
+    Grafana Explore's default is **Range** (plots samples over the time window). If a flap or cascade has run inside the window, peers that were briefly `oper_state != 1` will appear as series even after they've recovered. Switch the **Type** dropdown next to the query to **Instant** for a "right now" snapshot — that should drop you back to one row.
+
+??? tip "Or — Prometheus is carrying stale data from a previous session"
+
+    `nobs autocon5 up` reattaches to an existing Prometheus volume if one exists, so historical samples from earlier sessions linger. `nobs autocon5 destroy && nobs autocon5 up` gives a true clean slate. (`nobs autocon5 reset` clears scenarios and maintenance but leaves the Prometheus TSDB intact.)
+
+Switch to the `loki` datasource:
 
 ```logql
 {device="srl1", peer_address="10.1.99.2"}
