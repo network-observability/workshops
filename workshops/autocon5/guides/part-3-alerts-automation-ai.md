@@ -6,7 +6,7 @@ Late morning. The clock is creeping toward lunch. The flap-rate panel you built 
 
 > *"Watch what happens automatically. The flow's going to handle this without us. Then I'll walk you through the four cases it covers, and you can drive each one yourself. By the end of the hour you'll know exactly what the automation can and can't do for you — and which calls still belong to a human."*
 
-Drive each of the four canonical alert paths by hand, watch the Prefect workflow decide what to do with each, then optionally turn on the AI RCA step and compare its narrative against the deterministic policy.
+Drive each of the four alert paths by hand, watch the Prefect workflow decide what to do with each, then optionally turn on the AI RCA step and compare its narrative against the deterministic policy.
 
 ## Setup check
 
@@ -34,7 +34,7 @@ If you see fewer than two, give the stack 60 seconds and try again — alert eva
 
 Open **Workshop Home** at <http://localhost:3000/d/workshop-home>. The **Currently firing alerts** table at the bottom should show those same two rows. Keep this dashboard open in a tab — you'll watch it react to your CLI commands throughout this part.
 
-## The four canonical paths
+## The four paths
 
 The webhook flow runs the same decision tree on every alert payload. The four outcomes:
 
@@ -269,7 +269,7 @@ nobs autocon5 evidence srl1 10.1.99.2
 
 1. **Source of truth (Infrahub)** — device + intent: `expected_state=established`, `reason=ip-mismatch-demo`, `remote_as=65102`, `maintenance=false`.
 2. **BGP metrics snapshot (Prometheus)** — a small table with `admin_state=1` (enable), `oper_state=5` (active — i.e. trying to establish), `received_routes=0`. Exactly the mismatch the alert fires on.
-3. **Loki — last 20 relevant line(s)** — raw JSON log lines for the broken peer's BGP traffic *plus* prior Prefect annotations for this same peer (the audit trail). Verbose by design — every log line in full so you can grep / inspect labels.
+3. **Loki — last 20 relevant line(s)** — raw JSON log lines for the broken peer's BGP traffic *plus* prior Prefect annotations for this same peer (the audit trail). Verbose on purpose — every log line in full so you can grep / inspect labels.
 4. **Policy hint** — what the deterministic policy *would* decide given the bundle above (`proceed` / `skip` / `resolved`), with the reason it would attach.
 
 **Stop and notice.** This bundle is the input to *both* the deterministic policy *and* (when it's enabled) the AI RCA step. Same evidence, two consumers — one decides mechanically, one writes a narrative. Neither sees more than what the other sees.

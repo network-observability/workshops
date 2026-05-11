@@ -6,7 +6,7 @@ The workshop is one continuous investigation. Over four hours, you'll arrive on 
 |------|-------|----------------|
 | 1 | [Telemetry and queries](part-1-telemetry-and-queries.md) | Morning — your senior walks you through the lab's telemetry shape. Find the broken peer, learn the metric-to-log bridge, build a baseline mental model |
 | 2 | [Dashboards](part-2-dashboards.md) | Mid-morning — a post-mortem email lands. Build the flap-rate panel the team needed yesterday, with thresholds matching the actual alert rule |
-| 3 | [Alerts, automation, AI](part-3-alerts-automation-ai.md) | Late morning — a real alert fires and your senior narrates how the automation handles it. Walk the four canonical paths, toggle AI RCA, sign off before lunch |
+| 3 | [Alerts, automation, AI](part-3-alerts-automation-ai.md) | Late morning — a real alert fires and your senior narrates how the automation handles it. Walk the four paths, toggle AI RCA, sign off before lunch |
 | Advanced | [Investigation — end-to-end](advanced-cascades.md) | Get paged, triage with PromQL+LogQL, diagnose the cascade, build the dashboard for next time, contain with maintenance, fix, and write the runbook |
 
 Before you start, run `nobs autocon5 status` from the repo root. Every row should say `ok`. If anything is yellow or red, ask the instructor — the guides assume the stack is healthy.

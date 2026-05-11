@@ -54,7 +54,7 @@ workshops/
 **One CLI: `nobs`.**
 Workshops are subcommand groups (`nobs autocon5 ...`).
 Each workshop ships a small Python plugin under `workshops/<name>/src/<name>_workshop/` that registers itself with `nobs` at import time and contributes its workshop-specific commands.
-The bare root surface keeps three workshop-agnostic primitives — `nobs setup`, `nobs preflight`, `nobs workshops` — and stops there. Workshop ops (`status`, `alerts`, `maintenance`, `schema load`, plus the docker-compose lifecycle) live on the workshop's subgroup. From inside a workshop directory you can drop the prefix entirely: `cd workshops/autocon5 && nobs alerts` is the same as `nobs autocon5 alerts`.
+The bare root surface keeps three workshop-agnostic commands — `nobs setup`, `nobs preflight`, `nobs workshops` — and stops there. Workshop ops (`status`, `alerts`, `maintenance`, `schema load`, plus the docker-compose lifecycle) live on the workshop's subgroup. From inside a workshop directory you can drop the prefix entirely: `cd workshops/autocon5 && nobs alerts` is the same as `nobs autocon5 alerts`.
 
 ```bash
 nobs setup                                          # uv sync + bootstrap + preflight
@@ -122,7 +122,7 @@ Once both are installed, clone this repo and run the preflight from anywhere ins
 uv run nobs preflight
 ```
 
-It checks Docker, Compose v2, RAM, free disk, and outbound reachability to the image registries the workshop pulls from. Run it the night before the workshop to surface issues with time to fix them.
+It checks Docker, Compose v2, RAM, free disk, and outbound reachability to the image registries the workshop pulls from. Run it the night before the workshop to catch issues with time to fix them.
 
 ## Quickstart
 

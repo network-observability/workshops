@@ -24,7 +24,7 @@ A dashboard is an operational tool, not wall decor. One dashboard, one story. Th
 
 ## Setup check
 
-Reset workshop state (idempotent — safe to skip if you ran it earlier this morning) and confirm the stack is healthy:
+Reset workshop state (safe to skip if you ran it earlier this morning) and confirm the stack is healthy:
 
 ```bash
 nobs autocon5 reset

@@ -24,7 +24,7 @@ You arrive on a new on-call rotation. Learn the lab's baseline. Build the dashbo
 |------|-------|----------------|
 | 1 | [Telemetry and queries](part-1.md) | Morning — your senior walks you through the lab's telemetry shape. Find the broken peer, learn the metric-to-log bridge, build a baseline mental model |
 | 2 | [Dashboards](part-2.md) | Mid-morning — a post-mortem email lands. Build the flap-rate panel the team needed yesterday, with thresholds matching the actual alert rule |
-| 3 | [Alerts, automation, AI](part-3.md) | Late morning — a real alert fires and your senior narrates how the automation handles it. Walk the four canonical paths, toggle AI RCA, sign off before lunch |
+| 3 | [Alerts, automation, AI](part-3.md) | Late morning — a real alert fires and your senior narrates how the automation handles it. Walk the four paths, toggle AI RCA, sign off before lunch |
 | Advanced | [Investigation — end-to-end](advanced.md) | Get paged, triage with PromQL+LogQL, diagnose the cascade, build the dashboard for next time, contain with maintenance, fix, and write the runbook |
 
 !!! tip "Before you start"

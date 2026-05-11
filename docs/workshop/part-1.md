@@ -15,7 +15,7 @@ Your senior buddy walks you through the lab's telemetry shape — what *normal* 
 
 <p class="autocon5-section-hero__meta">
   <span>~75 minutes</span>
-  <span>PromQL + LogQL from first principles</span>
+  <span>PromQL + LogQL from scratch</span>
   <span>Live data, real-shape telemetry</span>
 </p>
 

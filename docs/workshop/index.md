@@ -28,7 +28,7 @@ By lunchtime you'll have queried real-shaped telemetry, made a dashboard answer 
 
 ??? question "Do I need to know Prometheus, Loki, or Grafana already?"
 
-    A sketch-level idea of "metrics database" and "log database" is enough. Part 1 builds PromQL and LogQL from first principles against live data.
+    A sketch-level idea of "metrics database" and "log database" is enough. Part 1 builds PromQL and LogQL from scratch against live data.
 
 ??? question "What if I've never used Docker?"
 
@@ -36,7 +36,7 @@ By lunchtime you'll have queried real-shaped telemetry, made a dashboard answer 
 
 ??? question "Why do I need `uv` installed?"
 
-    We use [`uv`](https://docs.astral.sh/uv/) to install and run the workshop's `nobs` CLI — a thin wrapper that fronts every workshop command (`up`, `down`, `status`, `alerts`, `flap-interface`, and the rest). With `uv` set up the rest of the day flows through one-line commands instead of raw `docker compose` invocations. The same [Install page](../install.md) has the install one-liner.
+    We use [`uv`](https://docs.astral.sh/uv/) to install and run the workshop's `nobs` CLI — a thin wrapper that fronts every workshop command (`up`, `down`, `status`, `alerts`, `flap-interface`, and the rest). With `uv` set up the rest of the day flows through one-line commands instead of raw `docker compose` commands. The same [Install page](../install.md) has the install one-liner.
 
 ??? question "What if my laptop is on Windows?"
 
@@ -203,7 +203,7 @@ Light or dark theme follows your site preference where the source UI supports it
 
 ## Driving an incident — `nobs autocon5 flap-interface`
 
-The lab ships with one canonical incident: a BGP cascade triggered by an interface flap. Run `nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1` and over four minutes you'll watch the interface go down, the BGP session collapse on the hold-down timer, dashboards turn red, alerts fire, and the automation pick it up. Use `--no-cascade` for a flap that only trips `PeerInterfaceFlapping` without bringing a BGP session down — that's the variant Part 1 uses while you're still building the mental model.
+The lab ships with one main incident: a BGP cascade triggered by an interface flap. Run `nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1` and over four minutes you'll watch the interface go down, the BGP session collapse on the hold-down timer, dashboards turn red, alerts fire, and the automation pick it up. Use `--no-cascade` for a flap that only trips `PeerInterfaceFlapping` without bringing a BGP session down — that's the variant Part 1 uses while you're still building the mental model.
 
 ??? info "How the cascade is wired (operator detail)"
 
@@ -233,7 +233,7 @@ The lab ships with one canonical incident: a BGP cascade triggered by an interfa
 
     ---
 
-    Late morning, before lunch — a real alert lands while your senior narrates. Walk the four canonical paths the workflow handles, toggle the AI RCA step, and decide which paths you'd trust the LLM narrative on at 2am.
+    Late morning, before lunch — a real alert lands while your senior narrates. Walk the four paths the workflow handles, toggle the AI RCA step, and decide which paths you'd trust the LLM narrative on at 2am.
 
     [:octicons-arrow-right-24: Open Part 3](part-3.md)
 
