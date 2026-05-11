@@ -192,12 +192,31 @@ jobs:
             echo "$url is ready"
           done
           # Infrahub is the slow one; give it longer.
+          # Phase 1: HTTP listener answers.
           for _ in $(seq 1 60); do
             curl -sfo /dev/null --max-time 3 http://localhost:8000/health \
               || curl -sfo /dev/null --max-time 3 http://localhost:8000/api/healthcheck \
               && break
             sleep 5
           done
+          curl -sfo /dev/null --max-time 3 http://localhost:8000/health \
+            || curl -sfo /dev/null --max-time 3 http://localhost:8000/api/healthcheck \
+            || { echo "Infrahub HTTP listener never came up"; exit 1; }
+          echo "Infrahub listener is up"
+          # Phase 2: schema-write path is responsive (no-op POST returns 200).
+          set -a; . workshops/autocon5/.env; set +a
+          for _ in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
+              -X POST -H "Content-Type: application/json" \
+              -H "X-INFRAHUB-KEY: ${INFRAHUB_API_TOKEN}" \
+              -d '{"schemas":[{"version":"1.0"}]}' \
+              http://localhost:8000/api/schema/load?branch=main || echo 000)
+            [ "$code" = "200" ] && break
+            sleep 5
+          done
+          [ "$code" = "200" ] \
+            || { echo "Infrahub never ready for schema writes (last code: $code)"; exit 1; }
+          echo "Infrahub schema-write path is ready"
 
       - name: Seed Infrahub
         run: uv run nobs autocon5 load-infrahub
