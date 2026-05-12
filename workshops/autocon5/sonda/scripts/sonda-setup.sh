@@ -1,16 +1,13 @@
 #!/bin/bash
-# sonda-setup.sh — initialise sonda-server with the workshop's v2 scenario file.
+# sonda-setup.sh — register each device's scenarios on sonda-server.
 #
-# Runs as an init container (python:3.12-slim). Waits for sonda-server to be
-# healthy, then POSTs the v2 scenario file to /scenarios. Once accepted,
-# fetches the registered scenario IDs and writes them to /shared/scenario-ids.txt
-# so telegraf-02's scrape script knows which /scenarios/{id}/metrics endpoints
-# to hit.
+# Runs as an init container. Waits for sonda-server, POSTs each `*.yaml` in
+# `$SCENARIOS_DIR`, and writes one IDs file per source YAML so each telegraf
+# only scrapes its own device's `/scenarios/{id}/metrics` endpoints.
 #
-# Per https://docs.davidban77.com/sonda/configuration/v2-scenarios/ the
-# server expects a v2 envelope (`version: 2` at the top + a `scenarios:`
-# array). We POST the file as-is — sonda-server registers each entry and
-# returns a list (or summary) we can read back via GET /scenarios.
+# Source file → IDs file:
+#   srl1-metrics.yaml → /shared/scenario-ids-srl1.txt
+#   srl2-metrics.yaml → /shared/scenario-ids-srl2.txt
 
 set -e
 
@@ -69,6 +66,8 @@ def post_scenario_file(path: str) -> list[dict]:
             result = json.loads(resp.read())
             if isinstance(result, list):
                 return result
+            if isinstance(result, dict) and isinstance(result.get("scenarios"), list):
+                return result["scenarios"]
             return [result]
     except urllib.error.HTTPError as e:
         error_body = e.read().decode("utf-8", errors="replace")
@@ -125,21 +124,29 @@ def list_scenario_ids() -> list[str]:
     return ids
 
 
+def _ids_of(results: list[dict]) -> list[str]:
+    return [r["id"] for r in results if isinstance(r, dict) and r.get("id")]
+
+
+# `{stem}-metrics.yaml` → `/shared/scenario-ids-{stem}.txt`.
+def _ids_file_for(filename: str) -> str:
+    stem = filename.removesuffix(".yaml").removesuffix(".yml")
+    if stem.endswith("-metrics"):
+        stem = stem[: -len("-metrics")]
+    return f"/shared/scenario-ids-{stem}.txt"
+
+
+os.makedirs("/shared", exist_ok=True)
 for filename in sorted(os.listdir(scenarios_dir)):
     if not filename.endswith((".yaml", ".yml")):
         continue
     filepath = os.path.join(scenarios_dir, filename)
     print(f"Loading {filepath}...")
     results = post_scenario_file(filepath)
-    print(f"  -> server returned {len(results)} entry/entries")
-
-# Always read the ID list back from the server — works regardless of which
-# strategy above succeeded.
-scenario_ids = list_scenario_ids()
-ids_file = "/shared/scenario-ids.txt"
-os.makedirs(os.path.dirname(ids_file), exist_ok=True)
-with open(ids_file, "w") as fh:
-    for sid in scenario_ids:
-        fh.write(sid + "\n")
-print(f"\nRegistered {len(scenario_ids)} scenario(s). IDs written to {ids_file}")
+    ids = _ids_of(results)
+    out = _ids_file_for(filename)
+    with open(out, "w") as fh:
+        for sid in ids:
+            fh.write(sid + "\n")
+    print(f"  -> {len(results)} entry/entries, {len(ids)} id(s) → {out}")
 PYEOF

@@ -5,12 +5,21 @@
 ###############################################################################
 #                            DATA COLLECTION                                  #
 ###############################################################################
-# Receive Prom remote_write pushes from sonda-srl1 (which emits the
-# gNMI-raw shape — `srl_*` field names + `source` tag). Telegraf 1.31's
-# dedicated `inputs.prometheus_remote_write` doesn't exist yet; the
-# `inputs.http_listener_v2` with the `prometheusremotewrite` data
-# format is the equivalent.
+# Baseline: scrape sonda-server's per-scenario Prometheus text endpoints for
+# the srl1 device. IDs file (filtered to srl1 only) is written by sonda-setup.
+[[inputs.exec]]
+  commands = ["/scripts/scrape-sonda-metrics.sh"]
+  timeout = "15s"
+  interval = "10s"
+  data_format = "prometheus"
 
+  [inputs.exec.tags]
+    pipeline = "telegraf"
+
+# Cascade: `flap-interface` posts a dynamic scenario to sonda-server with a
+# remote_write sink targeting this port. The cascade's `srl_*` samples land
+# here, flow through the same processors, and merge into the baseline series
+# in Prometheus. See packages/nobs/.../flap.py.
 [[inputs.http_listener_v2]]
   service_address = ":1316"
   paths = ["/api/v1/write"]
