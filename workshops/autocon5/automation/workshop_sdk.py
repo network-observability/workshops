@@ -574,7 +574,7 @@ class WorkshopSDK:
         base = f'device="{device}",peer_address="{peer_address}",afi_safi_name="{afi_safi}",name="{instance_name}"'
         return {
             "admin_state": f"bgp_admin_state{{{base}}}",
-            "oper_state": f"bgp_oper_state{{{base}}}",
+            "oper_state": f"max_over_time(bgp_oper_state{{{base}}}[1m])",
             "received_routes": f"bgp_received_routes{{{base}}}",
             "sent_routes": f"bgp_sent_routes{{{base}}}",
             "suppressed_routes": f"bgp_suppressed_routes{{{base}}}",

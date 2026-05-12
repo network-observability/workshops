@@ -22,12 +22,12 @@ Two `BgpSessionNotUp` alerts should be firing in the lab — the deliberately br
 nobs autocon5 alerts
 ```
 
-You should see two rows:
+You should see two rows. State will read either `firing` (caught right after the rule trips) or `suppressed` (more common — the webhook flow already ran on the alert and applied a `quarantine` silence). Both states mean the same thing: the alert is real and the workflow has decided what to do with it.
 
 ```
-| Alertname       | Severity | Device / target  |  State | Age |
-| BgpSessionNotUp | warning  | srl1 → 10.1.99.2 | firing | ... |
-| BgpSessionNotUp | warning  | srl2 → 10.1.11.1 | firing | ... |
+| Alertname       | Severity | Device / target  |      State | Age |
+| BgpSessionNotUp | warning  | srl1 → 10.1.99.2 | suppressed | ... |
+| BgpSessionNotUp | warning  | srl2 → 10.1.11.1 | suppressed | ... |
 ```
 
 If you see fewer than two, give the stack 60 seconds and try again — alert evaluation has a `for: 30s` clause. If you see *more* than two — common after running Part 2 — give it about five minutes for the prior cascade's `PeerInterfaceFlapping` and `InterfaceAdminUpOperDown` alerts to age out. None of the residue blocks the four paths below.
@@ -57,7 +57,7 @@ Annotations land in Loki under `{source="prefect", workflow="autocon5_quarantine
 nobs autocon5 alerts
 ```
 
-Two `BgpSessionNotUp` rows. Each has `device` and `peer_address` labels. **Stop and notice.** Those labels are how the flow correlates the alert back to source-of-truth: it asks Infrahub "is this peer expected up? is this device in maintenance?" using exactly those keys.
+Two `BgpSessionNotUp` rows. Each has `device` and `peer_address` labels. **Stop and notice.** Those labels are how the flow correlates the alert back to source-of-truth: it asks Infrahub "is this peer expected up? is this device in maintenance?" using exactly those keys. The `suppressed` state on each row *is* the workflow's containment action visible in the alert plane — the flow decided `proceed` on each of these and silenced the alert for 20 minutes.
 
 ### 2. Walk all four paths in one shot
 
