@@ -44,6 +44,21 @@ _BGP_PREFIX_METRICS = (
 
 _CASCADE_PROVENANCE_KEYS = ("host", "instance", "job", "pipeline", "collection_type")
 
+_SCRAPE_PROVENANCE_KEYS = ("host", "instance", "job")
+
+_DEVICE_TELEGRAF_URLS = {
+    "srl1": "http://telegraf-srl1:1316/api/v1/write",
+}
+
+
+def _resolve_routing(device: str, explicit_url: str) -> tuple[str, bool]:
+    if explicit_url:
+        return explicit_url, False
+    telegraf_url = _DEVICE_TELEGRAF_URLS.get(device)
+    if telegraf_url:
+        return telegraf_url, True
+    return "http://prometheus:9090/api/v1/write", False
+
 
 def _cascade_default_labels(device: str, intf_labels: dict[str, str]) -> dict[str, str]:
     labels = {"device": device}
@@ -110,9 +125,9 @@ def flap_interface(
         typer.Option(
             "--prom-url",
             envvar="SONDA_PROM_REMOTE_WRITE_URL",
-            help="Prometheus remote_write URL the metric entries publish to.",
+            help="Remote_write URL for cascade metrics. Empty auto-routes per device.",
         ),
-    ] = "http://prometheus:9090/api/v1/write",
+    ] = "",
     loki_url: Annotated[
         str,
         typer.Option(
@@ -142,6 +157,7 @@ def flap_interface(
     if not peers and not no_cascade:
         warn(f"no BGP peers mapped to {device}:{interface}; running interface flap only.")
 
+    resolved_prom_url, strip_provenance = _resolve_routing(device, prom_url)
     body = _build_cascade(
         device=device,
         interface=interface,
@@ -150,8 +166,9 @@ def flap_interface(
         up_duration=up_duration,
         down_duration=down_duration,
         cascade_delay=cascade_delay,
-        prom_url=prom_url,
+        prom_url=resolved_prom_url,
         loki_url=loki_url,
+        strip_scrape_provenance=strip_provenance,
     )
 
     headers = {"Content-Type": "application/json"}
@@ -218,9 +235,12 @@ def _build_cascade(
     cascade_delay: str,
     prom_url: str,
     loki_url: str,
+    strip_scrape_provenance: bool = False,
 ) -> dict[str, Any]:
     """Assemble the v2 scenario body for the interface→BGP cascade."""
     intf_labels = interface_labels(device, interface)
+    if strip_scrape_provenance:
+        intf_labels = {k: v for k, v in intf_labels.items() if k not in _SCRAPE_PROVENANCE_KEYS}
     primary_id = "primary_flap"
 
     scenarios: list[dict[str, Any]] = [
