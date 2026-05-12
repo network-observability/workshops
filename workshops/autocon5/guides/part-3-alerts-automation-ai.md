@@ -145,6 +145,15 @@ Open **Workshop Home** in your browser — the **Currently firing alerts** table
 
 > Your senior taps the screen. *"That's the flow signaling 'this looks real, escalate it.' In production this is where a runbook fires, a ticket opens, an on-call gets paged. The flow doesn't pretend to fix the underlying problem — it categorises and routes."*
 
+Switch to the Prefect UI for *your* run. Open <http://localhost:4200/runs> and filter by tag `peer_address:10.1.2.2` — the top result is the flow run the cascade just triggered. Click it and you'll see:
+
+![Prefect flow run for the cascade-driven quarantine_bgp on srl1:10.1.2.2](../../../docs/assets/screenshots/prefect-flow-run-cascade-peer-light.png#only-light){ .screenshot loading=lazy }
+![Prefect flow run for the cascade-driven quarantine_bgp on srl1:10.1.2.2](../../../docs/assets/screenshots/prefect-flow-run-cascade-peer-dark.png#only-dark){ .screenshot loading=lazy }
+
+- The full six-task graph for the `proceed` path: `collect_evidence → evaluate_policy → annotate_decision → ai_rca → quarantine → annotate_action`.
+- Per-task logs for *this* run: `collect_evidence` shows the SoT lookup result (`maintenance=False, expected_state=established`) and the metrics snapshot it pulled from Prometheus. `evaluate_policy` shows the two-stage decision. `quarantine` shows the `silence_id` Alertmanager returned.
+- Task tags on the right-hand panel: `device:srl1`, `peer_address:10.1.2.2`, `afi_safi:ipv4-unicast`, `action:quarantine`. The Step 2 UI tour used the synthetic `try-it` runs; this is the same view on *your* live event.
+
 When the interface cycles back to up, every gated metric snaps to its established-state value: `bgp_oper_state=1`, prefix counters back to `10`. Alerts resolve on the next scrape. That recovery beat — dashboard goes green within seconds of the interface returning — is the cascade's restore signal landing.
 
 If you want to trip *only* `PeerInterfaceFlapping` (without dragging BGP down), use `--no-cascade`:
@@ -199,6 +208,13 @@ This sets `srl1.maintenance=true` in Infrahub and writes a `Configured from CLI:
     The most recent line should end in `srl1.maintenance = True`.
 
 2. **In the Infrahub UI** — open <http://localhost:8000>, navigate to **Object Management → WorkshopDevice → srl1**. The `maintenance` attribute has just flipped to `true`. Notice the surrounding attributes: `intended_peer` / `expected_state` / `reason` / `asn` / `role` / `site_name`. Those are the schema fields the flow's policy reads when deciding `proceed` vs `skip` — the same shape you saw in Step 5's evidence bundle's first section, but at the source.
+
+    From the device page, click any row in the **bgp_sessions** list to open the **BGP Session** detail — for example `10.1.99.2`:
+
+    ![Infrahub WorkshopBgpSession detail for the broken peer 10.1.99.2](../../../docs/assets/screenshots/infrahub-bgp-session-broken.png#only-light){ .screenshot loading=lazy }
+    ![Infrahub WorkshopBgpSession detail for the broken peer 10.1.99.2](../../../docs/assets/screenshots/infrahub-bgp-session-broken.png#only-dark){ .screenshot loading=lazy }
+
+    `Expected State = Established`, `Reason = ip-mismatch-demo`, `Remote As = 65102`, `Device → srl1`. This is the per-peer intent the flow's policy reads in stage 1 (alongside the device's `maintenance` flag) before it ever looks at metrics. The `??? tip` below shows the GraphQL the flow runs to fetch the same fields.
 
 If you prefer queries to UIs, the same answer is one GraphQL call away — the playground at <http://localhost:8000/graphql> runs the exact query the flow uses. The full query is below.
 
