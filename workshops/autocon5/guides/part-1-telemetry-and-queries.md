@@ -171,6 +171,52 @@ The two devices speak different protocols at the source:
 - **`srl1` emits gNMI** — that's the modern push-based telemetry SR Linux uses natively. Field names like `srl_interface_in_octets`, tags like `source`. **Telegraf-srl1** receives the push and renames `srl_*` to `interface_*`, `source` to `device`. Out the other side: the shared schema this workshop's dashboards and alerts speak.
 - **`srl2` emits SNMP** — the classic poll-based protocol from IF-MIB / BGP4-MIB. Field names like `ifHCInOctets`, `bgpPeerState`, `cbgpPeerOperStatus`; tags like `agent_host`, `ifDescr`, `bgpPeerRemoteAddr`. **Telegraf-srl2** scrapes the raw SNMP shape and renames every field and every tag to the same shared schema. Out the other side: byte-for-byte identical to what srl1 produces.
 
+#### See the raw shape, before Telegraf touches it
+
+> Your senior pulls up a terminal. *"You don't have to take the bullet list on faith. Both raw shapes are sitting on sonda-server right now — let me show you."*
+
+Sonda-server holds the un-normalized scenarios in memory and serves them as Prometheus text at `/scenarios/{id}/metrics`. The bootstrap (`sonda-setup`) writes per-file ID lists into a shared volume — pick one srl1 raw scenario and curl its metrics:
+
+```bash
+SRL1_ID=$(docker exec telegraf-srl2 head -1 /shared/scenario-ids-srl1-raw.txt)
+curl -s "http://localhost:8085/scenarios/${SRL1_ID}/metrics" | tail -1
+```
+
+```
+srl_bgp_neighbor_state{afi_safi_name="ipv4-unicast",collection_type="gnmi",name="default",neighbor_asn="65102",peer_address="10.1.2.2",source="srl1"} 1
+```
+
+Note the metric name (`srl_bgp_neighbor_state`) and the device label (`source="srl1"`). That's the gNMI shape SR Linux puts on the wire — exactly what telegraf-srl1 sees as input. The pack `workshops/autocon5/sonda/packs/srlinux-gnmi-bgp-raw.yaml` lists every metric in this shape.
+
+Same exercise on srl2's raw SNMP shape:
+
+```bash
+SRL2_ID=$(docker exec telegraf-srl2 head -1 /shared/scenario-ids-srl2-raw.txt)
+curl -s "http://localhost:8085/scenarios/${SRL2_ID}/metrics" | tail -1
+```
+
+```
+bgpPeerState{afi_safi_name="ipv4-unicast",agent_host="srl2",bgpPeerRemoteAddr="10.1.2.1",bgpPeerRemoteAs="65101",collection_type="snmp",name="default"} 6
+```
+
+Field name `bgpPeerState`, tag `agent_host`, value `6` (SNMP's enum for `established`). Different name, different label keys, different value space than `srl_bgp_oper_state` — same logical concept, completely different shape on the wire. Pack: `workshops/autocon5/sonda/packs/cisco-snmp-bgp-raw.yaml`.
+
+Now compare to the normalized view in Prometheus — same intent, same data, post-Telegraf:
+
+```promql
+bgp_oper_state{peer_address=~"10.1.2.[12]"}
+```
+
+Two rows, both `bgp_oper_state{device=..., peer_address=..., afi_safi_name="ipv4-unicast", name="default", ...}`. Same metric name, same label keys, regardless of whether the upstream was `srl_bgp_oper_state{source=srl1}` or `bgpPeerState{agent_host=srl2}`. That's the rename rules in `telegraf-{srl1,srl2}.conf.toml` doing the lift.
+
+??? info "How the raw shapes are surfaced"
+
+    The lab runs three sonda data paths in parallel.
+
+    - **srl1 live pipeline** — `sonda-srl1` (CLI) pushes `srl_*` via `remote_write` to `telegraf-srl1`. No HTTP endpoint on this path.
+    - **srl2 live pipeline** — `sonda-server` holds srl2's scenarios; `telegraf-srl2`'s `inputs.exec` scrapes them every 10 seconds.
+    - **Inspection (this exercise)** — `srl1-raw.yaml` and `srl2-raw.yaml` register *separate* scenarios on sonda-server with no sink. Their IDs land in `/shared/scenario-ids-{srl1,srl2}-raw.txt` (kept apart from the file telegraf scrapes), so curling these endpoints never competes with the live pipeline and the buffer is stable between reads.
+
 The label that records which raw shape a series came from is `collection_type`. Run this once per device:
 
 ```promql

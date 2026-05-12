@@ -1,0 +1,30 @@
+# srl2 RAW SNMP shapes — registered on sonda-server for HTTP inspection only.
+# Same pattern as `srl1-raw.yaml`: the resulting scenario IDs land in
+# `/shared/scenario-ids-srl2-raw.txt` (separate from telegraf-srl2's scrape
+# file), so curling these endpoints never competes with the live pipeline.
+---
+version: 2
+
+scenario_name: autocon5-srl2-raw
+category: network
+description: "srl2 raw SNMP shapes — buffered on sonda-server for student inspection."
+
+defaults:
+  rate: 0.1
+
+scenarios:
+  - id: srl2_raw_bgp_10_1_2_1
+    signal_type: metrics
+    pack: cisco_snmp_bgp_raw
+    labels:
+      agent_host: srl2
+      bgpPeerRemoteAddr: "10.1.2.1"
+      bgpPeerRemoteAs: "65101"
+
+  - id: srl2_raw_interface_ethernet_1_1
+    signal_type: metrics
+    pack: cisco_snmp_interface_raw
+    labels:
+      agent_host: srl2
+      ifDescr: "ethernet-1/1"
+      ifIndex: "1"

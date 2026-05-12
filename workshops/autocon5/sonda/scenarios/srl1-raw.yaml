@@ -1,0 +1,30 @@
+# srl1 RAW gNMI shapes — registered on sonda-server for HTTP inspection only.
+# Mirrors `srl2-metrics.yaml`'s sink-less pattern: scenarios buffer their
+# recent emissions in sonda-server, served at GET /scenarios/{id}/metrics.
+# The real srl1 data pipeline still runs through `sonda-srl1` (CLI) →
+# `remote_write` → `telegraf-srl1` — this file is read-only-by-students.
+---
+version: 2
+
+scenario_name: autocon5-srl1-raw
+category: network
+description: "srl1 raw gNMI shapes — buffered on sonda-server for student inspection."
+
+defaults:
+  rate: 0.1
+
+scenarios:
+  - id: srl1_raw_bgp_10_1_2_2
+    signal_type: metrics
+    pack: srlinux_gnmi_bgp_raw
+    labels:
+      source: srl1
+      peer_address: "10.1.2.2"
+      neighbor_asn: "65102"
+
+  - id: srl1_raw_interface_ethernet_1_1
+    signal_type: metrics
+    pack: srlinux_gnmi_interface_raw
+    labels:
+      source: srl1
+      name: "ethernet-1/1"

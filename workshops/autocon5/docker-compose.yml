@@ -83,9 +83,9 @@ services:
       SCENARIOS_DIR: "/scenarios"
     volumes:
       - ./sonda/scripts/sonda-setup.sh:/scripts/sonda-setup.sh:ro
-      # Mount only the srl2 file — sonda-srl1 + sonda-logs handle the others
-      # via the CLI directly.
       - ./sonda/scenarios/srl2-metrics.yaml:/scenarios/srl2-metrics.yaml:ro
+      - ./sonda/scenarios/srl1-raw.yaml:/scenarios/srl1-raw.yaml:ro
+      - ./sonda/scenarios/srl2-raw.yaml:/scenarios/srl2-raw.yaml:ro
       - sonda_shared:/shared
     depends_on:
       sonda-server:

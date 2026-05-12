@@ -69,6 +69,8 @@ def post_scenario_file(path: str) -> list[dict]:
             result = json.loads(resp.read())
             if isinstance(result, list):
                 return result
+            if isinstance(result, dict) and isinstance(result.get("scenarios"), list):
+                return result["scenarios"]
             return [result]
     except urllib.error.HTTPError as e:
         error_body = e.read().decode("utf-8", errors="replace")
@@ -125,21 +127,38 @@ def list_scenario_ids() -> list[str]:
     return ids
 
 
+def _ids_of(results: list[dict]) -> list[str]:
+    return [r["id"] for r in results if isinstance(r, dict) and r.get("id")]
+
+
+# telegraf-srl2 scrapes IDs from this file — only srl2 scenarios belong here.
+TELEGRAF_SCRAPE_FILE = "/shared/scenario-ids.txt"
+TELEGRAF_SCRAPE_SOURCE = "srl2-metrics.yaml"
+
+per_file_ids: dict[str, list[str]] = {}
 for filename in sorted(os.listdir(scenarios_dir)):
     if not filename.endswith((".yaml", ".yml")):
         continue
     filepath = os.path.join(scenarios_dir, filename)
     print(f"Loading {filepath}...")
     results = post_scenario_file(filepath)
-    print(f"  -> server returned {len(results)} entry/entries")
+    ids = _ids_of(results)
+    per_file_ids[filename] = ids
+    print(f"  -> server returned {len(results)} entry/entries, {len(ids)} id(s)")
 
-# Always read the ID list back from the server — works regardless of which
-# strategy above succeeded.
-scenario_ids = list_scenario_ids()
-ids_file = "/shared/scenario-ids.txt"
-os.makedirs(os.path.dirname(ids_file), exist_ok=True)
-with open(ids_file, "w") as fh:
-    for sid in scenario_ids:
+os.makedirs(os.path.dirname(TELEGRAF_SCRAPE_FILE), exist_ok=True)
+scrape_ids = per_file_ids.get(TELEGRAF_SCRAPE_SOURCE, [])
+with open(TELEGRAF_SCRAPE_FILE, "w") as fh:
+    for sid in scrape_ids:
         fh.write(sid + "\n")
-print(f"\nRegistered {len(scenario_ids)} scenario(s). IDs written to {ids_file}")
+print(f"\nWrote {len(scrape_ids)} telegraf-scrapable id(s) to {TELEGRAF_SCRAPE_FILE} (from {TELEGRAF_SCRAPE_SOURCE}).")
+
+for filename, ids in per_file_ids.items():
+    if filename == TELEGRAF_SCRAPE_SOURCE or not ids:
+        continue
+    out = f"/shared/scenario-ids-{filename.removesuffix('.yaml').removesuffix('.yml')}.txt"
+    with open(out, "w") as fh:
+        for sid in ids:
+            fh.write(sid + "\n")
+    print(f"Wrote {len(ids)} id(s) to {out}.")
 PYEOF
