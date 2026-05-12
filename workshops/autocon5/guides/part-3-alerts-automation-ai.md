@@ -141,7 +141,7 @@ nobs autocon5 alerts
 - **Within ~2 minutes**: `InterfaceAdminUpOperDown` for `srl1` appears (the alert needs the oper-state to be `2` consistently for `for: 2m`).
 - **About a minute after the BGP session collapses**: `BgpSessionNotUp` *also* fires for `srl1 ↔ 10.1.2.2`. The chain is the 10s hold-down → next Prometheus scrape (≤15s) → `for: 30s` accumulation → ~55 seconds total before the alert is firing.
 
-Open **Workshop Home** in your browser — the **Currently firing alerts** table populates with all of these. The webhook flow has already run by the time you look; check **Recent events** for the new `decision=proceed` annotation on `srl1 ↔ 10.1.2.2`.
+Open **Workshop Home** in your browser — the **Currently firing alerts** table populates with all of these. The webhook flow has already run by the time you look; check **Recent events** for the new `decision=proceed` annotation on `srl1 ↔ 10.1.2.2`. If the annotation hasn't shown up within ~30 seconds, use the **Trigger the same flow without an alert** tip below.
 
 > Your senior taps the screen. *"That's the flow signaling 'this looks real, escalate it.' In production this is where a runbook fires, a ticket opens, an on-call gets paged. The flow doesn't pretend to fix the underlying problem — it categorises and routes."*
 
@@ -167,7 +167,7 @@ That one call emits the interface flap and UPDOWN log stream alone, with no BGP 
       --param 'alert_group={"alerts":[{"labels":{"device":"srl1","peer_address":"10.1.99.2","afi_safi_name":"ipv4-unicast"}}],"groupLabels":{"alertname":"BgpSessionNotUp"},"status":"firing"}'
     ```
 
-    Same flow, same decision, no alert. Useful when you're iterating on the policy and don't want to wait for Alertmanager.
+    Same flow, same decision, no alert. Useful when you're iterating on the policy and don't want to wait for Alertmanager — or as a fallback if the cascade-driven annotation hasn't shown up.
 
 **Stop and notice.** From "press Enter on a CLI" to "alert fired, flow ran, action recorded" is under 60 seconds end-to-end. The cascade matches the shape of a real outage — interface degrades, BGP follows, prefixes drop, recovery snaps everything back — so the alert path you're exercising is the same one your on-call would face in production, just compressed in time.
 
@@ -243,7 +243,7 @@ Wait ~30 seconds, then in Loki:
 {source="prefect", workflow="autocon5_quarantine_bgp", device="srl1"} | json
 ```
 
-You should see the most recent annotation carry `decision=skip` with a message mentioning maintenance — the flow saw `srl1.maintenance=true` and skipped.
+You should see the most recent annotation carry `decision=skip` with a message mentioning maintenance — the flow saw `srl1.maintenance=true` and skipped. If the new annotation hasn't shown up within ~30 seconds, Step 3's quarantine action silenced the alert; use the **Trigger the same flow without an alert** tip from Step 3 to surface the skip path.
 
 **Stop and notice.** Same metric data, same alert payload, completely different decision — because the flow consulted Infrahub before acting.
 
