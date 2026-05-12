@@ -61,11 +61,12 @@ def _resolve_routing(device: str, explicit_url: str) -> tuple[str, bool]:
 
 
 def _cascade_default_labels(device: str, intf_labels: dict[str, str]) -> dict[str, str]:
-    labels = {"device": device}
-    for key in _CASCADE_PROVENANCE_KEYS:
-        if key in intf_labels:
-            labels[key] = intf_labels[key]
-    return labels
+    return {"device": device}
+
+
+def _metric_provenance(intf_labels: dict[str, str]) -> dict[str, str]:
+    """Provenance labels (host/instance/job/pipeline/collection_type) for metric entries."""
+    return {key: intf_labels[key] for key in _CASCADE_PROVENANCE_KEYS if key in intf_labels}
 
 
 def flap_interface(
@@ -241,6 +242,7 @@ def _build_cascade(
     intf_labels = interface_labels(device, interface)
     if strip_scrape_provenance:
         intf_labels = {k: v for k, v in intf_labels.items() if k not in _SCRAPE_PROVENANCE_KEYS}
+    metric_prov = _metric_provenance(intf_labels)
     primary_id = "primary_flap"
 
     scenarios: list[dict[str, Any]] = [
@@ -257,6 +259,7 @@ def _build_cascade(
             "labels": {
                 "name": interface,
                 "intf_role": intf_labels.get("intf_role", "peer"),
+                **metric_prov,
             },
         }
     ]
@@ -268,6 +271,7 @@ def _build_cascade(
                 peer=peer,
                 upstream_id=primary_id,
                 cascade_delay=cascade_delay,
+                extra_labels=metric_prov,
             )
         )
 
@@ -290,14 +294,6 @@ def _build_cascade(
             "duration": duration,
             "encoder": {"type": "remote_write"},
             "sink": {"type": "remote_write", "url": prom_url},
-            # `host`/`instance`/`job` mirror what telegraf-{device} would add
-            # via Prom's scrape job. Setting them explicitly here lets the
-            # cascade's series share an exact label set with the baseline
-            # series, so a query like `interface_oper_state{device="srl1"}`
-            # shows ONE line that flips up/down rather than two parallel
-            # series with mismatched labels. Recovery is still explicit via
-            # snap_to on each gated entry; baseline takes over naturally
-            # via Prom's latest-sample-wins after the cascade ends.
             "labels": _cascade_default_labels(device, intf_labels),
         },
         "scenarios": scenarios,
@@ -310,8 +306,9 @@ def _gated_bgp_entries(
     peer: Peer,
     upstream_id: str,
     cascade_delay: str,
+    extra_labels: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
-    base_labels = _entry_only_bgp_labels(device, peer)
+    base_labels = {**_entry_only_bgp_labels(device, peer), **(extra_labels or {})}
     while_clause = {"ref": upstream_id, "op": ">", "value": 1}
     safe_peer = peer.address.replace(".", "_")
 
@@ -394,6 +391,7 @@ def _gated_updown_log_entry(
             "vendor_facility_process": "UPDOWN",
             "interface": interface,
             "interface_status": "down",
+            "pipeline": "direct",
         },
         "log_generator": {
             "type": "template",
@@ -410,9 +408,6 @@ def _gated_updown_log_entry(
 def _entry_only_bgp_labels(device: str, peer: Peer) -> dict[str, str]:
     """Per-peer labels that should land on the entry, not in defaults."""
     full = bgp_labels(device, peer.address, peer.asn)
-    # `device` + the provenance keys (`pipeline`, `collection_type`, `host`,
-    # `instance`, `job`) come from defaults.labels. Strip them so the entry
-    # only carries per-peer specifics.
     inherited = {"device", *_CASCADE_PROVENANCE_KEYS}
     return {k: v for k, v in full.items() if k not in inherited}
 

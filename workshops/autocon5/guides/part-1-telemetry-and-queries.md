@@ -168,8 +168,52 @@ The log lines that drove the metric flip are right there with the same timestamp
 
 The two devices speak different protocols at the source:
 
-- **`srl1` emits gNMI** — that's the modern push-based telemetry SR Linux uses natively. Field names like `srl_interface_in_octets`, tags like `source`. **Telegraf-srl1** receives the push and renames `srl_*` to `interface_*`, `source` to `device`. Out the other side: the shared schema this workshop's dashboards and alerts speak.
-- **`srl2` emits SNMP** — the classic poll-based protocol from IF-MIB / BGP4-MIB. Field names like `ifHCInOctets`, `bgpPeerState`, `cbgpPeerOperStatus`; tags like `agent_host`, `ifDescr`, `bgpPeerRemoteAddr`. **Telegraf-srl2** scrapes the raw SNMP shape and renames every field and every tag to the same shared schema. Out the other side: byte-for-byte identical to what srl1 produces.
+- **`srl1` emits gNMI** — that's the telemetry shape SR Linux puts on the wire natively. Field names like `srl_bgp_oper_state`, tags like `source`. **Telegraf-srl1** scrapes this raw shape, renames `srl_*` to canonical (`bgp_*`, `interface_*`) and `source` to `device`. Out the other side: the shared schema this workshop's dashboards and alerts speak.
+- **`srl2` emits SNMP** — the classic shape from IF-MIB / BGP4-MIB / CISCO-BGP4-MIB. Field names like `ifHCInOctets`, `bgpPeerState`, `cbgpPeerOperStatus`; tags like `agent_host`, `ifDescr`, `bgpPeerRemoteAddr`. **Telegraf-srl2** scrapes the raw SNMP shape and renames every field and every tag to the same canonical schema. Out the other side: byte-for-byte identical to what srl1 produces.
+
+Both raw shapes live on `sonda-server` (the lab's synthetic-telemetry runtime). Each Telegraf scrapes its device's per-scenario `/metrics` endpoints on a 10-second cadence — same scrape pattern Prometheus would use against real exporters in production.
+
+#### See the raw shape, before Telegraf touches it
+
+> Your senior pulls up a terminal. *"You don't have to take the bullet list on faith. Both raw shapes are sitting on sonda-server right now — let me show you."*
+
+Each device's scenario IDs land in a shared volume at boot. Pick one srl1 scenario and curl its raw metrics:
+
+```bash
+SRL1_ID=$(docker exec telegraf-srl1 head -1 /shared/scenario-ids-srl1.txt)
+curl -s "http://localhost:8085/scenarios/${SRL1_ID}/metrics" | tail -1
+```
+
+```
+srl_bgp_neighbor_state{afi_safi_name="ipv4-unicast",collection_type="gnmi",name="default",neighbor_asn="65102",peer_address="10.1.2.2",source="srl1"} 1
+```
+
+Note the metric name (`srl_bgp_neighbor_state`) and the device label (`source="srl1"`) — that's the gNMI shape SR Linux puts on the wire. The pack `workshops/autocon5/sonda/packs/srlinux-gnmi-bgp-raw.yaml` lists every metric in this shape.
+
+Same exercise on srl2:
+
+```bash
+SRL2_ID=$(docker exec telegraf-srl2 head -1 /shared/scenario-ids-srl2.txt)
+curl -s "http://localhost:8085/scenarios/${SRL2_ID}/metrics" | tail -1
+```
+
+```
+bgpPeerState{afi_safi_name="ipv4-unicast",agent_host="srl2",bgpPeerRemoteAddr="10.1.2.1",bgpPeerRemoteAs="65101",collection_type="snmp",name="default"} 1
+```
+
+Field name `bgpPeerState`, tag `agent_host`, value space matches SNMP enum semantics. Different name, different label keys than `srl_bgp_oper_state` — same logical concept, completely different shape. Pack: `workshops/autocon5/sonda/packs/cisco-snmp-bgp-raw.yaml`.
+
+Now compare to the normalized view in Prometheus, post-Telegraf:
+
+```promql
+bgp_oper_state{peer_address=~"10.1.2.[12]"}
+```
+
+Two rows, both `bgp_oper_state{device=..., peer_address=..., afi_safi_name="ipv4-unicast", name="default", ...}`. Same metric name, same label keys, regardless of whether the upstream was `srl_bgp_oper_state{source=srl1}` or `bgpPeerState{agent_host=srl2}`. That's the rename rules in `telegraf-{srl1,srl2}.conf.toml` doing the lift.
+
+??? info "If your curl returns empty, retry"
+
+    `sonda-server`'s `/scenarios/{id}/metrics` endpoint drains the scenario's emission buffer on each read. The Telegraf scrape (every 10s) is one consumer, your `curl` is another — they race for the same buffer. Rerun the `curl` a few seconds later; you'll get the next emission's events.
 
 The label that records which raw shape a series came from is `collection_type`. Run this once per device:
 
@@ -277,7 +321,7 @@ Aggregating logs over time turns a log query into a metric:
 sum by (device) (count_over_time({vendor_facility_process="UPDOWN"}[5m]))
 ```
 
-Switch the panel to `Time series`. You should see two lines (one per device) showing UPDOWN events per 5-minute window. With the lab in steady state the count sits around **20 events per device** — sonda emits a slow trickle of UPDOWN events to keep the alert pipeline warm without tripping anything.
+Switch the panel to `Time series`. You should see two lines (one per device) showing UPDOWN events per 5-minute window. With the lab in steady state the count sits at **a handful per device** — sonda emits a slow trickle, well below the `PeerInterfaceFlapping` alert's `> 3 events in 2 minutes` threshold.
 
 Trigger another flap:
 

@@ -153,7 +153,7 @@ def test_no_peers_drops_bgp_entries_but_keeps_flap_and_log() -> None:
     assert ids == {"primary_flap", "updown_logs_down"}
 
 
-def test_defaults_carry_device_pipeline_and_sinks(two_peers: list[Peer]) -> None:
+def test_defaults_carry_only_device_label(two_peers: list[Peer]) -> None:
     body = _build_cascade(
         device="srl1",
         interface="ethernet-1/1",
@@ -171,19 +171,33 @@ def test_defaults_carry_device_pipeline_and_sinks(two_peers: list[Peer]) -> None
         "type": "remote_write",
         "url": "http://prom:9090/api/v1/write",
     }
-    assert defaults["labels"]["device"] == "srl1"
-    assert defaults["labels"]["pipeline"] == "telegraf"
-    assert defaults["labels"]["collection_type"] == "gnmi"
-    # Cascade carries telegraf scrape provenance so its series share an
-    # exact label set with the baseline series — query shows ONE line.
-    assert defaults["labels"]["host"] == "telegraf-srl1"
-    assert defaults["labels"]["instance"] == "telegraf-srl1:9005"
-    assert defaults["labels"]["job"] == "telegraf-srl1"
-    # No `source` label — cascade and baseline are the same Prom series.
-    assert "source" not in defaults["labels"]
+    assert defaults["labels"] == {"device": "srl1"}
 
 
-def test_srl2_collection_type_label_is_snmp() -> None:
+def test_metric_entries_carry_telegraf_provenance(two_peers: list[Peer]) -> None:
+    body = _build_cascade(
+        device="srl1",
+        interface="ethernet-1/1",
+        peers=two_peers,
+        duration="4m",
+        up_duration="30s",
+        down_duration="60s",
+        cascade_delay="10s",
+        prom_url="http://prom:9090/api/v1/write",
+        loki_url="http://loki:3001",
+    )
+    metric_entries = [e for e in body["scenarios"] if e["signal_type"] == "metrics"]
+    assert metric_entries
+    for entry in metric_entries:
+        labels = entry["labels"]
+        assert labels["pipeline"] == "telegraf"
+        assert labels["collection_type"] == "gnmi"
+        assert labels["host"] == "telegraf-srl1"
+        assert labels["instance"] == "telegraf-srl1:9005"
+        assert labels["job"] == "telegraf-srl1"
+
+
+def test_srl2_metric_entries_carry_snmp_collection_type() -> None:
     body = _build_cascade(
         device="srl2",
         interface="ethernet-1/1",
@@ -195,30 +209,30 @@ def test_srl2_collection_type_label_is_snmp() -> None:
         prom_url="http://prom:9090/api/v1/write",
         loki_url="http://loki:3001",
     )
-    assert body["defaults"]["labels"]["pipeline"] == "telegraf"
-    assert body["defaults"]["labels"]["collection_type"] == "snmp"
-
-
-def test_srl2_telegraf_provenance_lives_in_defaults() -> None:
-    body = _build_cascade(
-        device="srl2",
-        interface="ethernet-1/1",
-        peers=[Peer(address="10.1.2.1", asn="65101")],
-        duration="4m",
-        up_duration="30s",
-        down_duration="60s",
-        cascade_delay="10s",
-        prom_url="http://prom:9090/api/v1/write",
-        loki_url="http://loki:3001",
-    )
-    # Provenance keys are inherited via `defaults.labels` so every entry
-    # gets them without per-entry duplication.
-    assert body["defaults"]["labels"]["host"] == "telegraf-srl2"
-    assert body["defaults"]["labels"]["instance"] == "telegraf-srl2:9005"
-    assert body["defaults"]["labels"]["job"] == "telegraf-srl2"
     bgp_entry = next(e for e in body["scenarios"] if e["name"].startswith("bgp_"))
-    for key in ("host", "instance", "job", "pipeline", "collection_type"):
-        assert key not in bgp_entry["labels"]
+    assert bgp_entry["labels"]["pipeline"] == "telegraf"
+    assert bgp_entry["labels"]["collection_type"] == "snmp"
+    assert bgp_entry["labels"]["host"] == "telegraf-srl2"
+    assert bgp_entry["labels"]["instance"] == "telegraf-srl2:9005"
+    assert bgp_entry["labels"]["job"] == "telegraf-srl2"
+
+
+def test_log_entry_keeps_pipeline_direct_not_telegraf(two_peers: list[Peer]) -> None:
+    body = _build_cascade(
+        device="srl1",
+        interface="ethernet-1/1",
+        peers=two_peers,
+        duration="4m",
+        up_duration="30s",
+        down_duration="60s",
+        cascade_delay="10s",
+        prom_url="http://prom:9090/api/v1/write",
+        loki_url="http://loki:3001",
+    )
+    log_entry = next(e for e in body["scenarios"] if e["id"] == "updown_logs_down")
+    assert log_entry["labels"]["pipeline"] == "direct"
+    for key in ("host", "instance", "job", "collection_type"):
+        assert key not in log_entry["labels"]
 
 
 def test_log_entry_targets_loki_and_carries_interface_label(two_peers: list[Peer]) -> None:

@@ -6,7 +6,7 @@
 # then fetches Prometheus text metrics from each scenario's scrape endpoint.
 
 SONDA_SERVER_URL="${SONDA_SERVER_URL:-http://sonda-server:8080}"
-IDS_FILE="/shared/scenario-ids.txt"
+IDS_FILE="${IDS_FILE:-/shared/scenario-ids.txt}"
 
 # Fallback: if IDs file doesn't exist yet, discover from API
 if [ ! -f "$IDS_FILE" ]; then

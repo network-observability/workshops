@@ -1,8 +1,7 @@
 # srl1 telemetry — RAW gNMI shape (`srl_*` names + `source` tag).
-# Pushed via Prom remote_write to telegraf-srl1, which normalizes the
-# names and tags to the canonical schema and re-exposes them as a
-# Prometheus scrape target. Broken-on-purpose: BGP peer 10.1.99.2 and
-# interface ethernet-1/11.
+# Registered on sonda-server; telegraf-srl1 scrapes the per-scenario
+# /metrics endpoints and normalizes the shapes to the canonical schema.
+# Broken-on-purpose: BGP peer 10.1.99.2 and interface ethernet-1/11.
 ---
 version: 2
 
@@ -12,11 +11,6 @@ description: "AutoCon5 srl1 telemetry — raw gNMI shape, normalized by telegraf
 
 defaults:
   rate: 0.1
-  encoder:
-    type: remote_write
-  sink:
-    type: remote_write
-    url: "${TELEGRAF_SRL1_RECEIVE_URL:-http://telegraf-srl1:1316/api/v1/write}"
 
 scenarios:
   # BGP peers
