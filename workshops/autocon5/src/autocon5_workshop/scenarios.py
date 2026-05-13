@@ -54,7 +54,7 @@ def scenarios(
         return
 
     for rec in records:
-        status = (rec.get("status") or "").lower()
+        status = (rec.get("state") or "").lower()
         if status in {"running", "active"}:
             status_styled = f"[ok]{status}[/]"
         elif status in {"failed", "error"}:
@@ -64,7 +64,7 @@ def scenarios(
         else:
             status_styled = "—"
 
-        elapsed = rec.get("elapsed") or rec.get("duration") or "—"
+        elapsed = rec.get("elapsed_secs") or rec.get("duration") or "—"
         table.add_row(
             str(rec.get("id", "—")),
             str(rec.get("name", "—")),
