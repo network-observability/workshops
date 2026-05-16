@@ -39,8 +39,7 @@ services:
   # (filtered by the scenario-ids-{srl1,srl2}.txt files sonda-setup writes).
   sonda-server:
     container_name: sonda-server
-    # TODO: bump to ghcr.io/davidban77/sonda:1.9.0 once published
-    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.6.4}
+    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.9.0}
     command: ["--port", "8080", "--bind", "0.0.0.0"]
     ports:
       - "8085:8080"
@@ -71,8 +70,7 @@ services:
   # to Loki; srl2 streams emit RFC 5424 syslog UDP to Vector (vector:1514).
   sonda-logs:
     container_name: sonda-logs
-    # TODO: bump to ghcr.io/davidban77/sonda:1.9.0 once published
-    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.6.4}
+    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.9.0}
     entrypoint: ["/sonda"]
     command: ["run", "/catalog/all-logs.yaml"]
     volumes:
