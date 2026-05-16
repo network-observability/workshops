@@ -172,6 +172,16 @@ def post_scenario_file(path: str, packs: dict[str, dict]) -> list[dict]:
             result = json.loads(resp.read())
     except urllib.error.HTTPError as e:
         error_body = e.read().decode("utf-8", errors="replace")
+        if e.code == 409:
+            # 409 here means the scenarios were registered on a previous init run — treat as success.
+            conflict = json.loads(error_body)
+            conflicting = conflict.get("conflicting_scenarios") or []
+            scenario_name = config.get("scenario_name") or os.path.basename(path)
+            print(
+                f"  -> already running (scenario_name={scenario_name!r}, "
+                f"{len(conflicting)} conflicting entries); skipping re-POST and re-using existing IDs"
+            )
+            return conflicting
         print(f"  POST /scenarios failed ({e.code}): {error_body}", file=sys.stderr)
         raise
 
