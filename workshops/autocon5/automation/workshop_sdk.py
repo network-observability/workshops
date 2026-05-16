@@ -468,10 +468,94 @@ def _build_rca_prompt(device: str, peer_address: str, evidence: dict[str, Any]) 
     )
 
 
+def _demo_rca(device: str, peer_address: str, evidence: dict[str, Any]) -> str:
+    """Return a templated, evidence-grounded narrative without calling an LLM."""
+    sot = evidence.get("sot") or {}
+    metrics = evidence.get("metrics") or {}
+    logs = evidence.get("logs") or []
+
+    expected_state = sot.get("expected_state")
+    sot_reason = sot.get("reason")
+    intended_peer = sot.get("intended_peer")
+    maintenance = sot.get("maintenance")
+
+    admin_raw = metrics.get("admin_state")
+    oper_raw = metrics.get("oper_state")
+    rx_raw = metrics.get("received_routes")
+
+    def _as_int(v: Any) -> int | None:
+        try:
+            return int(float(v))
+        except (TypeError, ValueError):
+            return None
+
+    admin_i = _as_int(admin_raw)
+    oper_i = _as_int(oper_raw)
+    admin_txt = ADMIN_MAP.get(admin_i) if admin_i is not None else None
+    oper_txt = OPER_MAP.get(oper_i) if oper_i is not None else None
+
+    cause_lines: list[str] = []
+    if expected_state:
+        cause_lines.append(f"SoT expects peer {peer_address} on {device} to be {expected_state}")
+    if sot_reason:
+        cause_lines.append(f"with intent reason {sot_reason!r}")
+    if oper_txt and oper_i is not None:
+        cause_lines.append(f"but oper_state={oper_i} ({oper_txt})")
+    elif oper_i is not None:
+        cause_lines.append(f"but oper_state={oper_i}")
+    if admin_txt and admin_i is not None:
+        cause_lines.append(f"admin_state={admin_i} ({admin_txt})")
+    if rx_raw is not None:
+        cause_lines.append(f"received_routes={rx_raw}")
+    cause = ", ".join(cause_lines) + "." if cause_lines else (
+        f"Insufficient evidence to localize the fault on {device} peer {peer_address}."
+    )
+
+    actions: list[str] = []
+    if intended_peer is False:
+        actions.append(f"Confirm whether {peer_address} should exist in the SoT for {device}")
+    if maintenance:
+        actions.append(f"Verify the maintenance window on {device} is intentional before remediating")
+    if admin_i == 2:
+        actions.append(f"Re-enable the BGP neighbor on {device} if the shutdown was unintended")
+    elif oper_i is not None and oper_i != 1:
+        actions.append(f"Inspect reachability and timers between {device} and {peer_address}")
+    if rx_raw is not None and oper_i == 1 and float(rx_raw) == 0:
+        actions.append(f"Review import policy on {device} for {peer_address} (session up, 0 prefixes)")
+    if not actions:
+        actions.append(f"Cross-check the running config of {device} against the SoT intent")
+    actions = actions[:3]
+
+    verify: list[str] = [
+        f"Tail Loki for device={device} around the alert window for BGP state transitions",
+    ]
+    if sot_reason:
+        verify.append(f"Check whether the SoT reason {sot_reason!r} matches a known fault class")
+    if rx_raw is not None:
+        verify.append(f"Compare received_routes={rx_raw} against expected_prefixes_received in the SoT")
+    if logs:
+        verify.append(f"Re-read the {len(logs)} captured log lines for repeated error signatures")
+    verify = verify[:3]
+
+    actions_block = "\n".join(f"- {a}" for a in actions)
+    verify_block = "\n".join(f"- {v}" for v in verify)
+
+    return (
+        "(demo narrative — set AI_RCA_PROVIDER=openai|anthropic with an API key "
+        "for a real model response.)\n\n"
+        "## Most likely cause\n"
+        f"{cause}\n\n"
+        "## Immediate actions\n"
+        f"{actions_block}\n\n"
+        "## What to verify next\n"
+        f"{verify_block}\n"
+    )
+
+
 def llm_rca(device: str, peer_address: str, evidence: dict[str, Any]) -> str:
     """Run an opt-in LLM RCA call.
 
-    Honours `ENABLE_AI_RCA`, `AI_RCA_PROVIDER` (openai|anthropic), `AI_RCA_MODEL`,
+    Honours `ENABLE_AI_RCA`, `AI_RCA_PROVIDER` (openai|anthropic|demo), `AI_RCA_MODEL`,
     and the relevant API-key env vars. On any failure (flag off, key missing,
     HTTP error) returns a clear sentinel string instead of raising — the caller
     annotates whatever comes back into Loki, so the workshop demo never gets
@@ -481,6 +565,10 @@ def llm_rca(device: str, peer_address: str, evidence: dict[str, Any]) -> str:
         return _AI_DISABLED_MSG
 
     provider = (os.environ.get("AI_RCA_PROVIDER") or "openai").lower()
+
+    if provider == "demo":
+        return _demo_rca(device, peer_address, evidence)
+
     model = os.environ.get("AI_RCA_MODEL") or ("gpt-4o-mini" if provider == "openai" else "claude-haiku-4-5-20251001")
     prompt = _build_rca_prompt(device, peer_address, evidence)
 
