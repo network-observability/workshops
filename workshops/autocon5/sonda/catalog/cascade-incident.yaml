@@ -19,6 +19,7 @@
 # bypasses that whole class of receiver-side handling.
 ---
 version: 2
+kind: runnable
 
 scenario_name: autocon5-cascade-incident
 category: network

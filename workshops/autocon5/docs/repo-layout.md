@@ -11,8 +11,7 @@ workshops/autocon5/
   lab_vars.yml         # source-of-truth data fed into Infrahub
   docs/                # operator/maintainer docs (you are here)
   sonda/
-    scenarios/         # synthetic metric + log scenarios (srl1, srl2, all-logs)
-    packs/             # custom srlinux gNMI packs (referenced via SONDA_PACK_PATH)
+    catalog/           # runnable scenarios (srl1, srl2, all-logs, cascade) + composable packs (kind: runnable / kind: composable)
     scripts/           # sonda-server bootstrap + telegraf scrape script
   prometheus/          # config + alert/recording rules
   loki/                # config + alert/recording rules
@@ -34,8 +33,8 @@ A few common operator questions:
 
 **"An attendee says alerts aren't firing — where do I look?"** `prometheus/rules/` and `loki/rules/` for the rule definitions, `alertmanager/` for routing, then `webhook/` (FastAPI) and `automation/` (Prefect flows) for what runs after Alertmanager.
 
-**"How does sonda's telemetry get into Prometheus?"** Two paths — `sonda/scenarios/srl1-metrics.yaml` runs as `sonda-srl1` and uses sonda's own `remote_write` directly into Prometheus.
-`sonda/scenarios/srl2-metrics.yaml` runs under `sonda-server`, and `telegraf-02` (config in `telegraf/`) scrapes it on an interval.
+**"How does sonda's telemetry get into Prometheus?"** Two paths — `sonda/catalog/srl1-metrics.yaml` runs as `sonda-srl1` and uses sonda's own `remote_write` directly into Prometheus.
+`sonda/catalog/srl2-metrics.yaml` runs under `sonda-server`, and `telegraf-02` (config in `telegraf/`) scrapes it on an interval.
 Both paths land in the same Prometheus.
 
 **"How does Infrahub get its data?"** Schema in `infrahub/schema.yml`, data in `lab_vars.yml`.

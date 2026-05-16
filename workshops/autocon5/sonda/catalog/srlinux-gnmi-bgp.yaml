@@ -1,0 +1,57 @@
+# SR Linux gNMI BGP per-peer metrics. Caller supplies device, peer_address,
+# neighbor_asn at the reference site.
+---
+version: 2
+kind: composable
+
+name: srlinux_gnmi_bgp
+description: "SR Linux gNMI BGP per-peer metrics (Telegraf-normalized)"
+category: network
+
+pack:
+  shared_labels:
+    device: ""
+    peer_address: ""
+    neighbor_asn: ""
+    afi_safi_name: ipv4-unicast
+    name: default
+    collection_type: gnmi
+
+  metrics:
+    # 1=ESTABLISHED, 2=IDLE, 3=CONNECT, 4=ACTIVE, 5=OPENSENT, 6=OPENCONFIRM, 7=NONEXISTENT
+    - name: bgp_neighbor_state
+      generator:
+        type: constant
+        value: 1.0
+
+    # enable=1, disable=2
+    - name: bgp_admin_state
+      generator:
+        type: constant
+        value: 1.0
+
+    # up=1, down=2, idle=3, connect=4, active=5
+    - name: bgp_oper_state
+      generator:
+        type: constant
+        value: 1.0
+
+    - name: bgp_received_routes
+      generator:
+        type: constant
+        value: 10.0
+
+    - name: bgp_prefixes_accepted
+      generator:
+        type: constant
+        value: 10.0
+
+    - name: bgp_sent_routes
+      generator:
+        type: constant
+        value: 10.0
+
+    - name: bgp_active_routes
+      generator:
+        type: constant
+        value: 10.0

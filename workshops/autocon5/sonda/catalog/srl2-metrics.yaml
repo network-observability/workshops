@@ -6,6 +6,7 @@
 # ethernet-1/11.
 ---
 version: 2
+kind: runnable
 
 scenario_name: autocon5-srl2-metrics
 category: network
