@@ -166,6 +166,7 @@ def _build_link_failover(
     """v2 scenario body — three signals linked by `after:` clauses."""
     return {
         "version": 2,
+        "kind": "runnable",
         "scenario_name": f"incident-link-failover-{device}",
         "category": "network",
         "description": f"Link failover cascade on {device} ({primary} → {backup})",

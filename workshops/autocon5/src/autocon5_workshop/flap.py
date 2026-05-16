@@ -281,6 +281,7 @@ def _build_cascade(
 
     return {
         "version": 2,
+        "kind": "runnable",
         "scenario_name": f"autocon5-cascade-{device}-{interface.replace('/', '-')}",
         "category": "network",
         "description": f"AutoCon5 BGP cascade — declarative while: gating on {device}:{interface}.",
