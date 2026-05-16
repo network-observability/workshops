@@ -4,6 +4,7 @@
 # Broken-on-purpose: BGP peer 10.1.99.2 and interface ethernet-1/11.
 ---
 version: 2
+kind: runnable
 
 scenario_name: autocon5-srl1-metrics
 category: network

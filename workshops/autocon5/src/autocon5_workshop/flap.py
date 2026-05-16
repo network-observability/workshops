@@ -26,11 +26,6 @@ _BGP_DOWN_OPER = 2.0
 _BGP_DOWN_NEIGHBOR = 1.0
 _BGP_DOWN_PREFIXES = 0.0
 
-# `delay.close.snap_to` recovery values, matching the established-state
-# defaults in `sonda/packs/srlinux-gnmi-bgp.yaml`. On gate close sonda
-# writes one sample at this value before pausing, so the alert resolves
-# on the next scrape without depending on stale-NaN handling at the
-# receiver.
 _BGP_UP_OPER = 1.0
 _BGP_UP_NEIGHBOR = 1.0
 _BGP_UP_PREFIXES = 10.0

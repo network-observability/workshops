@@ -188,7 +188,7 @@ curl -s "http://localhost:8085/scenarios/${SRL1_ID}/metrics" | tail -1
 srl_bgp_neighbor_state{afi_safi_name="ipv4-unicast",collection_type="gnmi",name="default",neighbor_asn="65102",peer_address="10.1.2.2",source="srl1"} 1
 ```
 
-Note the metric name (`srl_bgp_neighbor_state`) and the device label (`source="srl1"`) — that's the gNMI shape SR Linux puts on the wire. The pack `workshops/autocon5/sonda/packs/srlinux-gnmi-bgp-raw.yaml` lists every metric in this shape.
+Note the metric name (`srl_bgp_neighbor_state`) and the device label (`source="srl1"`) — that's the gNMI shape SR Linux puts on the wire. The pack `workshops/autocon5/sonda/catalog/srlinux-gnmi-bgp-raw.yaml` lists every metric in this shape.
 
 Same exercise on srl2:
 
@@ -201,7 +201,7 @@ curl -s "http://localhost:8085/scenarios/${SRL2_ID}/metrics" | tail -1
 bgpPeerState{afi_safi_name="ipv4-unicast",agent_host="srl2",bgpPeerRemoteAddr="10.1.2.1",bgpPeerRemoteAs="65101",collection_type="snmp",name="default"} 1
 ```
 
-Field name `bgpPeerState`, tag `agent_host`, value space matches SNMP enum semantics. Different name, different label keys than `srl_bgp_oper_state` — same logical concept, completely different shape. Pack: `workshops/autocon5/sonda/packs/cisco-snmp-bgp-raw.yaml`.
+Field name `bgpPeerState`, tag `agent_host`, value space matches SNMP enum semantics. Different name, different label keys than `srl_bgp_oper_state` — same logical concept, completely different shape. Pack: `workshops/autocon5/sonda/catalog/cisco-snmp-bgp-raw.yaml`.
 
 Now compare to the normalized view in Prometheus, post-Telegraf:
 

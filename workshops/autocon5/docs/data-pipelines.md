@@ -330,7 +330,6 @@ The `pipeline` label is the lever for comparing them in one query.
 
 - [`telegraf/telegraf-02.conf.toml`](../telegraf/telegraf-02.conf.toml) — the Telegraf processor chain (field rename, tag rename, regex enrich).
 - [`vector/vector.yaml`](../vector/vector.yaml) — the Vector VRL transform (severity remap, SD payload promotion).
-- [`sonda/packs/`](../sonda/packs/) — both canonical and `*_raw` packs.
-- [`sonda/scenarios/`](../sonda/scenarios/) — `srl1-metrics.yaml` (direct), `srl2-metrics.yaml` (raw → Telegraf), `all-logs.yaml` (mixed direct + syslog→Vector).
+- [`sonda/catalog/`](../sonda/catalog/) — runnable scenarios (`srl1-metrics.yaml` direct, `srl2-metrics.yaml` raw → Telegraf, `all-logs.yaml` mixed direct + syslog→Vector, `cascade-incident.yaml` the `while:` gated cascade) alongside the composable `*_raw` and canonical packs they reference.
 - [`packages/nobs/src/nobs/clients/loki.py`](../../../packages/nobs/src/nobs/clients/loki.py) — the `LokiClient.annotate()` facade that routes annotations through `POST /events`.
 - [`docs/preflight.md`](preflight.md) — `nobs autocon5 preflight` regression check.

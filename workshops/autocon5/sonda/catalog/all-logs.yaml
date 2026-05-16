@@ -10,6 +10,7 @@
 # Schema: sonda v2. Logs use `log_generator:`.
 ---
 version: 2
+kind: runnable
 
 scenario_name: autocon5-all-logs
 category: network
