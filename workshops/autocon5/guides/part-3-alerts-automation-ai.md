@@ -102,7 +102,9 @@ The webhook flow runs the same decision tree on every alert payload. The four ou
 | **In-maintenance → skip** | Device's `maintenance` flag is `true` in Infrahub | `skip` | Audit annotation only |
 | **Resolved → audit trail** | Alert resolved | `resolved` | Audit annotation only |
 
-Annotations land in Loki under `{source="prefect", workflow="autocon5_quarantine_bgp"}` with a `decision` label that takes one of: `proceed`, `skip`, `resolved`. They're visible in **Recent events** feeds on both **Workshop Home** and **Device Health**.
+There's a fifth outcome the policy can emit but that `try-it` doesn't exercise: **`stop`** — fires when the device on the alert isn't in Infrahub at all (the SoT lookup returns nothing). The flow can't decide `proceed` vs `skip` without intent data, so it bails early with `decision=stop` and a `device not found in Infrahub` reason. You'll typically only see it if an alert fires before `nobs autocon5 load-infrahub` has finished seeding the schema — rare, but real.
+
+Annotations land in Loki under `{source="prefect", workflow="autocon5_quarantine_bgp"}` with a `decision` label that takes one of: `proceed`, `skip`, `resolved`, `stop`. They're visible in **Recent events** feeds on both **Workshop Home** and **Device Health**.
 
 ## The exercises
 
@@ -435,9 +437,10 @@ Take a minute on it before you scroll. Two hints if you're stuck:
 | skip      |   1-2 |
 | resolved  |   1-2 |
 | (empty)   |   1-3 |  ← AI RCA annotations, which carry an `ai_rca` label, not `decision`
+| stop      |   0-1 |  ← only present if an alert beat Infrahub schema load (see "four paths" above)
 ```
 
-The exact counts depend on how many paths you've driven by hand on top of `try-it`. If you get a single row, you've collapsed too aggressively. If you get dozens of rows, you've left a high-cardinality label unaggregated.
+The exact counts depend on how many paths you've driven by hand on top of `try-it`. The `stop` row may or may not be there — both states are valid. If you get a single row total, you've collapsed too aggressively. If you get dozens of rows, you've left a high-cardinality label unaggregated.
 
 ### 6. Turn on AI RCA — same evidence, different voice
 

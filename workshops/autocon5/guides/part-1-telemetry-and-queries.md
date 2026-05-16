@@ -12,6 +12,8 @@ This part is the longest of the day on purpose — every later part depends on y
 
 Your senior already has Grafana up on their screen. They've reset the lab to known-good baseline and confirmed every row says `ok`. Your turn.
 
+If this is your first time bringing up the lab solo, run the four-command **Bring it up** sequence from the workshop README first (`uv sync --all-packages` → `nobs setup` → `nobs autocon5 up` → `nobs autocon5 load-infrahub`) — `nobs autocon5 up` alone doesn't seed Infrahub, and `reset` will fail with `SchemaNotFoundError` until `load-infrahub` has run once.
+
 In a terminal:
 
 ```bash
@@ -177,31 +179,37 @@ Both raw shapes live on `sonda-server` (the lab's synthetic-telemetry runtime). 
 
 > Your senior pulls up a terminal. *"You don't have to take the bullet list on faith. Both raw shapes are sitting on sonda-server right now — let me show you."*
 
-Each device's scenario IDs land in a shared volume at boot. Pick one srl1 scenario and curl its raw metrics:
+Each device's scenario IDs land in a shared volume at boot. Pick one srl1 scenario and curl its raw metrics. `sonda-server`'s `/scenarios/{id}/metrics` endpoint **drains** the scenario's emission buffer on each read, and Telegraf is already reading it every 10s — so to see the raw samples yourself you pause Telegraf for one cycle first, let the buffer fill, then curl:
 
 ```bash
 SRL1_ID=$(docker exec telegraf-srl1 head -1 /shared/scenario-ids-srl1.txt)
+docker pause telegraf-srl1 && sleep 12
 curl -s "http://localhost:8085/scenarios/${SRL1_ID}/metrics" | tail -1
+docker unpause telegraf-srl1
 ```
 
 ```
-srl_bgp_neighbor_state{afi_safi_name="ipv4-unicast",collection_type="gnmi",name="default",neighbor_asn="65102",peer_address="10.1.2.2",source="srl1"} 1
+srl_bgp_neighbor_state{afi_safi_name="ipv4-unicast",collection_type="gnmi",name="default",neighbor_asn="65102",peer_address="10.1.2.2",source="srl1"} 1 1778960798157
 ```
 
 Note the metric name (`srl_bgp_neighbor_state`) and the device label (`source="srl1"`) — that's the gNMI shape SR Linux puts on the wire. The pack `workshops/autocon5/sonda/catalog/srlinux-gnmi-bgp-raw.yaml` lists every metric in this shape.
 
-Same exercise on srl2:
+Same exercise on srl2 — same pause-curl-unpause shape:
 
 ```bash
 SRL2_ID=$(docker exec telegraf-srl2 head -1 /shared/scenario-ids-srl2.txt)
+docker pause telegraf-srl2 && sleep 12
 curl -s "http://localhost:8085/scenarios/${SRL2_ID}/metrics" | tail -1
+docker unpause telegraf-srl2
 ```
 
 ```
-bgpPeerState{afi_safi_name="ipv4-unicast",agent_host="srl2",bgpPeerRemoteAddr="10.1.2.1",bgpPeerRemoteAs="65101",collection_type="snmp",name="default"} 1
+bgpPeerState{afi_safi_name="ipv4-unicast",agent_host="srl2",bgpPeerRemoteAddr="10.1.2.1",bgpPeerRemoteAs="65101",collection_type="snmp",name="default"} 1 1778960808168
 ```
 
 Field name `bgpPeerState`, tag `agent_host`, value space matches SNMP enum semantics. Different name, different label keys than `srl_bgp_oper_state` — same logical concept, completely different shape. Pack: `workshops/autocon5/sonda/catalog/cisco-snmp-bgp-raw.yaml`.
+
+> Your senior taps the screen. *"That drain-on-read behaviour is exactly why a real production scrape architecture has one consumer per endpoint. Two consumers fighting for one buffer is a footgun; this is the lab letting you peek behind Telegraf's back without rearchitecting."*
 
 Now compare to the normalized view in Prometheus, post-Telegraf:
 
@@ -210,10 +218,6 @@ bgp_oper_state{peer_address=~"10.1.2.[12]"}
 ```
 
 Two rows, both `bgp_oper_state{device=..., peer_address=..., afi_safi_name="ipv4-unicast", name="default", ...}`. Same metric name, same label keys, regardless of whether the upstream was `srl_bgp_oper_state{source=srl1}` or `bgpPeerState{agent_host=srl2}`. That's the rename rules in `telegraf-{srl1,srl2}.conf.toml` doing the lift.
-
-??? info "If your curl returns empty, retry"
-
-    `sonda-server`'s `/scenarios/{id}/metrics` endpoint drains the scenario's emission buffer on each read. The Telegraf scrape (every 10s) is one consumer, your `curl` is another — they race for the same buffer. Rerun the `curl` a few seconds later; you'll get the next emission's events.
 
 The label that records which raw shape a series came from is `collection_type`. Run this once per device:
 
