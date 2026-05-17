@@ -14,7 +14,7 @@ description: Mid-morning. A post-mortem email lands — last night's page lost t
 A post-mortem email lands. Last night's page lost ten minutes because a flap-rate panel didn't exist yet. You build it now — thresholds matching the actual alert rule, while the team is still in the room and your senior is at your shoulder.
 
 <p class="autocon5-section-hero__meta">
-  <span>~75 minutes</span>
+  <span>~35 minutes</span>
   <span>Grafana panels with intent</span>
   <span>Alert thresholds aligned with the rule</span>
 </p>

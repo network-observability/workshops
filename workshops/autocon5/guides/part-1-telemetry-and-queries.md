@@ -201,6 +201,10 @@ curl -s "http://localhost:8085/scenarios/${SRL2_ID}/metrics" | tail -1
 bgpPeerState{afi_safi_name="ipv4-unicast",agent_host="srl2",bgpPeerRemoteAddr="10.1.2.1",bgpPeerRemoteAs="65101",collection_type="snmp",name="default"} 1
 ```
 
+??? info "If your curl returns empty, retry"
+
+    `sonda-server`'s `/scenarios/{id}/metrics` endpoint drains the scenario's emission buffer on each read. The Telegraf scrape (every 10s) is one consumer, your `curl` is another — they race for the same buffer. Rerun the `curl` a few seconds later; you'll get the next emission's events.
+
 Field name `bgpPeerState`, tag `agent_host`, value space matches SNMP enum semantics. Different name, different label keys than `srl_bgp_oper_state` — same logical concept, completely different shape. Pack: `workshops/autocon5/sonda/catalog/cisco-snmp-bgp-raw.yaml`.
 
 Now compare to the normalized view in Prometheus, post-Telegraf:
@@ -210,10 +214,6 @@ bgp_oper_state{peer_address=~"10.1.2.[12]"}
 ```
 
 Two rows, both `bgp_oper_state{device=..., peer_address=..., afi_safi_name="ipv4-unicast", name="default", ...}`. Same metric name, same label keys, regardless of whether the upstream was `srl_bgp_oper_state{source=srl1}` or `bgpPeerState{agent_host=srl2}`. That's the rename rules in `telegraf-{srl1,srl2}.conf.toml` doing the lift.
-
-??? info "If your curl returns empty, retry"
-
-    `sonda-server`'s `/scenarios/{id}/metrics` endpoint drains the scenario's emission buffer on each read. The Telegraf scrape (every 10s) is one consumer, your `curl` is another — they race for the same buffer. Rerun the `curl` a few seconds later; you'll get the next emission's events.
 
 The label that records which raw shape a series came from is `collection_type`. Run this once per device:
 

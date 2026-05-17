@@ -46,6 +46,7 @@ Yes — fork the repo and the stack is yours. `nobs autocon5 destroy` cleanly te
 Run the preflight from anywhere in the repo:
 
 ```bash
+uv sync --all-packages          # install workspace deps into .venv/
 nobs preflight
 ```
 
