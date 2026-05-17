@@ -105,6 +105,8 @@ Once the stack is up and Infrahub is seeded, you'll have:
 | Infrahub | http://localhost:8000 | source-of-truth UI + GraphQL playground |
 | Prefect | http://localhost:4200 | workflow runs in Part 3 |
 | Sonda HTTP API | http://localhost:8085 | the synthetic telemetry control plane |
+| Telegraf | — | scrapes metrics from sonda and normalizes them into Prometheus |
+| Vector | — | receives syslog from sonda and normalizes it into Loki |
 
 When you're done:
 
@@ -117,7 +119,7 @@ If anything misbehaves during the workshop, ask the instructor — they have the
 
 ## What's actually running
 
-![Workshop architecture](https://raw.githubusercontent.com/network-observability/workshops/main/workshops/autocon5/docs/architecture.svg)
+![Workshop architecture](../assets/architecture.svg)
 
 In words: synthetic telemetry from sonda lands in Prometheus and Loki. Alerting rules in both stores route through Alertmanager into a FastAPI webhook, which fans out to a Prefect flow. The flow consults **Infrahub** for source-of-truth intent (is this peer expected up? is the device in maintenance?) before deciding to **quarantine**, **skip**, or just **audit** — and optionally runs an AI RCA against the same evidence bundle. Every decision is annotated back into Loki for the audit trail.
 

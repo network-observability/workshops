@@ -24,7 +24,7 @@ Your senior buddy walks you through the lab's telemetry shape — what *normal* 
 {%
   include-markdown "../../workshops/autocon5/guides/part-1-telemetry-and-queries.md"
   start="## What you'll do here"
-  end="#### 3. Find the broken peer"
+  end="#### 5. Find the broken peer — BGP"
 %}
 
 <figure class="section-preview" markdown>
@@ -32,15 +32,15 @@ Your senior buddy walks you through the lab's telemetry shape — what *normal* 
 ![BGP States — three peers, one stuck in ACTIVE](../assets/screenshots/device-health-bgp-states-light.png#only-light){ .screenshot loading=lazy }
 ![BGP States — three peers, one stuck in ACTIVE](../assets/screenshots/device-health-bgp-states-dark.png#only-dark){ .screenshot loading=lazy }
 
-<figcaption>The visual you'll be aiming for: srl1's three BGP peers — two ESTABLISHED, one stuck in ACTIVE. The intent-vs-reality query finds that one orange row with a single PromQL line.</figcaption>
+<figcaption>The visual you'll be aiming for: srl1's three BGP peers — two ESTABLISHED, one stuck in ACTIVE. By exercise 5 you'll have the query pattern to find that one orange row.</figcaption>
 
 </figure>
 
-#### 3. Find the broken peer
+#### 5. Find the broken peer — BGP
 
 {%
   include-markdown "../../workshops/autocon5/guides/part-1-telemetry-and-queries.md"
-  start="#### 3. Find the broken peer"
+  start="#### 5. Find the broken peer — BGP"
   end="### The bridge — metric to log"
 %}
 
