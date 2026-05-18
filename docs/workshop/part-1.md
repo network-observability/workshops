@@ -21,14 +21,28 @@ Your senior buddy walks you through the lab's telemetry shape — what *normal* 
 
 </div>
 
+{%
+  include-markdown "../../workshops/autocon5/guides/part-1-telemetry-and-queries.md"
+  start="## What you'll do here"
+  end="#### 5. Find the broken peer — BGP"
+%}
+
 <figure class="section-preview" markdown>
 
 ![BGP States — three peers, one stuck in ACTIVE](../assets/screenshots/device-health-bgp-states-light.png#only-light){ .screenshot loading=lazy }
 ![BGP States — three peers, one stuck in ACTIVE](../assets/screenshots/device-health-bgp-states-dark.png#only-dark){ .screenshot loading=lazy }
 
-<figcaption>The visual you'll be aiming for: srl1's three BGP peers — two ESTABLISHED, one stuck in ACTIVE. The intent-vs-reality query in Part 1 lifts that one orange row out of the dashboard with a single PromQL line.</figcaption>
+<figcaption>The visual you'll be aiming for: srl1's three BGP peers — two ESTABLISHED, one stuck in ACTIVE. By exercise 5 you'll have the query pattern to find that one orange row.</figcaption>
 
 </figure>
+
+#### 5. Find the broken peer — BGP
+
+{%
+  include-markdown "../../workshops/autocon5/guides/part-1-telemetry-and-queries.md"
+  start="#### 5. Find the broken peer — BGP"
+  end="### The bridge — metric to log"
+%}
 
 <figure class="section-preview" markdown>
 
@@ -39,9 +53,11 @@ Your senior buddy walks you through the lab's telemetry shape — what *normal* 
 
 </figure>
 
+### The bridge — metric to log
+
 {%
   include-markdown "../../workshops/autocon5/guides/part-1-telemetry-and-queries.md"
-  start="## What you'll do here"
+  start="### The bridge — metric to log"
 %}
 
 <nav class="autocon5-nav-footer" markdown>

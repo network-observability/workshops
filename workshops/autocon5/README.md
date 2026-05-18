@@ -46,6 +46,7 @@ Yes — fork the repo and the stack is yours. `nobs autocon5 destroy` cleanly te
 Run the preflight from anywhere in the repo:
 
 ```bash
+uv sync --all-packages          # install workspace deps into .venv/
 nobs preflight
 ```
 
@@ -86,6 +87,8 @@ Once the stack is up and Infrahub is seeded, you'll have:
 | Infrahub | http://localhost:8000 | source-of-truth UI + GraphQL playground |
 | Prefect | http://localhost:4200 | workflow runs in Part 3 |
 | Sonda HTTP API | http://localhost:8085 | the synthetic telemetry control plane |
+| Telegraf | — | scrapes metrics from sonda and normalizes them into Prometheus |
+| Vector | — | receives syslog from sonda and normalizes it into Loki |
 
 When you're done:
 

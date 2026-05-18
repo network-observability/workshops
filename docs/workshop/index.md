@@ -105,6 +105,8 @@ Once the stack is up and Infrahub is seeded, you'll have:
 | Infrahub | http://localhost:8000 | source-of-truth UI + GraphQL playground |
 | Prefect | http://localhost:4200 | workflow runs in Part 3 |
 | Sonda HTTP API | http://localhost:8085 | the synthetic telemetry control plane |
+| Telegraf | — | scrapes metrics from sonda and normalizes them into Prometheus |
+| Vector | — | receives syslog from sonda and normalizes it into Loki |
 
 When you're done:
 
@@ -117,7 +119,7 @@ If anything misbehaves during the workshop, ask the instructor — they have the
 
 ## What's actually running
 
-![Workshop architecture](https://raw.githubusercontent.com/network-observability/workshops/main/workshops/autocon5/docs/architecture.svg)
+![Workshop architecture](../assets/architecture.svg)
 
 In words: synthetic telemetry from sonda lands in Prometheus and Loki. Alerting rules in both stores route through Alertmanager into a FastAPI webhook, which fans out to a Prefect flow. The flow consults **Infrahub** for source-of-truth intent (is this peer expected up? is the device in maintenance?) before deciding to **quarantine**, **skip**, or just **audit** — and optionally runs an AI RCA against the same evidence bundle. Every decision is annotated back into Loki for the audit trail.
 
@@ -127,7 +129,7 @@ The telemetry shape (metric names, labels, log streams) is real — sonda emits 
 
 Light or dark theme follows your site preference where the source UI supports it (Grafana, Prefect). Infrahub ships a single theme.
 
-### Dashboards (Grafana)
+### Dashboards ([Grafana](http://localhost:3000))
 
 <figure class="section-preview" markdown>
 
@@ -165,14 +167,14 @@ Light or dark theme follows your site preference where the source UI supports it
 
 </figure>
 
-### Automation surfaces (Prefect, Infrahub)
+### Automation surfaces ([Prefect](http://localhost:4200), [Infrahub](http://localhost:8000))
 
 <figure class="section-preview" markdown>
 
 ![Prefect flow runs list](../assets/screenshots/prefect-flow-runs-list-light.png#only-light){ .screenshot loading=lazy }
 ![Prefect flow runs list](../assets/screenshots/prefect-flow-runs-list-dark.png#only-dark){ .screenshot loading=lazy }
 
-<figcaption><strong>Prefect — Runs</strong> · `localhost:4200/runs`. Every alert payload the webhook handed off shows up here as a completed flow run. Click one and you see the task graph below.</figcaption>
+<figcaption><strong>Prefect — Runs</strong> · <a href="http://localhost:4200/runs"><code>localhost:4200/runs</code></a>. Every alert payload the webhook handed off shows up here as a completed flow run. Click one and you see the task graph below.</figcaption>
 
 </figure>
 
@@ -189,7 +191,7 @@ Light or dark theme follows your site preference where the source UI supports it
 
 ![Infrahub WorkshopDevice srl1](../assets/screenshots/infrahub-device-detail.png){ .screenshot loading=lazy }
 
-<figcaption><strong>Infrahub — `WorkshopDevice/srl1`</strong> · `localhost:8000`. The intent the flow consults: ASN, Maintenance, Site Name, Role, plus Interfaces and BGP Sessions on the tabs above. Toggle Maintenance here and the next alert for this device is skipped by the policy.</figcaption>
+<figcaption><strong>Infrahub — <code>WorkshopDevice/srl1</code></strong> · <a href="http://localhost:8000"><code>localhost:8000</code></a>. The intent the flow consults: ASN, Maintenance, Site Name, Role, plus Interfaces and BGP Sessions on the tabs above. Toggle Maintenance here and the next alert for this device is skipped by the policy.</figcaption>
 
 </figure>
 
@@ -197,13 +199,22 @@ Light or dark theme follows your site preference where the source UI supports it
 
 ![Infrahub GraphQL Sandbox](../assets/screenshots/infrahub-graphql.png){ .screenshot loading=lazy }
 
-<figcaption><strong>Infrahub — GraphQL Sandbox</strong> · `localhost:8000/graphql`. The exact `DeviceIntent` query the Prefect flow runs against Infrahub. No secret access — anyone can run this and see what the policy sees.</figcaption>
+<figcaption><strong>Infrahub — GraphQL Sandbox</strong> · <a href="http://localhost:8000/graphql"><code>localhost:8000/graphql</code></a>. The exact <code>DeviceIntent</code> query the Prefect flow runs against Infrahub. No secret access — anyone can run this and see what the policy sees.</figcaption>
 
 </figure>
 
-## Driving an incident — `nobs autocon5 flap-interface`
+## Driving an incident
 
-The lab ships with one main incident: a BGP cascade triggered by an interface flap. Run `nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1` and over four minutes you'll watch the interface go down, the BGP session collapse on the hold-down timer, dashboards turn red, alerts fire, and the automation pick it up. Use `--no-cascade` for a flap that only trips `PeerInterfaceFlapping` without bringing a BGP session down — that's the variant Part 1 uses while you're still building the mental model.
+!!! warning "Don't run this yet"
+    This command is used during the workshop parts — not now. Come back here when the guide tells you to.
+
+The lab ships with one main incident: a BGP cascade triggered by an interface flap. Over four minutes you'll watch the interface go down, the BGP session collapse on the hold-down timer, dashboards turn red, alerts fire, and the automation pick it up.
+
+```bash
+nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1
+```
+
+Use `--no-cascade` for a flap that only trips `PeerInterfaceFlapping` without bringing a BGP session down — that's the variant Part 1 uses while you're still building the mental model.
 
 ??? info "How the cascade is wired (operator detail)"
 
