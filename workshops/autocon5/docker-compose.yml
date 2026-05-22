@@ -39,15 +39,18 @@ services:
   # (filtered by the scenario-ids-{srl1,srl2}.txt files sonda-setup writes).
   sonda-server:
     container_name: sonda-server
-    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.9.0}
-    command: ["--port", "8080", "--bind", "0.0.0.0"]
+    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.11.0}
+    command: ["--port", "8080", "--bind", "0.0.0.0", "--catalog", "/catalog"]
+    volumes:
+      - ./sonda/catalog:/catalog:ro
     ports:
       - "8085:8080"
     restart: unless-stopped
 
   # Init container: POSTs each device's scenario file to sonda-server,
   # then writes per-device ID lists to /shared so each telegraf only
-  # scrapes its own device's endpoints.
+  # scrapes its own device's endpoints. Server resolves `pack:` refs
+  # against its own mounted /catalog — no client-side expansion here.
   sonda-setup:
     container_name: sonda-setup
     image: python:3.12-slim
@@ -55,12 +58,10 @@ services:
     environment:
       SONDA_SERVER_URL: "http://sonda-server:8080"
       SCENARIOS_DIR: "/scenarios"
-      SONDA_CATALOG_DIR: "/catalog"
     volumes:
       - ./sonda/scripts/sonda-setup.sh:/scripts/sonda-setup.sh:ro
       - ./sonda/catalog/srl1-metrics.yaml:/scenarios/srl1-metrics.yaml:ro
       - ./sonda/catalog/srl2-metrics.yaml:/scenarios/srl2-metrics.yaml:ro
-      - ./sonda/catalog:/catalog:ro
       - sonda_shared:/shared
     depends_on:
       sonda-server:
@@ -70,7 +71,7 @@ services:
   # to Loki; srl2 streams emit RFC 5424 syslog UDP to Vector (vector:1514).
   sonda-logs:
     container_name: sonda-logs
-    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.9.0}
+    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.11.0}
     entrypoint: ["/sonda"]
     command: ["run", "/catalog/all-logs.yaml"]
     volumes:
