@@ -28,6 +28,10 @@ from rich.table import Table
 _KIND_HELP = "Cascade story to run. `link-failover` mirrors sonda's canonical v2 example."
 
 
+def _normalize_duration(value: str) -> str:
+    return f"{value}s" if value.isdigit() else value
+
+
 def incident(
     device: Annotated[
         str,
@@ -55,7 +59,8 @@ def incident(
         str,
         typer.Option(
             "--duration",
-            help="Scenario duration in sonda's format (e.g. `2m`, `5m`, `30s`).",
+            help="Scenario duration in sonda's format (e.g. `2m`, `5m`, `30s`). Bare integers are treated as seconds.",
+            callback=_normalize_duration,
         ),
     ] = "3m",
     sonda_url: Annotated[
