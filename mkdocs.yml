@@ -129,6 +129,7 @@ nav:
       - Quickstart: quickstart.md
   - AutoCon5 workshop:
       - Overview: workshop/index.md
+      - Tour the stack: workshop/tour.md
       - One workday, one investigation: workshop/guides.md
       - Part 1 — Telemetry and queries: workshop/part-1.md
       - Part 2 — Dashboards: workshop/part-2.md

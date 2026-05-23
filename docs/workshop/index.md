@@ -95,81 +95,9 @@ In words: synthetic telemetry from sonda lands in Prometheus and Loki. Alerting 
 
 The raw telemetry sonda emits is shaped like what a real device puts on the wire: `srl1` looks like a Nokia SR Linux box streaming gNMI (`srl_bgp_oper_state`, `source=srl1`), `srl2` looks like a Cisco/Arista/Juniper box polled over SNMP (`bgpPeerState`, `agent_host=srl2`). Both pipelines land in Prometheus normalized to one canonical schema via per-device Telegraf rename rules, so the queries, dashboards, and alerts you build read against that shared shape regardless of which raw vendor protocol fed them. Part 1 walks both shapes end-to-end.
 
-## Visual reference — the surfaces you'll be looking at
+## Tour the stack
 
-### Dashboards (Grafana)
-
-<figure class="section-preview" markdown>
-
-![BGP States panel](../assets/screenshots/device-health-bgp-states-light.png#only-light){ .screenshot loading=lazy }
-![BGP States panel](../assets/screenshots/device-health-bgp-states-dark.png#only-dark){ .screenshot loading=lazy }
-
-<figcaption><strong>BGP States</strong> · Device Health (srl1) — three peers, two ESTABLISHED (green) and one stuck in ACTIVE (orange). That orange row is the deliberately-broken peer you find in Part 1 with a single intent-vs-reality query.</figcaption>
-
-</figure>
-
-<figure class="section-preview" markdown>
-
-![Recent events panel](../assets/screenshots/workshop-home-recent-events-light.png#only-light){ .screenshot loading=lazy }
-![Recent events panel](../assets/screenshots/workshop-home-recent-events-dark.png#only-dark){ .screenshot loading=lazy }
-
-<figcaption><strong>Recent events</strong> · Workshop Home — every interface UPDOWN log line shows up here, regardless of which device or pipeline emitted it. The feed you watch when you trigger <code>flap-interface</code>.</figcaption>
-
-</figure>
-
-<figure class="section-preview" markdown>
-
-![Currently firing alerts panel](../assets/screenshots/workshop-home-firing-alerts-light.png#only-light){ .screenshot loading=lazy }
-![Currently firing alerts panel](../assets/screenshots/workshop-home-firing-alerts-dark.png#only-dark){ .screenshot loading=lazy }
-
-<figcaption><strong>Currently firing alerts</strong> · Workshop Home — what Alertmanager has live right now. The input the Prefect automation reasons over in Part 3.</figcaption>
-
-</figure>
-
-<figure class="section-preview" markdown>
-
-![Interface Operational Status panel](../assets/screenshots/workshop-lab-interface-oper-light.png#only-light){ .screenshot loading=lazy }
-![Interface Operational Status panel](../assets/screenshots/workshop-lab-interface-oper-dark.png#only-dark){ .screenshot loading=lazy }
-
-<figcaption><strong>Interface Operational Status</strong> · Workshop Lab — the state timeline for srl1's interfaces. You'll learn to read this in Part 1 and add a flap-rate panel right next to it in Part 2.</figcaption>
-
-</figure>
-
-### Automation surfaces (Prefect, Infrahub)
-
-<figure class="section-preview" markdown>
-
-![Prefect flow runs list](../assets/screenshots/prefect-flow-runs-list-light.png#only-light){ .screenshot loading=lazy }
-![Prefect flow runs list](../assets/screenshots/prefect-flow-runs-list-dark.png#only-dark){ .screenshot loading=lazy }
-
-<figcaption><strong>Prefect — Runs</strong> · `localhost:4200/runs`. Every alert payload the webhook handed off shows up here as a completed flow run. Click one and you see the task graph below.</figcaption>
-
-</figure>
-
-<figure class="section-preview" markdown>
-
-![Prefect flow run detail](../assets/screenshots/prefect-flow-run-detail-light.png#only-light){ .screenshot loading=lazy }
-![Prefect flow run detail](../assets/screenshots/prefect-flow-run-detail-dark.png#only-dark){ .screenshot loading=lazy }
-
-<figcaption><strong>Prefect — Flow run detail</strong> · the task graph for `quarantine_bgp` (collect_evidence → evaluate_policy → annotate_decision → ai_rca → quarantine → annotate_action) with the per-task log feed underneath. The audit trail with a UI on top.</figcaption>
-
-</figure>
-
-<figure class="section-preview" markdown>
-
-![Infrahub WorkshopDevice srl1](../assets/screenshots/infrahub-device-detail.png){ .screenshot loading=lazy }
-
-<figcaption><strong>Infrahub — `WorkshopDevice/srl1`</strong> · `localhost:8000`. The intent the flow consults: ASN, Maintenance, Site Name, Role, plus Interfaces and BGP Sessions on the tabs above. Toggle Maintenance here and the next alert for this device is skipped by the policy.</figcaption>
-
-</figure>
-
-<figure class="section-preview" markdown>
-
-![Infrahub GraphQL Sandbox](../assets/screenshots/infrahub-graphql.png){ .screenshot loading=lazy }
-
-<figcaption><strong>Infrahub — GraphQL Sandbox</strong> · `localhost:8000/graphql`. The exact `DeviceIntent` query the Prefect flow runs against Infrahub. No secret access — anyone can run this and see what the policy sees.</figcaption>
-
-</figure>
+Six UIs, one URL each. **[Tour the stack](tour.md)** is the single reference for how to reach Sonda server, Prometheus, Alertmanager, Grafana, Prefect, and Infrahub — what to click in each one, and where it shows up across the four parts. Keep it open in a second tab.
 
 ## Driving an incident — `nobs autocon5 flap-interface`
 
