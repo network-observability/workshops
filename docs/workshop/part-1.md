@@ -27,15 +27,6 @@ Your senior buddy walks you through the lab's telemetry shape — what *normal* 
   end="#### 5. Find the broken peer — BGP"
 %}
 
-<figure class="section-preview" markdown>
-
-![BGP States — three peers, one stuck in ACTIVE](../assets/screenshots/device-health-bgp-states-light.png#only-light){ .screenshot loading=lazy }
-![BGP States — three peers, one stuck in ACTIVE](../assets/screenshots/device-health-bgp-states-dark.png#only-dark){ .screenshot loading=lazy }
-
-<figcaption>The visual you'll be aiming for: srl1's three BGP peers — two ESTABLISHED, one stuck in ACTIVE. By exercise 5 you'll have the query pattern to find that one orange row.</figcaption>
-
-</figure>
-
 #### 5. Find the broken peer — BGP
 
 {%
@@ -44,14 +35,6 @@ Your senior buddy walks you through the lab's telemetry shape — what *normal* 
   end="### The bridge — metric to log"
 %}
 
-<figure class="section-preview" markdown>
-
-![Loki Explore — bridge query on the stuck peer](../assets/screenshots/loki-explore-bridge-light.png#only-light){ .screenshot loading=lazy }
-![Loki Explore — bridge query on the stuck peer](../assets/screenshots/loki-explore-bridge-dark.png#only-dark){ .screenshot loading=lazy }
-
-<figcaption>What the metric-to-log bridge looks like in Loki Explore — same labels, two query languages. The single most-cited pattern in this workshop.</figcaption>
-
-</figure>
 
 ### The bridge — metric to log
 

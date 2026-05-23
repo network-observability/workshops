@@ -407,13 +407,11 @@ sum by (device) (count_over_time({vendor_facility_process="UPDOWN"}[5m]))
 
 Switch the panel to `Time series`. You should see two lines (one per device) showing UPDOWN events per 5-minute window. With the lab in steady state the count sits at **a handful per device** — sonda emits a slow trickle, well below the `PeerInterfaceFlapping` alert's `> 3 events in 2 minutes` threshold.
 
-Trigger another flap:
+**Stop and notice.** This is exactly how the `PeerInterfaceFlapping` alert reads logs in Part 3 — same shape, just with a `> 3` threshold and a `for: 30s` clause. Any LogQL aggregation query is a candidate alert rule.
 
-```bash
-nobs autocon5 flap-interface --device srl1 --interface ethernet-1/10
-```
+??? tip "Want to see the line jump now?"
 
-Within ~30 seconds the `srl1` line jumps. **Stop and notice.** This is exactly how the `PeerInterfaceFlapping` alert reads logs in Part 3 — same shape, just with a `> 3` threshold and a `for: 30s` clause. Any LogQL aggregation query is a candidate alert rule.
+    If you're running ahead or want to verify the query before the capstone, trigger a quick flap: `nobs autocon5 flap-interface --device srl1 --interface ethernet-1/10`. Within ~30 seconds the `srl1` line climbs. The capstone exercise (12) drives a full cascade that will show this too — no need to run it twice.
 
 #### 10. Pipeline awareness on logs
 
