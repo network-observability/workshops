@@ -24,17 +24,19 @@ The workshop runs ~21 containers. You only ever look at six of them: **Sonda ser
 
 The Sonda HTTP API at <http://localhost:8085> is the box that pretends to be `srl1` and `srl2`. Every metric Prometheus stores and every log line Loki indexes during the workshop ultimately came out of a Sonda scenario. There's no UI — it's an HTTP API, and you'll mostly poke it with `curl` (or with `nobs autocon5 scenarios`).
 
+A single workshop boot registers **76 scenarios** — sonda-server fans each `kind: composable` pack out into one scenario per metric (38 per device, 2 devices). One scenario emits one metric series; the ID is a server-assigned UUID and the `name` is the metric name (`srl_bgp_oper_state`, `bgpPeerState`, `cpu_used`, …).
+
 ### Endpoints worth knowing
 
 | Endpoint | What it returns |
 |----------|-----------------|
 | `GET /health` | Liveness probe. Returns `{"status":"ok"}`. |
-| `GET /scenarios` | Every scenario currently registered on the server, with `id`, `name`, `state`, `elapsed_secs`, `degraded`. |
-| `GET /scenarios/{id}` | One scenario's full body (the YAML you POSTed). |
-| `GET /scenarios/{id}/stats` | Per-scenario tick counter, emitted sample count, sink errors. |
-| `GET /scenarios/{id}/metrics` | The raw Prometheus-text snapshot Telegraf scrapes. This is the ground truth for what the device "emits". |
+| `GET /scenarios` | Every scenario currently registered on the server, with `id` (UUID), `name` (metric name), `state`, `elapsed_secs`, `degraded`. |
+| `GET /scenarios/{uuid}` | One scenario's live handle: identity (`id`, `name`), `state`, `elapsed_secs`, plus an embedded `stats` block. |
+| `GET /scenarios/{uuid}/stats` | Per-scenario emission counters: `total_events`, `current_rate`, `target_rate`, `bytes_emitted`, `errors`, `consecutive_failures`, gap/burst state, and `last_successful_write_at`. |
+| `GET /scenarios/{uuid}/metrics` | The single Prometheus-text sample this scenario is emitting right now. Drained on read — telegraf is also a reader, see the curl example below. |
 | `POST /scenarios` | Register a new scenario. The cascade flap (`nobs autocon5 flap-interface`) is one of these. |
-| `DELETE /scenarios/{id}` | Stop and unregister a scenario. |
+| `DELETE /scenarios/{uuid}` | Stop and unregister a scenario. |
 
 ### Try it
 
@@ -45,15 +47,17 @@ nobs autocon5 scenarios
 ```
 
 ```text
-                       Sonda scenarios
-┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━┓
-┃ ID                         ┃ Name                          ┃ Status ┃ Elapsed ┃
-┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━┩
-│ bgp_peer_10_1_2_2          │ srlinux_gnmi_bgp_raw          │ running │ 312.4   │
-│ bgp_peer_10_1_99_2_broken  │ srlinux_gnmi_bgp_raw          │ running │ 312.4   │
-│ intf_ethernet_1_11_broken  │ srlinux_gnmi_interface_raw    │ running │ 312.4   │
-│ …                          │ …                             │ …       │ …       │
-└────────────────────────────┴───────────────────────────────┴─────────┴─────────┘
+                                Sonda scenarios
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━┓
+┃ ID                                   ┃ Name         ┃  Status ┃      Elapsed ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━━┩
+│ 43ce9ec6-69e6-4399-b391-658aef80ab9e │ srl_interfa… │ running │ 46.807211768 │
+│ 89e1545f-fbd7-4697-8c91-eea2525676a1 │ bgpPeerInPr… │ running │ 46.792552712 │
+│ bfb5cb1e-9347-4dae-beea-f4b96f157c9f │ srl_interfa… │ running │ 46.807401224 │
+│ 113cbb45-a5b8-4ad8-8e37-48d6817688fc │ bgpPeerOutP… │ running │ 46.793196957 │
+│ bc393eea-4aa0-49dd-8310-7cdd924812ae │ bgpPeerState │ running │  46.79315354 │
+│ …                                    │ …            │ …       │ …            │
+└──────────────────────────────────────┴──────────────┴─────────┴──────────────┘
 ```
 
 The raw version — same data, just `curl`:
@@ -64,34 +68,36 @@ curl -s http://localhost:8085/scenarios | jq '.scenarios[0]'
 
 ```json
 {
-  "id": "bgp_peer_10_1_99_2_broken",
-  "name": "srlinux_gnmi_bgp_raw",
+  "id": "43ce9ec6-69e6-4399-b391-658aef80ab9e",
+  "name": "srl_interface_out_octets",
   "state": "running",
-  "elapsed_secs": 312.4,
+  "elapsed_secs": 46.854853114,
   "degraded": false
 }
 ```
 
-To see the actual Prometheus-text output a single scenario is emitting (this is the byte-for-byte input Telegraf reads, before any rename or normalization):
+To see the actual Prometheus-text sample a single scenario is emitting — the byte-for-byte input Telegraf reads, before any rename or normalization — pick a scenario UUID and curl its `/metrics`. Telegraf scrapes the same endpoint every 10 seconds and drains the buffer on every read, so under steady state your curl will see empty output every time. Pause both Telegrafs for one cycle, let the buffer fill, then curl:
 
 ```bash
-curl -s http://localhost:8085/scenarios/bgp_peer_10_1_99_2_broken/metrics
+# pick the UUID of the srl1 broken-peer oper-state scenario
+ID=$(curl -s http://localhost:8085/scenarios \
+  | jq -r '.scenarios[] | select(.name=="srl_bgp_oper_state") | .id' \
+  | head -1)
+
+docker pause telegraf-srl1 telegraf-srl2 && sleep 12
+curl -s "http://localhost:8085/scenarios/${ID}/metrics"
+docker unpause telegraf-srl1 telegraf-srl2
 ```
 
 ```text
-# HELP srl_bgp_oper_state BGP peer operational state
-# TYPE srl_bgp_oper_state gauge
-srl_bgp_oper_state{source="srl1",peer_address="10.1.99.2",neighbor_asn="65102"} 5
-# HELP srl_bgp_received_routes Routes received from this peer
-# TYPE srl_bgp_received_routes gauge
-srl_bgp_received_routes{source="srl1",peer_address="10.1.99.2",neighbor_asn="65102"} 0
+srl_bgp_oper_state{afi_safi_name="ipv4-unicast",collection_type="gnmi",name="default",neighbor_asn="65102",peer_address="10.1.99.2",source="srl1"} 5 1779540408007
 ```
 
-Compare that raw shape with what Prometheus stores after Telegraf renames it (`bgp_oper_state{device="srl1",...}`) and you've seen the entire normalization pipeline end-to-end.
+Note the metric name (`srl_bgp_oper_state`) and the `source="srl1"` tag — that's the gNMI shape SR Linux puts on the wire. Compare it to what Prometheus stores after Telegraf renames it (`bgp_oper_state{device="srl1",...}`) and you've seen the entire normalization pipeline end-to-end. Part 1's exercise 6 walks both sides.
 
 ### Inspect the catalog from inside the container
 
-The catalog of packs and scenarios Sonda resolves `pack:` refs against is mounted at `/catalog` inside the `sonda-server` container. The `sonda` CLI is also baked in — `sonda-server` dispatches `run`, `list`, `show`, `new` straight to it. Listing every composable pack the server can reference:
+The catalog of packs and scenarios Sonda resolves `pack:` refs against is mounted at `/catalog` inside the `sonda-server` container. The `sonda` CLI is also baked in — the container ships both `sonda-server` and the `/sonda` binary, so you can run any CLI command against the same catalog the server is using:
 
 ```bash
 docker compose --project-name autocon5 exec sonda-server \
@@ -99,14 +105,17 @@ docker compose --project-name autocon5 exec sonda-server \
 ```
 
 ```text
-ID                            KIND        SIGNAL
-srlinux_gnmi_bgp_raw          composable  metrics
-srlinux_gnmi_interface_raw    composable  metrics
-cisco_snmp_bgp_raw            composable  metrics
-cisco_snmp_interface_raw      composable  metrics
-srlinux_ping                  composable  metrics
-…
+KIND        NAME                        TAGS  DESCRIPTION
+composable  cisco_snmp_bgp_raw                Cisco-style SNMP BGP per-peer metrics (raw, pre-normalization, BGP4-MIB / CISCO-BGP4-MIB)
+composable  cisco_snmp_interface_raw          Cisco-style SNMP per-interface metrics (raw, pre-normalization, IF-MIB)
+composable  srlinux_gnmi_bgp                  SR Linux gNMI BGP per-peer metrics (Telegraf-normalized)
+composable  srlinux_gnmi_bgp_raw              SR Linux gNMI BGP per-peer metrics (raw, pre-normalization)
+composable  srlinux_gnmi_interface            SR Linux gNMI per-interface metrics (Telegraf-normalized)
+composable  srlinux_gnmi_interface_raw        SR Linux gNMI per-interface metrics (raw, pre-normalization)
+composable  srlinux_ping                      Ping reachability + latency (Telegraf inputs.ping shape)
 ```
+
+Drop `--kind composable` to also list runnable scenarios in the catalog, or swap `list` for `show <name>` to dump a pack's raw YAML.
 
 ### Where you'll see this in the workshop
 
