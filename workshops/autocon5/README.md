@@ -35,46 +35,15 @@ Yes, once images are pulled. The only outbound call during the workshop is the o
 **Is anything sent to a remote service?**
 No, by default. All telemetry, alerts, and dashboards are local. The AI RCA step is opt-in (`ENABLE_AI_RCA=false` by default) and only calls OpenAI or Anthropic if you set a key in `.env`.
 
-**Why simulated devices instead of real SR Linux containers?**
-Real SR Linux containers need 4–6 GB of RAM each, which would price most laptops out of a multi-device lab. Sonda emits the same gNMI metric shapes and syslog events a real device would, so the queries you write here are the same ones you'd run against production. If you want the full lab with real containers, the companion repo is [`network-observability-lab`](https://github.com/network-observability/network-observability-lab).
+**Why simulated devices instead of real network OS containers?**
+Real SR Linux or vEOS containers need 4–6 GB of RAM each, which would price most laptops out of a multi-device lab. Sonda emits the same raw shapes a real device would — gNMI for `srl1` (SR Linux-style), SNMP for `srl2` (Cisco/Arista/Juniper-style) — plus the matching syslog events, so the queries you write here are the same ones you'd run against production. If you want the full lab with real containers, the companion repo is [`network-observability-lab`](https://github.com/network-observability/network-observability-lab).
 
 **Can I keep using this after the workshop?**
 Yes — fork the repo and the stack is yours. `nobs autocon5 destroy` cleanly tears it down when you're finished.
 
 ## Before you arrive
 
-Run the preflight from anywhere in the repo:
-
-```bash
-uv sync --all-packages          # install workspace deps into .venv/
-nobs preflight
-```
-
-It checks Docker, Compose v2, Python, RAM, free disk, and outbound reachability to `ghcr.io`, `docker.io`, and `github.com`.
-Resolve any `[FAIL]` lines before the workshop.
-
-You also need:
-
-- **Docker** (or Docker Desktop / Colima / Rancher Desktop) with **Compose v2**.
-- **[uv](https://docs.astral.sh/uv/)** to install and run the workshop's `nobs` CLI.
-  Install with `curl -LsSf https://astral.sh/uv/install.sh | sh`.
-  uv installs its own pinned Python, so a system Python isn't required.
-- ~8 GB of free RAM and ~5 GB of free disk while the stack is running
-
-## Bring it up
-
-The very first time, in this order:
-
-```bash
-uv sync --all-packages          # install workspace deps into .venv/
-uv run nobs setup               # bootstrap .env + preflight
-uv run nobs autocon5 up         # first run pulls images, ~5–10 min
-uv run nobs autocon5 status     # repeat until every row says 'ok'
-uv run nobs autocon5 load-infrahub
-```
-
-> **Tip — drop the prefix from inside this directory.**
-> Examples below pin `nobs autocon5` for clarity, but from inside `workshops/autocon5/` you can drop the workshop name: `nobs up`, `nobs status`, `nobs alerts` resolve to the same commands via cwd auto-mount.
+Follow the repo's [Quickstart](../../README.md#quickstart) for the one-time setup — install Docker and [uv](https://docs.astral.sh/uv/), clone the repo, `uv sync --all-packages`, activate `.venv/`, then `nobs autocon5 up` and `nobs autocon5 load-infrahub`. Budget ~8 GB of free RAM and ~5 GB of disk while the stack is running. Run `nobs preflight` from anywhere in the repo to confirm Docker, Compose v2, RAM, disk, and outbound reachability are all green — do this the night before so any `[FAIL]` lines have time to fix.
 
 Once the stack is up and Infrahub is seeded, you'll have:
 
@@ -108,8 +77,7 @@ Alerting rules in both stores route through Alertmanager into a FastAPI webhook,
 The flow consults **Infrahub** for source-of-truth intent (is this peer expected up? is the device in maintenance?) before deciding to **quarantine**, **skip**, or just **audit** — and optionally runs an AI RCA against the same evidence bundle.
 Every decision is annotated back into Loki for the audit trail.
 
-The telemetry shape (metric names, labels, log streams) is real — sonda emits the same patterns a Nokia SR Linux device would.
-That's why the queries, dashboards, and alerts you build look exactly like what you'd write against a production network.
+The raw telemetry sonda emits is shaped like what a real device puts on the wire: `srl1` looks like a Nokia SR Linux box streaming gNMI (`srl_bgp_oper_state`, `source=srl1`), `srl2` looks like a Cisco/Arista/Juniper box polled over SNMP (`bgpPeerState`, `agent_host=srl2`). Both pipelines land in Prometheus normalized to one canonical schema via per-device Telegraf rename rules, so the queries, dashboards, and alerts you build read against that shared shape regardless of which raw vendor protocol fed them. Part 1 walks both shapes end-to-end.
 
 ## Driving the BGP cascade (`flap-interface`)
 

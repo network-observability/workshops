@@ -102,7 +102,9 @@ The webhook flow runs the same decision tree on every alert payload. The four ou
 | **In-maintenance → skip** | Device's `maintenance` flag is `true` in Infrahub | `skip` | Audit annotation only |
 | **Resolved → audit trail** | Alert resolved | `resolved` | Audit annotation only |
 
-Annotations land in Loki under `{source="prefect", workflow="autocon5_quarantine_bgp"}` with a `decision` label that takes one of: `proceed`, `skip`, `resolved`. They're visible in **Recent events** feeds on both **Workshop Home** and **Device Health**.
+There's a fifth outcome the policy can emit but that `try-it` doesn't exercise: **`stop`** — fires when the device on the alert isn't in Infrahub at all (the SoT lookup returns nothing). The flow can't decide `proceed` vs `skip` without intent data, so it bails early with `decision=stop` and a `device not found in Infrahub` reason. You'll typically only see it if an alert fires before `nobs autocon5 load-infrahub` has finished seeding the schema — rare, but real.
+
+Annotations land in Loki under `{source="prefect", workflow="autocon5_quarantine_bgp"}` with a `decision` label that takes one of: `proceed`, `skip`, `resolved`, `stop`. They're visible in **Recent events** feeds on both **Workshop Home** and **Device Health**.
 
 ## The exercises
 
@@ -435,9 +437,10 @@ Take a minute on it before you scroll. Two hints if you're stuck:
 | skip      |   1-2 |
 | resolved  |   1-2 |
 | (empty)   |   1-3 |  ← AI RCA annotations, which carry an `ai_rca` label, not `decision`
+| stop      |   0-1 |  ← only present if an alert beat Infrahub schema load (see "four paths" above)
 ```
 
-The exact counts depend on how many paths you've driven by hand on top of `try-it`. If you get a single row, you've collapsed too aggressively. If you get dozens of rows, you've left a high-cardinality label unaggregated.
+The exact counts depend on how many paths you've driven by hand on top of `try-it`. The `stop` row may or may not be there — both states are valid. If you get a single row total, you've collapsed too aggressively. If you get dozens of rows, you've left a high-cardinality label unaggregated.
 
 ### 6. Turn on AI RCA — same evidence, different voice
 
@@ -510,8 +513,16 @@ Open the Prefect UI's Automations page: <http://localhost:4200/automations>.
 1. Click **New automation**.
 2. **Trigger** → **Flow run state changed**. Pick the flow `quarantine-bgp-flow`. Target state: `Completed`.
 3. **Action** → choose one:
-    - **Send a notification** (simplest) — pick a notification block. None ship pre-wired in the lab, so you'll create a stub one in the Blocks page (a `Notification — Debug Print` block works for inspection).
-    - **Run a deployment** — chain to another flow. Useful if you have a follow-up workflow (paging Slack, opening a ticket).
+    - **Run a deployment** (simplest, no setup) — chain to another flow. Pick the `alert-receiver` deployment and paste this into the parameters form (the UI pre-fills the schema from the deployment; you fill the values):
+        ```json
+        {
+          "alertname": "automation-fired",
+          "status": "firing",
+          "alert_group": {"alerts": [{"labels": {"device": "srl1", "peer_address": "10.1.2.2", "afi_safi_name": "ipv4-unicast"}}], "groupLabels": {"alertname": "automation-fired"}, "status": "firing"}
+        }
+        ```
+        This is the same payload shape Step 4B used as a direct trigger — the automation will kick `alert-receiver` with a synthesised alert each time `quarantine_bgp_flow` completes.
+    - **Send a notification** — needs a notification block (Slack, Discord, Mattermost, PagerDuty, email, etc.) configured with credentials first. None ship pre-wired in the lab. Skip unless you have a target system you want to wire up live.
 4. Save the automation.
 
 Now re-trigger any path:
@@ -520,12 +531,16 @@ Now re-trigger any path:
 nobs autocon5 try-it --auto
 ```
 
-Open the automation's run history on the Prefect UI — each `quarantine_bgp_flow` completion should fire the automation. If you wired a debug-print notification, check the Prefect server logs for the printed payload (`docker compose --project-name autocon5 logs prefect-server | grep -i automation`).
+Open <http://localhost:4200/runs> and sort by **Start Time** (newest first). Each `quarantine_bgp_flow` completion should fire the automation, which kicks off a new `alert-receiver` flow run — visible as a fresh `alert-receiver` row with a random run-name. Click into it and the `alert_receiver` task logs will show the synthesised payload being routed. The full chain is also tailable from the CLI:
+
+```bash
+nobs autocon5 logs prefect-flows
+```
 
 **Stop and notice.** You just composed two layers of "trigger → match → action":
 
 - Layer 1 (the alert pipeline): Alertmanager fires `BgpSessionNotUp` → webhook → `quarantine_bgp_flow` → `decision=proceed` → silence.
-- Layer 2 (the automation): `quarantine_bgp_flow` completed → automation matched → notification fired.
+- Layer 2 (the automation): `quarantine_bgp_flow` completed → automation matched → `alert-receiver` deployment ran.
 
 Same shape, different transport. In production this is how an incident-response platform composes — each layer narrows the trigger and adds context for the next layer.
 

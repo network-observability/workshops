@@ -54,9 +54,9 @@ By lunchtime you'll have queried real-shaped telemetry, made a dashboard answer 
 
     No, by default. All telemetry, alerts, and dashboards are local. The AI RCA step is opt-in (`ENABLE_AI_RCA=false` by default) and only calls OpenAI or Anthropic if you set a key in `.env`.
 
-??? question "Why simulated devices instead of real SR Linux containers?"
+??? question "Why simulated devices instead of real network OS containers?"
 
-    Real SR Linux containers need 4–6 GB of RAM each, which would price most laptops out of a multi-device lab. Sonda emits the same gNMI metric shapes and syslog events a real device would, so the queries you write here are the same ones you'd run against production. If you want the full lab with real containers, the companion repo is [`network-observability-lab`](https://github.com/network-observability/network-observability-lab).
+    Real SR Linux or vEOS containers need 4–6 GB of RAM each, which would price most laptops out of a multi-device lab. Sonda emits the same raw shapes a real device would — gNMI for `srl1` (SR Linux-style), SNMP for `srl2` (Cisco/Arista/Juniper-style) — plus the matching syslog events, so the queries you write here are the same ones you'd run against production. If you want the full lab with real containers, the companion repo is [`network-observability-lab`](https://github.com/network-observability/network-observability-lab).
 
 ??? question "Can I keep using this after the workshop?"
 
@@ -64,35 +64,7 @@ By lunchtime you'll have queried real-shaped telemetry, made a dashboard answer 
 
 ## Before you arrive
 
-Run the preflight from anywhere in the repo:
-
-```bash
-nobs preflight
-```
-
-It checks Docker, Compose v2, Python, RAM, free disk, and outbound reachability to `ghcr.io`, `docker.io`, and `github.com`. Resolve any `[FAIL]` lines before the workshop.
-
-You also need:
-
-- **Docker** (or Docker Desktop / Colima / Rancher Desktop) with **Compose v2**.
-- **[uv](https://docs.astral.sh/uv/)** to install and run the workshop's `nobs` CLI. Install with `curl -LsSf https://astral.sh/uv/install.sh | sh`. uv installs its own pinned Python, so a system Python isn't required.
-- ~8 GB of free RAM and ~5 GB of free disk while the stack is running.
-
-## Bring it up
-
-The very first time, in this order:
-
-```bash
-uv sync --all-packages          # install workspace deps into .venv/
-uv run nobs setup               # bootstrap .env + preflight
-uv run nobs autocon5 up         # first run pulls images, ~5–10 min
-uv run nobs autocon5 status     # repeat until every row says 'ok'
-uv run nobs autocon5 load-infrahub
-```
-
-!!! tip "Drop the prefix from inside the workshop directory"
-
-    Examples below pin `nobs autocon5` for clarity, but from inside `workshops/autocon5/` you can drop the workshop name: `nobs up`, `nobs status`, `nobs alerts` resolve to the same commands via cwd auto-mount.
+Follow the **[Quickstart](../quickstart.md)** for the one-time setup — install Docker and [uv](https://docs.astral.sh/uv/), clone the repo, `uv sync --all-packages`, activate `.venv/`, then `nobs autocon5 up` and `nobs autocon5 load-infrahub`. Budget ~8 GB of free RAM and ~5 GB of disk while the stack is running. Run `nobs preflight` from anywhere in the repo to confirm Docker, Compose v2, RAM, disk, and outbound reachability are all green — do this the night before so any `[FAIL]` lines have time to fix.
 
 Once the stack is up and Infrahub is seeded, you'll have:
 
@@ -123,85 +95,11 @@ If anything misbehaves during the workshop, ask the instructor — they have the
 
 In words: synthetic telemetry from sonda lands in Prometheus and Loki. Alerting rules in both stores route through Alertmanager into a FastAPI webhook, which fans out to a Prefect flow. The flow consults **Infrahub** for source-of-truth intent (is this peer expected up? is the device in maintenance?) before deciding to **quarantine**, **skip**, or just **audit** — and optionally runs an AI RCA against the same evidence bundle. Every decision is annotated back into Loki for the audit trail.
 
-The telemetry shape (metric names, labels, log streams) is real — sonda emits the same patterns a Nokia SR Linux device would. That's why the queries, dashboards, and alerts you build look exactly like what you'd write against a production network.
+The raw telemetry sonda emits is shaped like what a real device puts on the wire: `srl1` looks like a Nokia SR Linux box streaming gNMI (`srl_bgp_oper_state`, `source=srl1`), `srl2` looks like a Cisco/Arista/Juniper box polled over SNMP (`bgpPeerState`, `agent_host=srl2`). Both pipelines land in Prometheus normalized to one canonical schema via per-device Telegraf rename rules, so the queries, dashboards, and alerts you build read against that shared shape regardless of which raw vendor protocol fed them. Part 1 walks both shapes end-to-end.
 
-## Visual reference — the surfaces you'll be looking at
+## Tour the stack
 
-Light or dark theme follows your site preference where the source UI supports it (Grafana, Prefect). Infrahub ships a single theme.
-
-### Dashboards ([Grafana](http://localhost:3000))
-
-<figure class="section-preview" markdown>
-
-![BGP States panel](../assets/screenshots/device-health-bgp-states-light.png#only-light){ .screenshot loading=lazy }
-![BGP States panel](../assets/screenshots/device-health-bgp-states-dark.png#only-dark){ .screenshot loading=lazy }
-
-<figcaption><strong>BGP States</strong> · Device Health (srl1) — three peers, two ESTABLISHED (green) and one stuck in ACTIVE (orange). That orange row is the deliberately-broken peer you find in Part 1 with a single intent-vs-reality query.</figcaption>
-
-</figure>
-
-<figure class="section-preview" markdown>
-
-![Recent events panel](../assets/screenshots/workshop-home-recent-events-light.png#only-light){ .screenshot loading=lazy }
-![Recent events panel](../assets/screenshots/workshop-home-recent-events-dark.png#only-dark){ .screenshot loading=lazy }
-
-<figcaption><strong>Recent events</strong> · Workshop Home — every interface UPDOWN log line shows up here, regardless of which device or pipeline emitted it. The feed you watch when you trigger <code>flap-interface</code>.</figcaption>
-
-</figure>
-
-<figure class="section-preview" markdown>
-
-![Currently firing alerts panel](../assets/screenshots/workshop-home-firing-alerts-light.png#only-light){ .screenshot loading=lazy }
-![Currently firing alerts panel](../assets/screenshots/workshop-home-firing-alerts-dark.png#only-dark){ .screenshot loading=lazy }
-
-<figcaption><strong>Currently firing alerts</strong> · Workshop Home — what Alertmanager has live right now. The input the Prefect automation reasons over in Part 3.</figcaption>
-
-</figure>
-
-<figure class="section-preview" markdown>
-
-![Interface Operational Status panel](../assets/screenshots/workshop-lab-interface-oper-light.png#only-light){ .screenshot loading=lazy }
-![Interface Operational Status panel](../assets/screenshots/workshop-lab-interface-oper-dark.png#only-dark){ .screenshot loading=lazy }
-
-<figcaption><strong>Interface Operational Status</strong> · Workshop Lab — the state timeline for srl1's interfaces. You'll learn to read this in Part 1 and add a flap-rate panel right next to it in Part 2.</figcaption>
-
-</figure>
-
-### Automation surfaces ([Prefect](http://localhost:4200), [Infrahub](http://localhost:8000))
-
-<figure class="section-preview" markdown>
-
-![Prefect flow runs list](../assets/screenshots/prefect-flow-runs-list-light.png#only-light){ .screenshot loading=lazy }
-![Prefect flow runs list](../assets/screenshots/prefect-flow-runs-list-dark.png#only-dark){ .screenshot loading=lazy }
-
-<figcaption><strong>Prefect — Runs</strong> · <a href="http://localhost:4200/runs"><code>localhost:4200/runs</code></a>. Every alert payload the webhook handed off shows up here as a completed flow run. Click one and you see the task graph below.</figcaption>
-
-</figure>
-
-<figure class="section-preview" markdown>
-
-![Prefect flow run detail](../assets/screenshots/prefect-flow-run-detail-light.png#only-light){ .screenshot loading=lazy }
-![Prefect flow run detail](../assets/screenshots/prefect-flow-run-detail-dark.png#only-dark){ .screenshot loading=lazy }
-
-<figcaption><strong>Prefect — Flow run detail</strong> · the task graph for `quarantine_bgp` (collect_evidence → evaluate_policy → annotate_decision → ai_rca → quarantine → annotate_action) with the per-task log feed underneath. The audit trail with a UI on top.</figcaption>
-
-</figure>
-
-<figure class="section-preview" markdown>
-
-![Infrahub WorkshopDevice srl1](../assets/screenshots/infrahub-device-detail.png){ .screenshot loading=lazy }
-
-<figcaption><strong>Infrahub — <code>WorkshopDevice/srl1</code></strong> · <a href="http://localhost:8000"><code>localhost:8000</code></a>. The intent the flow consults: ASN, Maintenance, Site Name, Role, plus Interfaces and BGP Sessions on the tabs above. Toggle Maintenance here and the next alert for this device is skipped by the policy.</figcaption>
-
-</figure>
-
-<figure class="section-preview" markdown>
-
-![Infrahub GraphQL Sandbox](../assets/screenshots/infrahub-graphql.png){ .screenshot loading=lazy }
-
-<figcaption><strong>Infrahub — GraphQL Sandbox</strong> · <a href="http://localhost:8000/graphql"><code>localhost:8000/graphql</code></a>. The exact <code>DeviceIntent</code> query the Prefect flow runs against Infrahub. No secret access — anyone can run this and see what the policy sees.</figcaption>
-
-</figure>
+Six UIs, one URL each. **[Tour the stack](tour.md)** is the single reference for how to reach Sonda server, Prometheus, Alertmanager, Grafana, Prefect, and Infrahub — what to click in each one, and where it shows up across the four parts. Keep it open in a second tab.
 
 ## Driving an incident
 

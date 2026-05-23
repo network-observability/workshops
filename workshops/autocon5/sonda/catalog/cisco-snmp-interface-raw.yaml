@@ -11,38 +11,37 @@ name: cisco_snmp_interface_raw
 description: "Cisco-style SNMP per-interface metrics (raw, pre-normalization, IF-MIB)"
 category: network
 
-pack:
-  shared_labels:
-    agent_host: ""         # Telegraf renames -> device
-    ifDescr: ""            # Telegraf renames -> name
-    collection_type: snmp
+shared_labels:
+  agent_host: ""         # Telegraf renames -> device
+  ifDescr: ""            # Telegraf renames -> name
+  collection_type: snmp
 
-  metrics:
-    # IF-MIB::ifAdminStatus — 1=up, 2=down, 3=testing
-    - name: ifAdminStatus
-      generator:
-        type: constant
-        value: 1.0
+metrics:
+  # IF-MIB::ifAdminStatus — 1=up, 2=down, 3=testing
+  - name: ifAdminStatus
+    generator:
+      type: constant
+      value: 1.0
 
-    # IF-MIB::ifOperStatus — 1=up, 2=down, 3=testing, 4=unknown, 5=dormant,
-    # 6=notPresent, 7=lowerLayerDown
-    - name: ifOperStatus
-      generator:
-        type: constant
-        value: 1.0
+  # IF-MIB::ifOperStatus — 1=up, 2=down, 3=testing, 4=unknown, 5=dormant,
+  # 6=notPresent, 7=lowerLayerDown
+  - name: ifOperStatus
+    generator:
+      type: constant
+      value: 1.0
 
-    # IF-MIB::ifHCInOctets — 64-bit counter of input octets.
-    # Step generator simulates a steady ~125 KB/s trickle (1 Mbps) once
-    # Telegraf rewrites to a counter type via remote_write.
-    - name: ifHCInOctets
-      generator:
-        type: step
-        start: 0.0
-        step_size: 125000.0
+  # IF-MIB::ifHCInOctets — 64-bit counter of input octets.
+  # Step generator simulates a steady ~125 KB/s trickle (1 Mbps) once
+  # Telegraf rewrites to a counter type via remote_write.
+  - name: ifHCInOctets
+    generator:
+      type: step
+      start: 0.0
+      step_size: 125000.0
 
-    # IF-MIB::ifHCOutOctets — 64-bit counter of output octets.
-    - name: ifHCOutOctets
-      generator:
-        type: step
-        start: 0.0
-        step_size: 62500.0
+  # IF-MIB::ifHCOutOctets — 64-bit counter of output octets.
+  - name: ifHCOutOctets
+    generator:
+      type: step
+      start: 0.0
+      step_size: 62500.0

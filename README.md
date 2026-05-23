@@ -126,17 +126,26 @@ It checks Docker, Compose v2, RAM, free disk, and outbound reachability to the i
 
 ## Quickstart
 
+The very first time, in this order:
+
 ```bash
 git clone https://github.com/network-observability/workshops.git
 cd workshops
 
-uv sync --all-packages
-uv run nobs setup
-uv run nobs autocon5 up
-uv run nobs autocon5 load-infrahub
+uv sync --all-packages          # install workspace deps into .venv/
+source .venv/bin/activate       # put nobs on PATH for the rest of the session
+nobs setup                      # bootstrap .env + preflight
+nobs autocon5 up                # first run pulls images, ~5–10 min
+nobs autocon5 status            # repeat until every row says 'ok'
+nobs autocon5 load-infrahub
 # ... when you're done ...
-uv run nobs autocon5 down
+nobs autocon5 down              # stop everything but keep volumes
+nobs autocon5 destroy           # full reset (drops volumes too)
 ```
+
+Activating `.venv/` is what lets you drop the `uv run` prefix — `nobs` lives in `.venv/bin/` once `uv sync` finishes. If you'd rather skip the activation step, prefix every command with `uv run` (`uv run nobs setup`, `uv run nobs autocon5 up`, ...) and the rest of this guide reads the same.
+
+From inside a workshop directory the workshop name is optional too: `cd workshops/autocon5 && nobs up` is the same as `nobs autocon5 up`.
 
 Each workshop's own README walks through the agenda and the hands-on parts.
 
