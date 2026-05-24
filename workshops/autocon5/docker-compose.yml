@@ -27,7 +27,6 @@ volumes:
   infrahub_cache_data:
   infrahub_mq_data:
   infrahub_storage_data:
-  sonda_shared:
 
 services:
   # =========================================================================
@@ -35,11 +34,11 @@ services:
   # =========================================================================
 
   # Both devices register their baseline scenarios on sonda-server. Each
-  # telegraf scrapes its own per-device /scenarios/{id}/metrics endpoints
-  # (filtered by the scenario-ids-{srl1,srl2}.txt files sonda-setup writes).
+  # telegraf scrapes the aggregate /metrics endpoint, filtered by a device
+  # label (`source` for srl1's gNMI shape, `agent_host` for srl2's SNMP shape).
   sonda-server:
     container_name: sonda-server
-    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.11.0}
+    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.12.1}
     command: ["--port", "8080", "--bind", "0.0.0.0", "--catalog", "/catalog"]
     volumes:
       - ./sonda/catalog:/catalog:ro
@@ -47,10 +46,9 @@ services:
       - "8085:8080"
     restart: unless-stopped
 
-  # Init container: POSTs each device's scenario file to sonda-server,
-  # then writes per-device ID lists to /shared so each telegraf only
-  # scrapes its own device's endpoints. Server resolves `pack:` refs
-  # against its own mounted /catalog — no client-side expansion here.
+  # Init container: POSTs each device's scenario file to sonda-server and
+  # exits. Server resolves `pack:` refs against its own mounted /catalog —
+  # no client-side expansion here.
   sonda-setup:
     container_name: sonda-setup
     image: python:3.12-slim
@@ -62,7 +60,6 @@ services:
       - ./sonda/scripts/sonda-setup.sh:/scripts/sonda-setup.sh:ro
       - ./sonda/catalog/srl1-metrics.yaml:/scenarios/srl1-metrics.yaml:ro
       - ./sonda/catalog/srl2-metrics.yaml:/scenarios/srl2-metrics.yaml:ro
-      - sonda_shared:/shared
     depends_on:
       sonda-server:
         condition: service_started
@@ -71,7 +68,7 @@ services:
   # to Loki; srl2 streams emit RFC 5424 syslog UDP to Vector (vector:1514).
   sonda-logs:
     container_name: sonda-logs
-    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.11.0}
+    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.12.1}
     entrypoint: ["/sonda"]
     command: ["run", "/catalog/all-logs.yaml"]
     volumes:
@@ -90,11 +87,12 @@ services:
   # canonical `interface_*` / `bgp_*` series in Prometheus.
   # =========================================================================
 
-  # telegraf-srl1: scrapes gNMI-raw (`srl_*`) from sonda-server, renames to
-  # canonical (`interface_*`, `bgp_*`), exposes a Prom scrape endpoint on :9005.
-  # The :1316 listener stays open for `flap-interface`'s cascade — it posts a
-  # dynamic scenario to sonda-server with a remote_write sink targeting this
-  # port. See packages/nobs/.../flap.py.
+  # telegraf-srl1: scrapes the aggregate /metrics endpoint filtered by
+  # `source:srl1` (gNMI-raw `srl_*`), renames to canonical (`interface_*`,
+  # `bgp_*`), exposes a Prom scrape endpoint on :9005. The :1316 listener
+  # stays open for `flap-interface`'s cascade — it posts a dynamic scenario
+  # to sonda-server with a remote_write sink targeting this port. See
+  # packages/nobs/.../flap.py.
   telegraf-srl1:
     container_name: telegraf-srl1
     build:
@@ -106,21 +104,16 @@ services:
     tty: true
     volumes:
       - ./telegraf/telegraf-srl1.conf.toml:/etc/telegraf/telegraf.conf
-      - ./sonda/scripts/scrape-sonda-metrics.sh:/scripts/scrape-sonda-metrics.sh:ro
-      - sonda_shared:/shared:ro
     expose:
       - "1316"
       - "9005"
-    environment:
-      SONDA_SERVER_URL: "http://sonda-server:8080"
-      IDS_FILE: "/shared/scenario-ids-srl1.txt"
     depends_on:
       sonda-setup:
         condition: service_completed_successfully
 
-  # telegraf-srl2: scrapes SNMP-raw (`ifHC*`, `bgpPeer*`) from sonda-server's
-  # per-scenario /metrics endpoints, renames to canonical, exposes a Prom
-  # scrape endpoint on :9005.
+  # telegraf-srl2: scrapes the aggregate /metrics endpoint filtered by
+  # `agent_host:srl2` (SNMP-raw `ifHC*`, `bgpPeer*`), renames to canonical,
+  # exposes a Prom scrape endpoint on :9005.
   telegraf-srl2:
     container_name: telegraf-srl2
     build:
@@ -132,13 +125,8 @@ services:
     tty: true
     volumes:
       - ./telegraf/telegraf-srl2.conf.toml:/etc/telegraf/telegraf.conf
-      - ./sonda/scripts/scrape-sonda-metrics.sh:/scripts/scrape-sonda-metrics.sh:ro
-      - sonda_shared:/shared:ro
     expose:
       - "9005"
-    environment:
-      SONDA_SERVER_URL: "http://sonda-server:8080"
-      IDS_FILE: "/shared/scenario-ids-srl2.txt"
     depends_on:
       sonda-setup:
         condition: service_completed_successfully
