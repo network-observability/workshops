@@ -307,7 +307,7 @@ Useful when you just want a quick "what's firing right now?" without leaving the
 ![Recent events panel](../assets/screenshots/workshop-home-recent-events-light.png#only-light){ .screenshot loading=lazy }
 ![Recent events panel](../assets/screenshots/workshop-home-recent-events-dark.png#only-dark){ .screenshot loading=lazy }
 
-<figcaption><strong>Recent events</strong> · Workshop Home — every interface UPDOWN log line shows up here, regardless of which device or pipeline emitted it. The feed you watch when you trigger <code>flap-interface</code>.</figcaption>
+<figcaption><strong>Recent events</strong> · Workshop Home — interface state-change logs from a flap cascade plus <code>maintenance</code> trigger lines from the CLI. Quiet at rest by design; the feed lights up when you drive <code>flap-interface</code> or toggle a device's <code>maintenance</code> flag.</figcaption>
 
 </figure>
 
