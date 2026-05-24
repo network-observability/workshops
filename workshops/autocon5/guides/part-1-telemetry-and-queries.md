@@ -325,15 +325,15 @@ Aggregating logs over time turns a log query into a metric:
 sum by (device) (count_over_time({vendor_facility_process="UPDOWN"}[5m]))
 ```
 
-Switch the panel to `Time series`. You should see two lines (one per device) showing UPDOWN events per 5-minute window. With the lab in steady state the count sits at **a handful per device** — sonda emits a slow trickle, well below the `PeerInterfaceFlapping` alert's `> 3 events in 2 minutes` threshold.
+Switch the panel to `Time series`. You should see two flat lines (one per device) sitting around **two or three events per 5-minute window**. That floor is the always-broken `ethernet-1/11` on each device — the only interface that's actually flapping at rest. Healthy interfaces don't contribute because they don't emit anything when nothing's happening to them; that's the honest answer to "is anything flapping right now?".
 
-Trigger another flap:
+Trigger a flap on a previously-silent healthy interface and watch the line jump:
 
 ```bash
 nobs autocon5 flap-interface --device srl1 --interface ethernet-1/10
 ```
 
-Within ~30 seconds the `srl1` line jumps. **Stop and notice.** This is exactly how the `PeerInterfaceFlapping` alert reads logs in Part 3 — same shape, just with a `> 3` threshold and a `for: 30s` clause. Any LogQL aggregation query is a candidate alert rule.
+Within ~30 seconds the `srl1` line climbs sharply — past the `PeerInterfaceFlapping` alert's `> 3 events in 2 minutes` threshold and on toward 30+ as the cascade's down-phase log emissions stack into the rolling 5-minute window. The `srl2` line stays at its quiet baseline. **Stop and notice.** This is exactly how the `PeerInterfaceFlapping` alert reads logs in Part 3 — same shape, just with a `> 3` threshold and a `for: 30s` clause. Any LogQL aggregation query is a candidate alert rule.
 
 #### 11. Pipeline awareness on logs
 
