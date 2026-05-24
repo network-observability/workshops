@@ -307,7 +307,7 @@ Useful when you just want a quick "what's firing right now?" without leaving the
 ![Recent events panel](../assets/screenshots/workshop-home-recent-events-light.png#only-light){ .screenshot loading=lazy }
 ![Recent events panel](../assets/screenshots/workshop-home-recent-events-dark.png#only-dark){ .screenshot loading=lazy }
 
-<figcaption><strong>Recent events</strong> · Workshop Home — every interface UPDOWN log line shows up here, regardless of which device or pipeline emitted it. The feed you watch when you trigger <code>flap-interface</code>.</figcaption>
+<figcaption><strong>Recent events</strong> · Workshop Home — three streams interleaved in time order: interface state-change logs from a flap cascade, <code>maintenance</code> trigger lines from the CLI, and Prefect workflow annotations (<code>decision=proceed</code>/<code>skip</code>/<code>resolved</code>, <code>QUARANTINE applied</code>, AI RCA narratives). Quiet at rest; the feed lights up when you drive a <code>flap-interface</code>, toggle <code>maintenance</code>, or any Prefect flow runs.</figcaption>
 
 </figure>
 
