@@ -114,6 +114,37 @@ In the right-hand options, scroll to **Thresholds**. Set:
 | Orange | `1` |
 | Red | `3` |
 
+??? info "What's an alert rule?"
+
+    An **alert rule** is a query the rule evaluator runs on a schedule, plus a firing condition, an optional `for:` duration that filters out transients, and labels + annotations that travel with each firing instance. Here's the `PeerInterfaceFlapping` rule the thresholds above are mirroring:
+
+    ```yaml
+    - alert: PeerInterfaceFlapping
+      expr: sum by(device, interface) (count_over_time({vendor_facility_process="UPDOWN"}[2m])) > 3
+      for: 30s
+      labels:
+        severity: critical
+        source: loki
+        environment: network-observability-lab
+        device: '{{ $labels.device }}'
+        interface: '{{ $labels.interface }}'
+      annotations:
+        summary: "[NET] Flapping interface in {{ $labels.device }}/{{ $labels.interface }}"
+        description: "The interface {{ $labels.device }}/{{ $labels.interface }} is flapping"
+    ```
+
+    - **`expr`** — the firing condition. The same LogQL query the panel uses, with `> 3` appended. When the expression returns at least one series, the rule is matching.
+    - **`for: 30s`** — the condition must hold continuously for 30 seconds before the alert moves from `pending` to `firing`. Filters out transient noise.
+    - **`labels`** — attached to every firing instance. `severity` and `source` are what Alertmanager routes on; `device` / `interface` propagate the offending instance's identity through to the page.
+    - **`annotations`** — human-readable text rendered into notifications. `{{ $labels.x }}` interpolates from the firing series' labels.
+
+    **Where to see this rule live.** `PeerInterfaceFlapping` is evaluated by the **Loki ruler**, not Prometheus, so it does NOT show up on Prometheus `/alerts`:
+
+    - **When firing**: [Alertmanager](http://localhost:9093/#/alerts) — the Loki ruler pushes alerts here just like Prometheus does. Loki-evaluated rules and Prometheus-evaluated rules land in the same queue.
+    - **Always**: the file lives at `workshops/autocon5/loki/rules/alerting_rules.yml`. There's no equivalent UI to Prometheus `/alerts` for Loki-defined rules — the Loki ruler doesn't ship one. The [Prometheus alerts page](../../../docs/workshop/tour.md#prometheus-the-metrics-store) in the Tour shows what that UI looks like for the rules Prometheus does evaluate.
+
+    Part 3 walks the full lifecycle — alert fires, Alertmanager routes, webhook hands off, Prefect flow decides what to do.
+
 Then under **Graph styles** → **Show thresholds**, pick `As lines`. **You should now see two horizontal lines on the panel preview — orange at 1, red at 3.** A flap rate above the red line means an alert is firing.
 
 > Your senior glances over. *"Thresholds matching the alert rule? Good. When the line crosses the orange one, the alert is firing. The panel should make the alert visible, not duplicate it."*
@@ -186,15 +217,66 @@ In the right-hand options, find **Overrides** and add an override on the new ser
 
 Pick any panel that doesn't already have one. Click edit, scroll to **Panel options** → **Description**. Write one or two sentences in the same student-facing prose style — what to look for, when to worry. Save. Hover the `i` icon to confirm.
 
-### Wire a "drill into Device Health" panel link
+### Build a flap-history table with drill-through
 
-In edit mode on any panel, scroll to **Panel options** → **Panel links** → **Add link**.
+> Your senior leans back in. *"Time-series tells you the shape. A table tells you the list — which device, which interface, how many flaps, click here to investigate. Build the second one. Make the device column a link into Device Health so a click takes you straight to the right view."*
 
-- **Title**: `Open Device Health for $device`
-- **URL**: `/d/c78e686b-138b-4deb-b6ae-3239dc10a162?var-device=$device`
-- Tick **Include time range** so the link carries the current dashboard's window.
+You're adding a second panel: a table that summarises flap activity per device + interface over the last hour, with the **device** column as a clickable link into the **Device Health** dashboard, preserving the time window.
 
-Save. The panel now has a small link icon at top — clicking it jumps to the **Device Health** dashboard with the device variable preserved. That's the dashboard equivalent of "if this panel goes red, here's where you go next".
+#### 1. Add the panel
+
+Back on the **Workshop Lab 2026** dashboard, **Edit** → **Add panel → Add visualization**. Pick the **`loki`** datasource.
+
+#### 2. Write the query
+
+```logql
+sum by (device, interface) (count_over_time({vendor_facility_process="UPDOWN"}[1h]))
+```
+
+A 1-hour window is "what's been flapping today" — wider than the 2-minute alert window so the table holds stable rows even between flaps. Click **Run query**.
+
+#### 3. Switch the panel type
+
+Right-hand options, panel-type dropdown at the top: choose **Table**. The result lands as a single-row table with a value column and the labels mashed into one cell — that's because Loki returns time-series-shaped data and the table needs help turning labels into proper columns.
+
+#### 4. Reshape with transformations
+
+Below the query box, click the **Transformations** tab → **+ Add transformation**.
+
+- Pick **Labels to fields**. Each Loki label (`device`, `interface`) becomes its own column.
+- Add a second transformation: **Organize fields**. Hide `Time` (the table doesn't need it), reorder so `device` is first and `interface` second, and rename the value column to `Total flaps`.
+
+You should now see one row per `device + interface` pair, with three clean columns: `device`, `interface`, `Total flaps`.
+
+#### 5. Title and description
+
+Right-hand options → **Panel options**:
+
+- **Title**: `Flap history (last 1h)`
+- **Description**: `UPDOWN events per device + interface over the last hour. Click any device cell to drill into Device Health for that device, time range preserved.`
+
+#### 6. Make the device cell a link
+
+Still in the right-hand options, scroll to **Overrides** → **Add field override** → **Fields with name** → pick `device`. On the override:
+
+- **Cell type**: `Auto` (or `Color text` if you want the link visually distinct).
+- **Data links** → **Add link**:
+    - **Title**: `Open Device Health for ${__value.text}`
+    - **URL**: `/d/c78e686b-138b-4deb-b6ae-3239dc10a162?var-device=${__value.raw}&from=${__from}&to=${__to}`
+
+`${__value.raw}` is the cell's raw label value (`srl1`, `srl2`). `${__from}` and `${__to}` are the dashboard's current time-range bounds — the link carries the window forward so the destination dashboard opens on the same minutes you were just looking at.
+
+#### 7. Save and try it
+
+**Apply**, then **Save dashboard**. Trigger a flap:
+
+```bash
+nobs autocon5 flap-interface --device srl1 --interface ethernet-1/10
+```
+
+Within a minute, a row for `srl1 / ethernet-1/10` shows up with a climbing `Total flaps` count. Click the `srl1` cell. Grafana jumps to **Device Health**, scoped to `srl1`, on the same time range you were on.
+
+**Stop and notice.** Tables are the dashboard equivalent of "a list of things to investigate, each row a one-click entry into deeper context". The time-series panel above tells you *something is flapping*. The table tells you *which one, how badly, and here's the next dashboard*. The data-link override is what binds the two dashboards into one navigation flow — no copy-pasting device names, no losing the time range.
 
 ## What you took away
 
