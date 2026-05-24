@@ -141,7 +141,7 @@ In the right-hand options, scroll to **Thresholds**. Set:
     **Where to see this rule live.** `PeerInterfaceFlapping` is evaluated by the **Loki ruler**, not Prometheus, so it does NOT show up on Prometheus `/alerts`:
 
     - **When firing**: [Alertmanager](http://localhost:9093/#/alerts) — the Loki ruler pushes alerts here just like Prometheus does. Loki-evaluated rules and Prometheus-evaluated rules land in the same queue.
-    - **Always**: the file lives at `workshops/autocon5/loki/rules/alerting_rules.yml`. There's no equivalent UI to Prometheus `/alerts` for Loki-defined rules — the Loki ruler doesn't ship one. The [Prometheus alerts page](../../../docs/workshop/tour.md#prometheus-the-metrics-store) in the Tour shows what that UI looks like for the rules Prometheus does evaluate.
+    - **Always**: the rule lives in the repo at [`workshops/autocon5/loki/rules/alerting_rules.yml`](https://github.com/network-observability/workshops/blob/main/workshops/autocon5/loki/rules/alerting_rules.yml#L5) — that link jumps straight to the `PeerInterfaceFlapping` definition. There's no equivalent UI to Prometheus `/alerts` for Loki-defined rules — the Loki ruler doesn't ship one. The [Prometheus alerts page](../../../docs/workshop/tour.md#prometheus-the-metrics-store) in the Tour shows what that UI looks like for the rules Prometheus does evaluate.
 
     Part 3 walks the full lifecycle — alert fires, Alertmanager routes, webhook hands off, Prefect flow decides what to do.
 
