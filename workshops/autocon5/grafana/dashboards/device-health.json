@@ -359,6 +359,16 @@
           "expr": "{device=\"$device\"} |~ \"Interface .* changed state|Configured from\" | json | line_format \"[{{ or .severity .level | upper }}] {{ .message }}\"",
           "queryType": "range",
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "P982945308D3682D1"
+          },
+          "editorMode": "code",
+          "expr": "{source=\"prefect\", device=\"$device\"} | json | line_format \"[{{ or .severity .level | upper }}] prefect/{{ .workflow }} | decision={{ or .decision \\\"-\\\" }} ai_rca={{ or .ai_rca \\\"-\\\" }} | {{ .message }}\"",
+          "queryType": "range",
+          "refId": "B"
         }
       ],
       "gridPos": {
