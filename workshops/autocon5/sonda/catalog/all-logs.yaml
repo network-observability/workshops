@@ -71,40 +71,6 @@ scenarios:
       batch_size: 1
 
   # -------------------------------------------------------------------------
-  # srl1 — interface UPDOWN events for the HEALTHY interfaces (1/1, 1/10).
-  # Triggers PeerInterfaceFlapping (loki/rules: count_over_time UPDOWN > 3 in 2m).
-  # The broken interface ethernet-1/11 has its own dedicated stream below
-  # so a student querying logs for the broken interface sees a coherent
-  # stuck-down story, not the same uniform rotation as the healthy links.
-  # -------------------------------------------------------------------------
-  - id: srl1_updown_logs
-    signal_type: logs
-    name: srl1_updown_logs
-    rate: 0.005              # ~0.6 events / 2 min — well below the alert threshold (3)
-    labels:
-      device: srl1
-      pipeline: direct
-      type: srlinux
-      vendor_facility: srlinux
-      vendor_facility_process: UPDOWN
-      netpanda: bethepacket
-    dynamic_labels:
-      - key: interface
-        values: ["ethernet-1/1", "ethernet-1/10"]
-      - key: interface_status
-        values: ["up", "down"]
-    log_generator:
-      type: template
-      templates:
-        - message: "Interface state transition observed (operational state changed)"
-      severity_weights:
-        warning: 1.0
-    sink:
-      type: loki
-      url: "${LOKI_URL:-http://loki:3001}"
-      batch_size: 5
-
-  # -------------------------------------------------------------------------
   # srl1 — broken interface ethernet-1/11. Stuck-down story so the metric's
   # interface_oper_state=2 has matching log evidence a student can find with
   # the metric-to-log bridge query.
@@ -260,35 +226,6 @@ scenarios:
         info: 0.8
         warn: 0.15
         error: 0.05
-    encoder:
-      type: syslog
-      hostname: srl2
-      app_name: srlinux
-    sink:
-      type: udp
-      address: "vector:1514"
-
-  - id: srl2_updown_logs
-    signal_type: logs
-    name: srl2_updown_logs
-    rate: 0.005              # spread across 4 streams (1/1+1/10 × up+down); each lands near 0
-    labels:
-      device: srl2
-      type: srlinux
-      vendor_facility: srlinux
-      vendor_facility_process: UPDOWN
-      netpanda: bethepacket
-    dynamic_labels:
-      - key: interface
-        values: ["ethernet-1/1", "ethernet-1/10"]
-      - key: interface_status
-        values: ["up", "down"]
-    log_generator:
-      type: template
-      templates:
-        - message: "Interface state transition observed (operational state changed)"
-      severity_weights:
-        warning: 1.0
     encoder:
       type: syslog
       hostname: srl2

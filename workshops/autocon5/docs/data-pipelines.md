@@ -120,7 +120,7 @@ srl1 logs (direct)
 ┌──────────────────────────┐    loki sink (HTTP push)
 │ sonda-logs (srl1 streams)│  ─────────────────────────►  Loki
 │ - srl1_system_logs       │
-│ - srl1_updown_logs       │
+│ - srl1_broken_intf_logs  │
 │ - srl1_bgp_logs          │
 │ stream label:            │
 │   pipeline="direct"      │
@@ -130,7 +130,7 @@ srl2 logs (shipper / "RFC 5424 syslog → Vector → Loki")
 ┌──────────────────────────┐  syslog UDP   ┌──────────────────────────┐  HTTP   ┌──────┐
 │ sonda-logs (srl2 streams)│  vector:1514  │ vector                   │  push   │      │
 │ - srl2_system_logs       │  ────────────►│ - socket source          │ ───────►│ Loki │
-│ - srl2_updown_logs       │   RFC 5424    │   (codec=syslog)         │         │      │
+│ - srl2_broken_intf_logs  │   RFC 5424    │   (codec=syslog)         │         │      │
 │ - srl2_bgp_logs          │   syslog      │ - VRL: lift `.sonda.*`   │         │      │
 │ encoder: syslog          │   text        │   SD payload to labels   │         │      │
 │ sink: udp(vector:1514)   │               │ - static pipeline=vector │         │      │

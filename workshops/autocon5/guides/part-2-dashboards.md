@@ -75,18 +75,16 @@ Two things to notice:
 - `$device` is the dashboard variable. Grafana substitutes it before sending the query, so this panel becomes `srl1`-aware or `srl2`-aware automatically.
 - `count_over_time(...[2m])` counts UPDOWN log lines in a rolling 2-minute window — the same window the `PeerInterfaceFlapping` alert rule uses. `sum by (interface)` groups so each interface gets its own line.
 
-Click **Run query**. **You should see flat lines hovering at 1 or 2** per interface, well below the alert threshold of 3:
+Click **Run query**. **At rest you'll see at most one line — `ethernet-1/11`, the always-broken interface — hovering at 1**, well below the alert threshold of 3. Healthy interfaces don't show up at all; if nothing is flapping, the panel is honest about that:
 
 <figure class="section-preview" markdown>
 
 ![Flap rate panel at baseline](../../../docs/assets/screenshots/flap-rate-baseline-light.png#only-light){ .screenshot loading=lazy }
 ![Flap rate panel at baseline](../../../docs/assets/screenshots/flap-rate-baseline-dark.png#only-dark){ .screenshot loading=lazy }
 
-<figcaption><strong>Baseline (no flap in progress)</strong> — `ethernet-1/11` sits at 2 (the always-broken interface), `ethernet-1/10` at 1. Both well under the red threshold at 3.</figcaption>
+<figcaption><strong>Baseline (no flap in progress)</strong> — one line for <code>ethernet-1/11</code> at 1 (the only interface that's actually flapping at rest, because it's broken by design). The other peer interfaces are silent. Anything else here means a real flap is in progress.</figcaption>
 
 </figure>
-
-That "always 1-2" floor is intentional. The sonda log scenarios in `sonda/catalog/all-logs.yaml` emit a steady **~1 UPDOWN event every 2 minutes per interface** — even the healthy ones — so the panel has *something* to draw at rest. The data is real; this isn't a stale-cache trick. With `count_over_time(...[2m])` over that emission cadence, the rolling count lands at 1 or 2 most of the time. Anything **above 3** means a real flap is in progress.
 
 ??? info "Why does srl1 sometimes show a label-less line?"
 
@@ -181,7 +179,7 @@ This kicks off a 4-minute cascade with the interface cycling 30s up, 60s down. U
 ![Flap rate panel during a flap](../../../docs/assets/screenshots/flap-rate-flapping-light.png#only-light){ .screenshot loading=lazy }
 ![Flap rate panel during a flap](../../../docs/assets/screenshots/flap-rate-flapping-dark.png#only-dark){ .screenshot loading=lazy }
 
-<figcaption><strong>During a flap (~2 min in)</strong> — green line is `ethernet-1/1`, climbing fast past the orange threshold (1) and through the red threshold (3) on its way to 16+. The blue and yellow baselines for `ethernet-1/11` and `ethernet-1/10` stay where they were. One panel, two stories: the floor that's always there, and the spike that says "page someone".</figcaption>
+<figcaption><strong>During a flap (~2 min in)</strong> — green line is <code>ethernet-1/1</code>, climbing fast past the orange threshold (1) and through the red threshold (3) on its way to 16+. The yellow line is <code>ethernet-1/11</code>'s baseline (always-broken interface, value 2 in the rolling window). The flapped interface is the obvious anomaly against an otherwise quiet panel.</figcaption>
 
 </figure>
 
