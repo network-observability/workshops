@@ -22,7 +22,11 @@ The workshop runs ~21 containers. You only ever look at six of them: **Sonda ser
 
 ## Sonda server — the synthetic telemetry control plane
 
-The Sonda HTTP API at <http://localhost:8085> is the box that pretends to be `srl1` and `srl2`. Every metric Prometheus stores and every log line Loki indexes during the workshop ultimately came out of a Sonda scenario. There's no UI — it's an HTTP API, and you'll mostly poke it with `curl` (or with `nobs autocon5 scenarios`).
+### What this is
+
+**Sonda** is a synthetic telemetry generator. Instead of running real network devices (which need disk, RAM, licenses, and patience), Sonda runs a small HTTP server that *pretends* to be one — it emits fake-but-realistic Prometheus metrics and syslog lines on the same shapes your collectors expect, so the rest of your observability stack (Telegraf, Prometheus, Loki, Grafana, alert rules) can be wired up and exercised against a known-shaped workload. Think of it as a controllable traffic generator, but for telemetry instead of packets.
+
+In this workshop, the Sonda server at <http://localhost:8085> is the box that pretends to be `srl1` and `srl2`. Every metric Prometheus stores and every log line Loki indexes during the workshop ultimately came out of a Sonda scenario. There's no UI — it's an HTTP API, and you'll mostly poke it with `curl` (or with `nobs autocon5 scenarios`). The unit of work is a **scenario**: a small recipe that says *"emit this metric, with these labels, on this cadence, with this shape"*.
 
 A single workshop boot registers **76 scenarios** — sonda-server fans each `kind: composable` pack out into one scenario per metric (38 per device, 2 devices). One scenario emits one metric series; the ID is a server-assigned UUID and the `name` is the metric name (`srl_bgp_oper_state`, `bgpPeerState`, `cpu_used`, …).
 
@@ -125,7 +129,11 @@ Drop `--kind composable` to also list runnable scenarios in the catalog, or swap
 
 ## Prometheus — the metrics store
 
-Prometheus at <http://localhost:9090> stores every metric Telegraf scrapes. The same Prometheus instance also evaluates the alerting rules that drive Alertmanager and the recording rules that smooth out per-interval rate calculations.
+### What this is
+
+**Prometheus** is a time-series database for metrics, plus a query language (PromQL) for asking questions about them. It pulls samples on a schedule from anything that exposes a `/metrics` endpoint in its text format, stores them, and lets you graph or alert on them. It's the de-facto standard for cloud-native monitoring; if you've worked anywhere with Kubernetes you've probably brushed up against it.
+
+In this workshop, Prometheus at <http://localhost:9090> stores every metric Telegraf scrapes off the Sonda fake devices. The same Prometheus instance also evaluates the alerting rules that drive Alertmanager and the recording rules that smooth out per-interval rate calculations.
 
 ### The four pages you'll actually use
 
@@ -208,7 +216,11 @@ The rules page (<http://localhost:9090/rules>) is where recording rules live. Th
 
 ## Alertmanager — the alert router and silence store
 
-Alertmanager at <http://localhost:9093> receives every `firing` alert from Prometheus, deduplicates and groups them, and routes them out — in the workshop, to the FastAPI webhook that hands off to a Prefect flow. It also stores **silences**: time-bounded suppressions the Prefect quarantine flow drops in to mute an alert it's already containing.
+### What this is
+
+**Alertmanager** is the deduplication-and-routing layer that sits between Prometheus and wherever alerts actually need to go (email, Slack, PagerDuty, a webhook). Prometheus decides *whether* a condition is firing; Alertmanager decides *who hears about it, how often, and grouped how*. It also stores **silences** — time-bounded mute rules that suppress matching alerts without changing the underlying rule. Think of it as a smarter Nagios notifier: same job (turn an alert into a page), but with deduplication, label-based routing, grouping, and silences built in.
+
+In this workshop, Alertmanager at <http://localhost:9093> receives every `firing` alert from Prometheus, deduplicates and groups them, and routes them out to the FastAPI webhook that hands off to a Prefect flow. The Prefect quarantine flow uses the silence API to mute alerts it's already containing.
 
 ### The two pages you'll actually use
 
@@ -267,7 +279,9 @@ Useful when you just want a quick "what's firing right now?" without leaving the
 
 ## Grafana — dashboards and Explore
 
-Grafana at <http://localhost:3000> (login `admin` / `admin`, or whatever you set in `.env`) is the visualization layer. Three datasources are pre-wired — Prometheus, Loki, and Infrahub (GraphQL via the Infinity datasource) — so dashboards and Explore can query any of them without setup.
+### What this is
+
+**Grafana** is the visualization layer — dashboards, ad-hoc query exploration, and one UI on top of many backends. You've almost certainly seen one. In this workshop, Grafana at <http://localhost:3000> (login `admin` / `admin`, or whatever you set in `.env`) has three datasources pre-wired: **Prometheus** for metrics, **Loki** for logs, and **Infrahub** (GraphQL via the Infinity datasource) for intent. Dashboards and the Explore mode can query any of them without setup.
 
 ### Pre-provisioned dashboards
 
@@ -327,7 +341,25 @@ The compass icon in the left nav opens **Explore**. Pick a datasource at the top
 
 ## Prefect — workflows, deployments, runs
 
-Prefect at <http://localhost:4200> orchestrates the quarantine workflow that picks up alerts from the webhook. The lab runs Prefect 3 with a Postgres + Redis backend, a worker on the `local-pool` pool, and a flow-server container that registers the `alert-receiver` deployment on startup.
+### What this is
+
+**Prefect** is a Python-native, event-driven workflow orchestrator. Two pieces of jargon worth unpacking up front:
+
+A **workflow orchestrator** is software that takes a sequence of tasks — in Prefect's case, plain Python functions — runs them in the right order, handles retries and failures, tracks state, and gives you a UI to watch what happened after the fact. Think of it as a build system like Jenkins or GitHub Actions, but for operational automations instead of CI pipelines: the same "DAG of steps with logs and a results screen" shape, just pointed at ops work instead of "did the tests pass?".
+
+**Event-driven** means the workflows don't run on a cron schedule — they fire in response to external events (a webhook, a message on a queue, a file appearing, another flow completing). That's the property that makes Prefect a natural fit for the *alert → automation* pipeline in this workshop: Alertmanager calls a webhook, the webhook hands the payload to Prefect, Prefect runs the deterministic flow, and every step is visible afterwards.
+
+### Why this workshop uses it
+
+Network ops needs automation that is **deterministic, auditable, and debuggable**: when an alert fires, the same decision tree should run every time; an operator should be able to pull up *exactly* what happened on alert #847 three days later; and the per-step logs should be one click away. Prefect ships all three of those (flow runs, task graphs, per-task logs) out of the box, in Python, with a sane Docker deployment — and that's the entire reason it's here. The automation glue around Infrahub, Prometheus, and Alertmanager is already Python; Prefect runs locally on the workshop laptop without any external infra (it brings its own Postgres + Redis + server + worker compose set); and its UI *is* the audit trail — no separate dashboard or log-shipping glue to maintain.
+
+Workflow orchestrators are not a one-vendor space — Airflow, Temporal, Dagster, Argo Workflows all play in adjacent corners. Prefect's sweet spot is **event-driven Python automation with a usable UI**, which fits the alert-handler use case better than the schedule-batch-oriented alternatives. If your team already runs one of the others, the patterns in Part 3 port across; Prefect is the implementation, not the lesson.
+
+In this workshop, Prefect at <http://localhost:4200> orchestrates the quarantine workflow that picks up alerts from the webhook. The lab runs Prefect 3 with a Postgres + Redis backend, a worker on the `local-pool` pool, and a flow-server container that registers the `alert-receiver` deployment on startup.
+
+!!! info "Further reading"
+
+    For a deeper take on workflow orchestration's role in network automation architecture, see Christian Adell's *[Designing Network Automation at Scale](https://designingnetworkautomation.com/)* — Chapter 7 (*Orchestration*) covers the design tradeoffs in detail. The book is published as an open online resource at <https://designingnetworkautomation.com/>.
 
 ### The three concepts you need
 
@@ -377,7 +409,13 @@ The task graph is the single best place to debug a quarantine decision — every
 
 ## Infrahub — source of truth
 
-Infrahub at <http://localhost:8000> (login `admin` / `infrahub`) is the source of truth for *what should be true* about the lab. It stores intent — device roles, expected BGP sessions, maintenance windows — that the Prefect flow consults before deciding what to do with an alert.
+### What this is
+
+**Infrahub** is a *source of truth* (sometimes called an *intent store*) for network infrastructure — a database that stores **what should be true** about your network: which devices exist, what their roles are, which BGP sessions are *supposed* to be up, who they're peering with, whether a device is currently in maintenance. If you've used **NetBox** or **Nautobot** as a DCIM, you already know the genre — Infrahub plays in the same space, with a richer schema engine and built-in branching (you can propose a config change on a branch, diff it, and merge it, like Git for infrastructure data).
+
+The reason intent matters in alerting is simple: a bare alert says *"this BGP session is down"*, but the right question to ask is *"was this session **supposed** to be up?"* — and the only place that knows is the source of truth. A peer in scheduled maintenance, a session that was decommissioned last week, a peer that's intentionally left configured but down for testing — all three look identical in metrics, but the *correct* response to each is different. Pulling intent into the alert pipeline is what turns a noisy alert into a real incident decision.
+
+In this workshop, Infrahub at <http://localhost:8000> (login `admin` / `infrahub`) stores intent — device roles, expected BGP sessions, maintenance windows — that the Prefect flow consults before deciding what to do with an alert.
 
 ### What's loaded
 
