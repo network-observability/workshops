@@ -352,25 +352,22 @@
 }
 
 /* ---------- Wider layout ---------------------------------------------------- */
-/* Material's default content max-width is ~61rem (~976px). On modern displays
- * that leaves a lot of whitespace on either side and shrinks screenshots to
- * unreadable. Bump to 1400px while keeping body line-length comfortable via
- * a tighter inner `.md-content` max-width. */
+/* Material's default content max-width is ~61rem (~976px). Bump the outer
+ * grid AND the inner content cap so tables / screenshots / wide code blocks
+ * have room to breathe on modern displays. */
 
 .md-grid {
-  max-width: 1400px;
+  max-width: 1600px;
 }
 
-/* Keep the prose readable by capping inner content width while letting the
- * shell (nav rails, header, footer) use the full grid. */
 .md-content {
-  max-width: 60rem;
+  max-width: 72rem;
   margin-right: auto;
 }
 
 /* On very wide viewports, push the TOC against the right gutter so the
  * content sits naturally between the two rails. */
-@media screen and (min-width: 1400px) {
+@media screen and (min-width: 1600px) {
   .md-sidebar--secondary {
     margin-left: auto;
   }
