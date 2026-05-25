@@ -218,6 +218,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--device", required=True)
     parser.add_argument("--interface", required=True)
     parser.add_argument("--api-key", default="")
+    parser.add_argument(
+        "--primary-id",
+        default="",
+        help="UUID of the cascade's primary_flap scenario. When set, "
+        "the wait blocks only on this ID (others are force-deleted "
+        "unconditionally). Sonda leaves gated `while:` entries stuck "
+        "in `state=running` after the ref finishes, so waiting on all "
+        "cascade IDs would hit the timeout every run.",
+    )
     parser.add_argument("--cascade-id", action="append", default=[])
     parser.add_argument("--peer", action="append", default=[], help="Repeatable, format ADDRESS:ASN")
     parser.add_argument("--timeout-secs", type=int, default=600)
@@ -229,7 +238,8 @@ def main(argv: list[str] | None = None) -> int:
         headers["Authorization"] = f"Bearer {args.api_key}"
 
     if args.cascade_id:
-        _wait_for_finished(base, args.cascade_id, headers, args.timeout_secs)
+        wait_ids = [args.primary_id] if args.primary_id else args.cascade_id
+        _wait_for_finished(base, wait_ids, headers, args.timeout_secs)
         for sid in args.cascade_id:
             with contextlib.suppress(requests.RequestException):
                 requests.delete(f"{base}/scenarios/{sid}", headers=headers, timeout=5)

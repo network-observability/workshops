@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from autocon5_workshop.flap import _build_cascade
+from autocon5_workshop.flap import _build_cascade, _label_present
 from autocon5_workshop.flap_cleanup import _restore_body
 from autocon5_workshop.flap_topology import Peer
 
@@ -357,3 +357,25 @@ def test_restore_body_no_peers_still_restores_interface_baseline() -> None:
     assert body is not None
     names = {s["name"] for s in body["scenarios"]}
     assert names == {"srl_interface_oper_state", "srl_interface_in_octets", "srl_interface_out_octets"}
+
+
+# --- label-token word boundary -----------------------------------------------
+
+
+def test_label_present_does_not_match_substring_interfaces() -> None:
+    # The bug: `name="ethernet-1/1"` is a substring of `name="ethernet-1/10"`
+    # and `name="ethernet-1/11"`. The Prometheus exposition format always
+    # terminates a label with `,` or `}`, so we require one of those.
+    one = 'srl_interface_in_octets{collection_type="gnmi",name="ethernet-1/1",source="srl1"} 100\n'
+    ten = 'srl_interface_in_octets{collection_type="gnmi",name="ethernet-1/10",source="srl1"} 200\n'
+    eleven = 'srl_interface_in_octets{collection_type="gnmi",name="ethernet-1/11",source="srl1"} 0\n'
+    assert _label_present(one, "name", "ethernet-1/1") is True
+    assert _label_present(ten, "name", "ethernet-1/1") is False
+    assert _label_present(eleven, "name", "ethernet-1/1") is False
+
+
+def test_label_present_handles_trailing_label() -> None:
+    # Label is the LAST one before the closing brace.
+    line = 'srl_bgp_oper_state{collection_type="gnmi",source="srl1",peer_address="10.1.2.2"} 1\n'
+    assert _label_present(line, "peer_address", "10.1.2.2") is True
+    assert _label_present(line, "peer_address", "10.1.2.22") is False

@@ -287,6 +287,7 @@ def flap_interface(
                 interface=interface,
                 peers=peers,
                 cascade_ids=[],
+                primary_id="",
                 api_key=api_key,
             )
         raise typer.Exit(code=1) from exc
@@ -298,6 +299,16 @@ def flap_interface(
         raise typer.Exit(code=1)
 
     cascade_ids = [item["id"] for item in created]
+    # The cleanup subprocess waits for the cascade to finish before restoring
+    # the baseline. We only care about primary_flap reaching `state=finished`
+    # — the gated BGP/log entries are bound to it via `while:` and sonda
+    # leaves them stuck in `state=running` after the ref scenario completes
+    # (upstream gating-lifecycle bug). Pass the primary UUID explicitly so
+    # cleanup unblocks promptly and force-deletes the rest.
+    primary_flap_id = next(
+        (item["id"] for item in created if item.get("name") == "interface_oper_state"),
+        cascade_ids[0] if cascade_ids else "",
+    )
     if pre_cascade_baseline_ids:
         _spawn_baseline_cleanup(
             sonda_url=sonda_url,
@@ -305,6 +316,7 @@ def flap_interface(
             interface=interface,
             peers=peers,
             cascade_ids=cascade_ids,
+            primary_id=primary_flap_id,
             api_key=api_key,
         )
 
@@ -554,14 +566,27 @@ def _list_scenarios(sonda_url: str, headers: dict[str, str]) -> list[dict[str, A
     return r.json().get("scenarios", []) or []
 
 
-def _scenarios_matching_label_tokens(
+def _label_present(text: str, label: str, value: str) -> bool:
+    """True iff text contains an exact `label="value"` assignment.
+
+    Plain substring matching is unsafe — `name="ethernet-1/1"` is a
+    substring of `name="ethernet-1/10"` and `name="ethernet-1/11"`, so
+    a substring check matches all three interfaces. In Prom exposition
+    format every label is followed by either `,` (more labels) or `}`
+    (end of label set), so we require one of those terminators.
+    """
+    assignment = f'{label}="{value}"'
+    return f"{assignment}," in text or f"{assignment}}}" in text
+
+
+def _scenarios_matching_labels(
     sonda_url: str,
     headers: dict[str, str],
     scenarios: list[dict[str, Any]],
     metric_names: set[str],
-    required_tokens: list[str],
+    required_labels: list[tuple[str, str]],
 ) -> list[str]:
-    """Return scenario IDs whose name is in metric_names and whose /metrics body contains every token."""
+    """Return scenario IDs whose name is in metric_names and whose /metrics body has every (label, value)."""
     base = sonda_url.rstrip("/")
     candidates = [s["id"] for s in scenarios if s.get("name") in metric_names]
     matching: list[str] = []
@@ -572,7 +597,7 @@ def _scenarios_matching_label_tokens(
                 continue
         except requests.RequestException:
             continue
-        if all(token in m.text for token in required_tokens):
+        if all(_label_present(m.text, label, value) for label, value in required_labels):
             matching.append(sid)
     return matching
 
@@ -583,13 +608,11 @@ def _discover_interface_baseline_ids(sonda_url: str, device: str, interface: str
     if cfg is None:
         return []
     metric_names = {cfg["oper_state"], cfg["in"], cfg["out"]}
-    tokens = [
-        f'{cfg["interface_label"]}="{interface}"',
-        f'{cfg["device_label"]}="{device}"',
+    required = [
+        (cfg["interface_label"], interface),
+        (cfg["device_label"], device),
     ]
-    return _scenarios_matching_label_tokens(
-        sonda_url, headers, _list_scenarios(sonda_url, headers), metric_names, tokens
-    )
+    return _scenarios_matching_labels(sonda_url, headers, _list_scenarios(sonda_url, headers), metric_names, required)
 
 
 def _discover_bgp_baseline_ids(sonda_url: str, device: str, peer_address: str, headers: dict[str, str]) -> list[str]:
@@ -600,13 +623,11 @@ def _discover_bgp_baseline_ids(sonda_url: str, device: str, peer_address: str, h
     metric_names = {
         cfg[k] for k in ("oper", "neighbor", "prefixes_accepted", "received_routes", "sent_routes", "active_routes")
     }
-    tokens = [
-        f'{cfg["peer_label"]}="{peer_address}"',
-        f'{cfg["device_label"]}="{device}"',
+    required = [
+        (cfg["peer_label"], peer_address),
+        (cfg["device_label"], device),
     ]
-    return _scenarios_matching_label_tokens(
-        sonda_url, headers, _list_scenarios(sonda_url, headers), metric_names, tokens
-    )
+    return _scenarios_matching_labels(sonda_url, headers, _list_scenarios(sonda_url, headers), metric_names, required)
 
 
 def _query_baseline_octet_values(
@@ -617,7 +638,6 @@ def _query_baseline_octet_values(
     if cfg is None:
         return 0.0, 0.0
     label_filter = f"{cfg['device_label']}:{device}"
-    intf_label_token = f'{cfg["interface_label"]}="{interface}"'
     in_prefix = f"{cfg['in']}{{"
     out_prefix = f"{cfg['out']}{{"
 
@@ -637,7 +657,9 @@ def _query_baseline_octet_values(
     for line in r.text.splitlines():
         if not line or line.startswith("#"):
             continue
-        if intf_label_token not in line:
+        # Word-boundary check, NOT plain substring: `name="ethernet-1/1"`
+        # is a substring of `name="ethernet-1/10"`.
+        if not _label_present(line, cfg["interface_label"], interface):
             continue
         parts = line.split()
         if len(parts) < 2:
@@ -719,6 +741,7 @@ def _spawn_baseline_cleanup(
     interface: str,
     peers: list[Peer],
     cascade_ids: list[str],
+    primary_id: str,
     api_key: str,
 ) -> None:
     """Detach a subprocess that re-POSTs the deleted baseline after cascade ends."""
@@ -735,6 +758,8 @@ def _spawn_baseline_cleanup(
         "--api-key",
         api_key,
     ]
+    if primary_id:
+        args.extend(["--primary-id", primary_id])
     for cid in cascade_ids:
         args.extend(["--cascade-id", cid])
     for peer in peers:
