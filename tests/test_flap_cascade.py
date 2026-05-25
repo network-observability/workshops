@@ -112,6 +112,13 @@ def test_log_entry_keeps_bare_close_duration(two_peers: list[Peer]) -> None:
     assert log_entry["delay"]["close"] == "0s"
 
 
+def test_log_entry_carries_device_label_for_dashboard_match(two_peers: list[Peer]) -> None:
+    for device in ("srl1", "srl2"):
+        body = _build(device, two_peers)
+        log_entry = next(e for e in body["scenarios"] if e["id"] == "updown_logs_down")
+        assert log_entry["labels"]["device"] == device
+
+
 def test_no_peers_drops_bgp_entries_but_keeps_flap_octets_and_log() -> None:
     body = _build("srl1", peers=[], interface="ethernet-1/99")
     ids = {e["id"] for e in body["scenarios"]}

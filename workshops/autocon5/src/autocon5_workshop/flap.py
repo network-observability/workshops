@@ -350,6 +350,7 @@ def _build_cascade(
 
     scenarios.append(
         _gated_updown_log_entry(
+            device=device,
             interface=interface,
             upstream_id=primary_id,
             cascade_delay=cascade_delay,
@@ -458,6 +459,7 @@ def _flap_bgp_entries(
 
 def _gated_updown_log_entry(
     *,
+    device: str,
     interface: str,
     upstream_id: str,
     cascade_delay: str,
@@ -471,6 +473,7 @@ def _gated_updown_log_entry(
         "while": {"ref": upstream_id, "op": ">", "value": 1},
         "delay": {"open": cascade_delay, "close": "0s"},
         "labels": {
+            "device": device,
             "type": "srlinux",
             "vendor_facility": "srlinux",
             "vendor_facility_process": "UPDOWN",
