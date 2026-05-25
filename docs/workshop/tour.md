@@ -38,7 +38,8 @@ A single workshop boot registers **76 scenarios** — sonda-server fans each `ki
 | `GET /scenarios` | Every scenario currently registered on the server, with `id` (UUID), `name` (metric name), `state`, `elapsed_secs`, `degraded`. |
 | `GET /scenarios/{uuid}` | One scenario's live handle: identity (`id`, `name`), `state`, `elapsed_secs`, plus an embedded `stats` block. |
 | `GET /scenarios/{uuid}/stats` | Per-scenario emission counters: `total_events`, `current_rate`, `target_rate`, `bytes_emitted`, `errors`, `consecutive_failures`, gap/burst state, and `last_successful_write_at`. |
-| `GET /scenarios/{uuid}/metrics` | The single Prometheus-text sample this scenario is emitting right now. Drained on read — telegraf is also a reader, see the curl example below. |
+| `GET /scenarios/{uuid}/metrics` | The single Prometheus-text sample this scenario is emitting right now. Drained on read. |
+| `GET /metrics[?label=k:v]` | Aggregate Prometheus-text snapshot across every running scenario. Optional `label=key:value` filter narrows to one device. Snapshot semantics — multiple consumers (Telegraf and a curl) can read the same bytes concurrently. |
 | `POST /scenarios` | Register a new scenario. The cascade flap (`nobs autocon5 flap-interface`) is one of these. |
 | `DELETE /scenarios/{uuid}` | Stop and unregister a scenario. |
 
@@ -80,24 +81,27 @@ curl -s http://localhost:8085/scenarios | jq '.scenarios[0]'
 }
 ```
 
-To see the actual Prometheus-text sample a single scenario is emitting — the byte-for-byte input Telegraf reads, before any rename or normalization — pick a scenario UUID and curl its `/metrics`. Telegraf scrapes the same endpoint every 10 seconds and drains the buffer on every read, so under steady state your curl will see empty output every time. Pause both Telegrafs for one cycle, let the buffer fill, then curl:
+To see the actual Prometheus-text samples Telegraf reads — the byte-for-byte input, before any rename or normalization — curl the aggregate `/metrics` endpoint and filter to one device with `label=key:value`. The endpoint is snapshot-style: Telegraf scrapes it every 10 seconds and you can read it concurrently without stealing samples from anyone.
 
 ```bash
-# pick the UUID of the srl1 broken-peer oper-state scenario
-ID=$(curl -s http://localhost:8085/scenarios \
-  | jq -r '.scenarios[] | select(.name=="srl_bgp_oper_state") | .id' \
-  | head -1)
-
-docker pause telegraf-srl1 telegraf-srl2 && sleep 12
-curl -s "http://localhost:8085/scenarios/${ID}/metrics"
-docker unpause telegraf-srl1 telegraf-srl2
+curl -s 'http://localhost:8085/metrics?label=source:srl1' | grep '^srl_bgp_oper_state{' | grep '10.1.99.2' | head -1
 ```
 
 ```text
-srl_bgp_oper_state{afi_safi_name="ipv4-unicast",collection_type="gnmi",name="default",neighbor_asn="65102",peer_address="10.1.99.2",source="srl1"} 5 1779540408007
+srl_bgp_oper_state{afi_safi_name="ipv4-unicast",collection_type="gnmi",name="default",neighbor_asn="65102",peer_address="10.1.99.2",source="srl1"} 5 1779662362111
 ```
 
 Note the metric name (`srl_bgp_oper_state`) and the `source="srl1"` tag — that's the gNMI shape SR Linux puts on the wire. Compare it to what Prometheus stores after Telegraf renames it (`bgp_oper_state{device="srl1",...}`) and you've seen the entire normalization pipeline end-to-end. Part 1's exercise 6 walks both sides.
+
+srl2 uses the SNMP shape, where the device tag is `agent_host`:
+
+```bash
+curl -s 'http://localhost:8085/metrics?label=agent_host:srl2' | grep '^bgpPeerState' | head -1
+```
+
+```text
+bgpPeerState{afi_safi_name="ipv4-unicast",agent_host="srl2",bgpPeerRemoteAddr="10.1.2.1",bgpPeerRemoteAs="65101",collection_type="snmp",name="default"} 1 1779662362111
+```
 
 ### Inspect the catalog from inside the container
 
@@ -123,7 +127,7 @@ Drop `--kind composable` to also list runnable scenarios in the catalog, or swap
 
 ### Where you'll see this in the workshop
 
-- **Part 1** — When you query Prometheus and see `bgp_oper_state{device="srl1"}` go from 6 to 5, that's a value Sonda is generating right now. `curl http://localhost:8085/scenarios/{id}/metrics` shows you the raw side of that same number.
+- **Part 1** — When you query Prometheus and see `bgp_oper_state{device="srl1"}` go from 6 to 5, that's a value Sonda is generating right now. `curl 'http://localhost:8085/metrics?label=source:srl1'` shows you the raw side of that same number.
 - **Part 3** — `nobs autocon5 flap-interface` and `nobs autocon5 incident` both POST cascade scenarios to this server.
 - **Advanced** — When you write your own scenario, you'll POST it here.
 
@@ -170,13 +174,13 @@ Open the query browser at <http://localhost:9090/graph>. These three queries are
 interface_oper_state
 ```
 
-Returns one series per `{device, name}` interface pair. `1` is up, `2` is down — the SR Linux convention. Look for the one stuck at `2`.
+Returns one series per `{device, name}` interface pair. `1` is up, `2` is down — the SR Linux convention. Two series are stuck at `2`: one per device, both on `ethernet-1/11` (the always-broken interface in the lab).
 
 ```promql
 bgp_oper_state{device="srl1"}
 ```
 
-BGP per-peer operational state on srl1. `6` is `established`, `5` is `active`, anything else is degraded. One row should be stuck at `5`.
+BGP per-peer operational state on srl1. The lab maps `1` to `established` and `5` to `active` (degraded, retrying) — the gNMI/openconfig convention. One row should be stuck at `5` (the broken peer `10.1.99.2`).
 
 ```promql
 ALERTS{alertstate="firing"}
@@ -202,7 +206,7 @@ The alerts page (<http://localhost:9090/alerts>) groups every rule by file. `ina
 ![Prometheus alerts page](../assets/screenshots/prometheus-alerts-light.png#only-light){ .screenshot loading=lazy }
 ![Prometheus alerts page](../assets/screenshots/prometheus-alerts-dark.png#only-dark){ .screenshot loading=lazy }
 
-<figcaption><strong>Prometheus — Alerts</strong> · <code>localhost:9090/alerts</code>. Rule files grouped by source (<code>autocon5_bgp_rules.yml</code>, <code>autocon5_interface_rules.yml</code>, …) with each rule's current state badge.</figcaption>
+<figcaption><strong>Prometheus — Alerts</strong> · <code>localhost:9090/alerts</code>. Rule files grouped by source (<code>alerting_rules.yml</code>, <code>recording_rules.yml</code>) with each rule's current state badge.</figcaption>
 
 </figure>
 
@@ -248,8 +252,8 @@ You can click any alert to expand the full label set. The labels are what the Pr
 The silences page is the auditable record of every containment action. When the quarantine flow runs successfully on an alert, you'll see a silence here with:
 
 - **Matchers**: `alertname=BgpSessionNotUp`, `device=srl1`, `peer_address=10.1.99.2`
-- **Creator**: `prefect-flow`
-- **Comment**: `quarantine: cascade-protect (peer flapping with high rate)`
+- **Creator**: `prefect-workshop`
+- **Comment**: `Workshop quarantine: suppress repeat notifications while investigating.`
 - **Ends**: 20 minutes after creation
 
 You can manually expire a silence here too — the **Expire** button removes it immediately, and the alert returns to `Active` on the next evaluation cycle.

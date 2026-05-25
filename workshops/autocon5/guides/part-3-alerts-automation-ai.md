@@ -126,12 +126,12 @@ Two `BgpSessionNotUp` rows. Each has `device` and `peer_address` labels. **Stop 
 nobs autocon5 try-it --auto
 ```
 
-This walks every path and reports each outcome. It takes ~3 minutes. You should see panels print like:
+This walks every path and reports each outcome. It takes around 30 seconds end-to-end. You should see panels print like:
 
 ```
 ╭─── Path 1 - Actionable / mismatch → proceed ───╮
    ✓ replayed firing payload for srl1 → 10.1.99.2
-   ✓ quarantine flow decided 'proceed' for the actionable mismatch
+   ✓ quarantine flow decided 'proceed' for the actionable mismatch (Loki match count=1)
 
 ╭─── Path 2 - In-maintenance → skip ───╮
    ✓ srl1.maintenance = True
@@ -223,20 +223,30 @@ nobs autocon5 evidence srl1 10.1.2.2
 
 #### C. The flow has already decided — see what it did
 
-By the time you finished reading the evidence bundle, the cascade-driven `BgpSessionNotUp(srl1 ↔ 10.1.2.2)` payload has flowed through the webhook, run `quarantine_bgp_flow`, and dropped an annotation in Loki. Check **Recent events** on Workshop Home; the most recent annotation for `peer_address=10.1.2.2` should carry `decision=proceed`.
+While you were reading the evidence bundle, the cascade-driven `BgpSessionNotUp(srl1 ↔ 10.1.2.2)` payload was racing through the webhook and into `quarantine_bgp_flow`. Whether it landed depends on scrape timing — the cascade flips the BGP session for ~50s, and the alert needs `for: 30s` to satisfy. On a fast scrape window it fires and the flow runs; on a slow one BGP recovers before the alert promotes from `pending` to `firing`.
 
-If it hasn't surfaced within ~30 seconds, use the direct-trigger tip below — Step 3 of `try-it` already exercised this same peer, so Alertmanager might have a leftover silence damping the cascade-driven payload.
+Check **Recent events** on Workshop Home — if you see a fresh annotation for `peer_address=10.1.2.2` with `decision=proceed`, you caught the natural path. If not (the common case), use the direct trigger below — same flow, same decision, no waiting on scrape windows:
+
+```bash
+docker compose --project-name autocon5 exec prefect-flows \
+  prefect deployment run alert-receiver/alert-receiver \
+  --param alertname=BgpSessionNotUp \
+  --param status=firing \
+  --param 'alert_group={"alerts":[{"labels":{"device":"srl1","peer_address":"10.1.2.2","afi_safi_name":"ipv4-unicast"}}],"groupLabels":{"alertname":"BgpSessionNotUp"},"status":"firing"}'
+```
+
+Recheck Recent events — `decision=proceed` for `peer_address=10.1.2.2` should be there now.
 
 > Your senior taps the screen. *"That's the flow signalling 'this looks real, escalate it.' In production this is where a runbook fires, a ticket opens, an on-call gets paged. The flow doesn't pretend to fix the underlying problem — it categorises and routes."*
 
-Now switch to the Prefect UI to inspect *this specific* run. Open <http://localhost:4200/runs>, filter by tag `peer_address:10.1.2.2`, and click the most recent `quarantine_bgp | srl1:10.1.2.2`:
+Now switch to the Prefect UI to inspect *this specific* run. Open <http://localhost:4200/runs>, find `quarantine_bgp | srl1:10.1.2.2` in the recent list (sort by start time if needed), and click into it:
 
 ![Prefect flow run for the cascade-driven quarantine_bgp on srl1:10.1.2.2](../../../docs/assets/screenshots/prefect-flow-run-cascade-peer-light.png#only-light){ .screenshot loading=lazy }
 ![Prefect flow run for the cascade-driven quarantine_bgp on srl1:10.1.2.2](../../../docs/assets/screenshots/prefect-flow-run-cascade-peer-dark.png#only-dark){ .screenshot loading=lazy }
 
 - The full six-task graph for the `proceed` path: `collect_evidence → evaluate_policy → annotate_decision → ai_rca → quarantine → annotate_action`.
 - Per-task logs for *this* run: `collect_evidence` shows the SoT lookup + metrics snapshot the flow pulled — the same shape you just saw at the CLI. `evaluate_policy` shows the two-stage decision. `quarantine` shows the `silence_id` Alertmanager returned.
-- Task tags on the right: `device:srl1`, `peer_address:10.1.2.2`, `afi_safi:ipv4-unicast`, `action:quarantine`. Step 2's UI tour used the synthetic `try-it` runs; this is the same view on *your* live event.
+- Task tags on the task nodes: `device:srl1`, `peer_address:10.1.2.2`, `afi_safi:ipv4-unicast`, `action:quarantine`. Tags live on tasks (not the parent flow run), so the natural way to find a specific flow run in the list is by name (`quarantine_bgp | srl1:10.1.2.2`) rather than by tag filter. Step 2's UI tour used the synthetic `try-it` runs; this is the same view on *your* live event.
 
 #### D. Recovery beat
 
@@ -420,13 +430,13 @@ nobs autocon5 maintenance --device srl1 --clear
 
 ### 5. Your turn — find what the flow actually did
 
-> Your senior gestures at the screen. *"You've watched the paths run. Now show me — without scrolling the dashboard — how many alert payloads the flow has handled in the last 30 minutes, broken down by decision. One LogQL line. The annotations carry everything you need."*
+> Your senior gestures at the screen. *"You've watched the paths run. Now show me — without scrolling the dashboard — how many alert payloads the flow has handled in the last hour, broken down by decision. One LogQL line. The annotations carry everything you need."*
 
 This is unguided. The flow writes its audit trail into Loki with `source="prefect"` and a few labels that distinguish each path (`workflow`, `decision`, `device`, `peer_address`, `ai_rca` — explore them).
 
 Take a minute on it before you scroll. Two hints if you're stuck:
 
-- `count_over_time({...}[30m])` turns a Loki query into a metric just like in Part 1 Exercise 10.
+- `count_over_time({...}[1h])` turns a Loki query into a metric just like in Part 1 Exercise 10. A one-hour window catches anything you ran earlier in the part even if you paused for coffee between exercises.
 - `sum by (label) (...)` collapses everything except the label you list. Pick the label that gives the most informative breakdown — try `workflow` first (one row, not very useful), then try `decision` (a small handful of rows, much more useful).
 
 **You should land on a query that returns a small handful of rows** — something like:

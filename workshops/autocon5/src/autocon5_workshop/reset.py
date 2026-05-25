@@ -70,7 +70,7 @@ def reset(
     if not skip_sonda_logs:
         _restart_sonda_logs_if_wedged(loki_url)
 
-    ok("lab reset complete — both broken peers should be firing within ~30s")
+    ok("lab reset complete — both broken peers should be firing within ~60s")
 
 
 def _clear_maintenance_flags() -> None:

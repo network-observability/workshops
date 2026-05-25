@@ -103,6 +103,8 @@ scenarios:
   - id: system_cpu_used
     signal_type: metrics
     name: cpu_used
+    metric_type: gauge
+    help: "Per-CPU utilization percent."
     labels:
       source: srl1
       slot: A
@@ -118,6 +120,8 @@ scenarios:
   - id: system_memory_utilization
     signal_type: metrics
     name: memory_utilization
+    metric_type: gauge
+    help: "Memory utilization percent on the device."
     labels:
       source: srl1
       slot: A
@@ -134,6 +138,8 @@ scenarios:
   - id: system_uptime
     signal_type: metrics
     name: device_uptime
+    metric_type: counter
+    help: "Seconds since device boot."
     labels:
       source: srl1
       collection_type: gnmi

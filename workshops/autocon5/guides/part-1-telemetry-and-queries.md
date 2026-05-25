@@ -48,7 +48,7 @@ Click `Run query`. **You should see exactly 6 results** — three interfaces per
 - `intf_role` — `peer` for the three real ones
 - `collection_type` — `gnmi` (srl1) or `snmp` (srl2)
 - `pipeline` — `telegraf` (both devices route through Telegraf today)
-- `host`, `instance`, `job` — where Prometheus scraped from
+- `instance`, `job` — where Prometheus scraped from
 
 > Your senior nods at the screen. *"Notice anything? Same metric name, same value semantics on both sides — but the `collection_type` label says one device emits gNMI and the other emits SNMP. That's the workshop's normalization story. We'll come back to it. For now: the metric is the same downstream regardless."*
 
@@ -164,6 +164,9 @@ The log lines that drove the metric flip are right there with the same timestamp
 
 **Stop and notice.** One CLI command, multiple signals reacting in causal order, and a clean recovery beat when the gate closes. Synthetic data with real shapes — and you can drive it. The query bar reacts to lab state in real time, no batch refresh, no caching layer hiding your changes. The shape of this cascade — interface degrades → BGP follows → prefixes drop → interface recovers → BGP snaps back — is what real outages and recoveries look like in your network. Memorise the shape; it generalises.
 
+!!! tip "Let the cascade settle before the next exercise"
+    The cascade scenarios above run for ~4 minutes end-to-end. If you jump straight into Exercise 6 while they're still active, the `count by (collection_type) (...)` queries on srl1 will be temporarily lower than the steady-state 3 because the cascade replaces the baseline BGP/interface series. Either wait for `nobs autocon5 status` to show no cascade scenarios, or run `nobs autocon5 reset` to clear them immediately.
+
 #### 6. Normalization — two raw shapes, one shared schema
 
 > Your senior swivels their laptop toward you. *"Earlier I said `srl1` and `srl2` are wired through different pipelines on purpose. Now we look at it. This is the part that bites every operator who jumps from one vendor's network to another."*
@@ -173,43 +176,37 @@ The two devices speak different protocols at the source:
 - **`srl1` emits gNMI** — that's the telemetry shape SR Linux puts on the wire natively. Field names like `srl_bgp_oper_state`, tags like `source`. **Telegraf-srl1** scrapes this raw shape, renames `srl_*` to canonical (`bgp_*`, `interface_*`) and `source` to `device`. Out the other side: the shared schema this workshop's dashboards and alerts speak.
 - **`srl2` emits SNMP** — the classic shape from IF-MIB / BGP4-MIB / CISCO-BGP4-MIB. Field names like `ifHCInOctets`, `bgpPeerState`, `cbgpPeerOperStatus`; tags like `agent_host`, `ifDescr`, `bgpPeerRemoteAddr`. **Telegraf-srl2** scrapes the raw SNMP shape and renames every field and every tag to the same canonical schema. Out the other side: byte-for-byte identical to what srl1 produces.
 
-Both raw shapes live on `sonda-server` (the lab's synthetic-telemetry runtime). Each Telegraf scrapes its device's per-scenario `/metrics` endpoints on a 10-second cadence — same scrape pattern Prometheus would use against real exporters in production.
+Both raw shapes live on `sonda-server` (the lab's synthetic-telemetry runtime). Each Telegraf scrapes the server's aggregate `/metrics` endpoint on a 10-second cadence, filtered to its device by a label query — same scrape pattern Prometheus would use against real exporters in production.
 
 #### See the raw shape, before Telegraf touches it
 
 > Your senior pulls up a terminal. *"You don't have to take the bullet list on faith. Both raw shapes are sitting on sonda-server right now — let me show you."*
 
-Each device's scenario IDs land in a shared volume at boot. Pick one srl1 scenario and curl its raw metrics. `sonda-server`'s `/scenarios/{id}/metrics` endpoint **drains** the scenario's emission buffer on each read, and Telegraf is already reading it every 10s — so to see the raw samples yourself you pause Telegraf for one cycle first, let the buffer fill, then curl:
+`sonda-server` exposes a single `/metrics` endpoint and lets you filter it down to one device with a `label=` query. For srl1, the device tag in the gNMI shape is `source`:
 
 ```bash
-SRL1_ID=$(docker exec telegraf-srl1 head -1 /shared/scenario-ids-srl1.txt)
-docker pause telegraf-srl1 && sleep 12
-curl -s "http://localhost:8085/scenarios/${SRL1_ID}/metrics" | tail -1
-docker unpause telegraf-srl1
+curl -s 'http://localhost:8085/metrics?label=source:srl1' | grep '^srl_bgp_oper_state' | head -1
 ```
 
 ```
-srl_bgp_neighbor_state{afi_safi_name="ipv4-unicast",collection_type="gnmi",name="default",neighbor_asn="65102",peer_address="10.1.2.2",source="srl1"} 1 1778960798157
+srl_bgp_oper_state{afi_safi_name="ipv4-unicast",collection_type="gnmi",name="default",neighbor_asn="65102",peer_address="10.1.2.2",source="srl1"} 1 1779662362111
 ```
 
-Note the metric name (`srl_bgp_neighbor_state`) and the device label (`source="srl1"`) — that's the gNMI shape SR Linux puts on the wire. The pack `workshops/autocon5/sonda/catalog/srlinux-gnmi-bgp-raw.yaml` lists every metric in this shape.
+The `peer_address` value will vary — the curl returns whichever peer's scenario was registered first. The label structure is what matters: note the metric name (`srl_bgp_oper_state`) and the device label (`source="srl1"`) — that's the gNMI shape SR Linux puts on the wire. The pack `workshops/autocon5/sonda/catalog/srlinux-gnmi-bgp-raw.yaml` lists every metric in this shape.
 
-Same exercise on srl2 — same pause-curl-unpause shape:
+Same exercise on srl2 — same endpoint, different label key because the SNMP shape uses `agent_host`:
 
 ```bash
-SRL2_ID=$(docker exec telegraf-srl2 head -1 /shared/scenario-ids-srl2.txt)
-docker pause telegraf-srl2 && sleep 12
-curl -s "http://localhost:8085/scenarios/${SRL2_ID}/metrics" | tail -1
-docker unpause telegraf-srl2
+curl -s 'http://localhost:8085/metrics?label=agent_host:srl2' | grep '^bgpPeerState' | head -1
 ```
 
 ```
-bgpPeerState{afi_safi_name="ipv4-unicast",agent_host="srl2",bgpPeerRemoteAddr="10.1.2.1",bgpPeerRemoteAs="65101",collection_type="snmp",name="default"} 1 1778960808168
+bgpPeerState{afi_safi_name="ipv4-unicast",agent_host="srl2",bgpPeerRemoteAddr="10.1.2.1",bgpPeerRemoteAs="65101",collection_type="snmp",name="default"} 1 1779662362111
 ```
 
 Field name `bgpPeerState`, tag `agent_host`, value space matches SNMP enum semantics. Different name, different label keys than `srl_bgp_oper_state` — same logical concept, completely different shape. Pack: `workshops/autocon5/sonda/catalog/cisco-snmp-bgp-raw.yaml`.
 
-> Your senior taps the screen. *"That drain-on-read behaviour is exactly why a real production scrape architecture has one consumer per endpoint. Two consumers fighting for one buffer is a footgun; this is the lab letting you peek behind Telegraf's back without rearchitecting."*
+> Your senior taps the screen. *"This is a snapshot endpoint — Telegraf reads it on its 10-second cadence, you can read it whenever, nobody steals samples from anyone. Same scrape model real production uses: one source of truth, many consumers."*
 
 Now compare to the normalized view in Prometheus, post-Telegraf:
 
@@ -404,7 +401,7 @@ You'll see BGP-related lines for that specific peer. Add a filter to narrow:
 - **List every distinct severity level present in srl1 logs in the last hour.** LogQL: parse with `| json`, then check the unique values of `severity` — the Explore log inspector shows distinct values per parsed field after a JSON parse stage.
 - **Run the broken-peer query against srl2 only.** Same shape as #3 but scoped to one device. Confirm you get exactly one row (`peer_address=10.1.11.1`).
 - **Plot CPU and memory side by side.** Two queries in one panel: `cpu_used{device="srl1"}` and `memory_utilization{device="srl1"}`. The legend should show two lines.
-- **Inspect the raw shape Telegraf normalizes.** `docker exec telegraf-srl2 wget -qO- http://localhost:9005/metrics | grep -E '^(interface_|bgp_)'` shows what the shared names look like; `nobs autocon5 logs telegraf-srl2 | head -40` shows the raw SNMP-named samples *before* normalization. The rename ruleset that bridges them lives in `telegraf/telegraf-srl2.conf.toml`.
+- **See the rename rules at work side by side.** `curl -s 'http://localhost:8085/metrics?label=agent_host:srl2' | grep -E '^(ifHC|bgpPeer|cbgpPeer)' | head` shows the raw SNMP names sonda emits *before* Telegraf rewrites them; `docker exec telegraf-srl2 wget -qO- http://localhost:9005/metrics | grep -E '^(interface_|bgp_)' | head` shows the canonical names Prometheus actually scrapes. The rename ruleset that bridges them lives in `telegraf/telegraf-srl2.conf.toml`.
 
 ## What you took away
 

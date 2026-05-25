@@ -3,12 +3,8 @@
 #
 # Runs as an init container. Waits for sonda-server, POSTs each `*.yaml` in
 # `$SCENARIOS_DIR` (server resolves any `pack:` refs via its own `--catalog`),
-# and writes one IDs file per source YAML so each telegraf only scrapes its
-# own device's `/scenarios/{id}/metrics` endpoints.
-#
-# Source file -> IDs file:
-#   srl1-metrics.yaml -> /shared/scenario-ids-srl1.txt
-#   srl2-metrics.yaml -> /shared/scenario-ids-srl2.txt
+# and exits. Telegraf scrapes the aggregate /metrics endpoint filtered by
+# device label, so no per-device ID file is needed.
 
 set -e
 
@@ -82,19 +78,6 @@ def post_scenario_file(path: str) -> list[dict]:
     return [result]
 
 
-def _ids_of(results: list[dict]) -> list[str]:
-    return [r["id"] for r in results if isinstance(r, dict) and r.get("id")]
-
-
-def _ids_file_for(filename: str) -> str:
-    """`{stem}-metrics.yaml` -> `/shared/scenario-ids-{stem}.txt`."""
-    stem = filename.removesuffix(".yaml").removesuffix(".yml")
-    if stem.endswith("-metrics"):
-        stem = stem[: -len("-metrics")]
-    return f"/shared/scenario-ids-{stem}.txt"
-
-
-os.makedirs("/shared", exist_ok=True)
 exit_code = 0
 for filename in sorted(os.listdir(scenarios_dir)):
     if not filename.endswith((".yaml", ".yml")):
@@ -106,12 +89,7 @@ for filename in sorted(os.listdir(scenarios_dir)):
     except urllib.error.HTTPError:
         exit_code = 1
         continue
-    ids = _ids_of(results)
-    out = _ids_file_for(filename)
-    with open(out, "w") as fh:
-        for sid in ids:
-            fh.write(sid + "\n")
-    print(f"  -> {len(results)} entry/entries, {len(ids)} id(s) -> {out}")
+    print(f"  -> {len(results)} entry/entries registered")
 
 sys.exit(exit_code)
 PYEOF

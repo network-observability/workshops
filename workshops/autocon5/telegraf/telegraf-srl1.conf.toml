@@ -5,15 +5,15 @@
 ###############################################################################
 #                            DATA COLLECTION                                  #
 ###############################################################################
-# Baseline: scrape sonda-server's per-scenario Prometheus text endpoints for
-# the srl1 device. IDs file (filtered to srl1 only) is written by sonda-setup.
-[[inputs.exec]]
-  commands = ["/scripts/scrape-sonda-metrics.sh"]
-  timeout = "15s"
-  interval = "10s"
-  data_format = "prometheus"
+# Baseline: scrape sonda-server's aggregate /metrics endpoint, filtered to
+# srl1 via the `source` label (gNMI shape).
+[[inputs.prometheus]]
+  urls = ["http://sonda-server:8080/metrics?label=source:srl1"]
+  metric_version = 2
+  # Strip Telegraf's default scrape-noise tags so they don't show up in Prom.
+  tagexclude = ["url", "host"]
 
-  [inputs.exec.tags]
+  [inputs.prometheus.tags]
     pipeline = "telegraf"
 
 # Cascade: `flap-interface` posts a dynamic scenario to sonda-server with a
@@ -34,9 +34,10 @@
 #                            DATA NORMALIZATION                               #
 ###############################################################################
 # Strip the vendor `srl_` prefix to converge srl1 series with srl2's
-# canonical names. `field_rename` (not `metric_rename`) because the
-# Prom remote_write parser keeps measurement="prometheus_remote_write"
-# and uses the metric name as the field.
+# canonical names. Both inputs keep the metric name in the field
+# (baseline `inputs.prometheus` uses measurement="prometheus"; cascade
+# `prometheusremotewrite` uses measurement="prometheus_remote_write")
+# so `field_rename` covers both paths.
 [[processors.regex]]
   order = 1
 
@@ -46,7 +47,7 @@
 
 # Telegraf's prometheus_client output strips the measurement prefix
 # (when metric_version=2) only if measurement="prometheus" exactly.
-# The http_listener_v2 + prometheusremotewrite data_format produces
+# The cascade's prometheusremotewrite data_format produces
 # measurement="prometheus_remote_write", so we rename it down to
 # "prometheus" — that way Prometheus sees `bgp_oper_state` instead
 # of `prometheus_remote_write_bgp_oper_state`.
