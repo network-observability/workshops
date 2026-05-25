@@ -84,7 +84,7 @@ curl -s http://localhost:8085/scenarios | jq '.scenarios[0]'
 To see the actual Prometheus-text samples Telegraf reads — the byte-for-byte input, before any rename or normalization — curl the aggregate `/metrics` endpoint and filter to one device with `label=key:value`. The endpoint is snapshot-style: Telegraf scrapes it every 10 seconds and you can read it concurrently without stealing samples from anyone.
 
 ```bash
-curl -s 'http://localhost:8085/metrics?label=source:srl1' | grep '^srl_bgp_oper_state' | head -1
+curl -s 'http://localhost:8085/metrics?label=source:srl1' | grep '^srl_bgp_oper_state{' | grep '10.1.99.2' | head -1
 ```
 
 ```text
@@ -174,13 +174,13 @@ Open the query browser at <http://localhost:9090/graph>. These three queries are
 interface_oper_state
 ```
 
-Returns one series per `{device, name}` interface pair. `1` is up, `2` is down — the SR Linux convention. Look for the one stuck at `2`.
+Returns one series per `{device, name}` interface pair. `1` is up, `2` is down — the SR Linux convention. Two series are stuck at `2`: one per device, both on `ethernet-1/11` (the always-broken interface in the lab).
 
 ```promql
 bgp_oper_state{device="srl1"}
 ```
 
-BGP per-peer operational state on srl1. `6` is `established`, `5` is `active`, anything else is degraded. One row should be stuck at `5`.
+BGP per-peer operational state on srl1. The lab maps `1` to `established` and `5` to `active` (degraded, retrying) — the gNMI/openconfig convention. One row should be stuck at `5` (the broken peer `10.1.99.2`).
 
 ```promql
 ALERTS{alertstate="firing"}
@@ -206,7 +206,7 @@ The alerts page (<http://localhost:9090/alerts>) groups every rule by file. `ina
 ![Prometheus alerts page](../assets/screenshots/prometheus-alerts-light.png#only-light){ .screenshot loading=lazy }
 ![Prometheus alerts page](../assets/screenshots/prometheus-alerts-dark.png#only-dark){ .screenshot loading=lazy }
 
-<figcaption><strong>Prometheus — Alerts</strong> · <code>localhost:9090/alerts</code>. Rule files grouped by source (<code>autocon5_bgp_rules.yml</code>, <code>autocon5_interface_rules.yml</code>, …) with each rule's current state badge.</figcaption>
+<figcaption><strong>Prometheus — Alerts</strong> · <code>localhost:9090/alerts</code>. Rule files grouped by source (<code>alerting_rules.yml</code>, <code>recording_rules.yml</code>) with each rule's current state badge.</figcaption>
 
 </figure>
 
@@ -252,8 +252,8 @@ You can click any alert to expand the full label set. The labels are what the Pr
 The silences page is the auditable record of every containment action. When the quarantine flow runs successfully on an alert, you'll see a silence here with:
 
 - **Matchers**: `alertname=BgpSessionNotUp`, `device=srl1`, `peer_address=10.1.99.2`
-- **Creator**: `prefect-flow`
-- **Comment**: `quarantine: cascade-protect (peer flapping with high rate)`
+- **Creator**: `prefect-workshop`
+- **Comment**: `Workshop quarantine: suppress repeat notifications while investigating.`
 - **Ends**: 20 minutes after creation
 
 You can manually expire a silence here too — the **Expire** button removes it immediately, and the alert returns to `Active` on the next evaluation cycle.
