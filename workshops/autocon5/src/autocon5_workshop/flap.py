@@ -542,13 +542,12 @@ def _discover_cascade_baseline_ids(
         warn(f"failed to list scenarios for cascade baseline discovery: {exc}")
         return []
 
+    # Include finished/paused scenarios too — sonda's aggregate /metrics
+    # keeps their last-emitted samples, which shadow the cascade's value
+    # if a prior cascade's scenarios lingered.
     all_scenarios = r.json().get("scenarios", [])
-    interface_candidates = [
-        s["id"] for s in all_scenarios if s.get("name") in interface_metric_names and s.get("state") == "running"
-    ]
-    bgp_candidates = [
-        s["id"] for s in all_scenarios if s.get("name") in bgp_metric_names and s.get("state") == "running"
-    ]
+    interface_candidates = [s["id"] for s in all_scenarios if s.get("name") in interface_metric_names]
+    bgp_candidates = [s["id"] for s in all_scenarios if s.get("name") in bgp_metric_names]
 
     matching: list[str] = []
     for sid in interface_candidates:
