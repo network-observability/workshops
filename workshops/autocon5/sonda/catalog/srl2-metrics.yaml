@@ -84,14 +84,20 @@ scenarios:
         generator:
           type: constant
           value: 2.0
+      # Counter-typed flatline (step_size=0) instead of `constant` —
+      # sonda warns "mixed metric_type declarations for same name;
+      # emitting as untyped" if a `constant` override lands on a name
+      # the pack declared as `step` (Counter). Keep the type consistent.
       ifHCInOctets:
         generator:
-          type: constant
-          value: 0.0
+          type: step
+          start: 0.0
+          step_size: 0.0
       ifHCOutOctets:
         generator:
-          type: constant
-          value: 0.0
+          type: step
+          start: 0.0
+          step_size: 0.0
 
   # Reachability
   - id: ping_srl2

@@ -60,12 +60,15 @@ _DEVICE_TELEGRAF_URLS = {
     "srl1": "http://telegraf-srl1:1316/api/v1/write",
 }
 
-# Per-device baseline octet metric names and label-key conventions. These
-# are the raw shape sonda emits before Telegraf renames them to the
-# canonical schema; we DELETE-and-replace the baseline scenarios that
-# emit these names for the flapped interface during a cascade.
-_BASELINE_OCTET_METRICS: dict[str, dict[str, str]] = {
+# Per-device baseline metric names and label-key conventions. These are
+# the raw shape sonda emits before Telegraf renames them to the canonical
+# schema. The cascade DELETEs the baseline scenarios that emit these
+# names for the flapped interface (and the cascading BGP peers) so the
+# cascade body is the sole emitter during the window. flap_cleanup.py
+# re-POSTs them when the cascade reaches `finished`.
+_BASELINE_INTERFACE_METRICS: dict[str, dict[str, Any]] = {
     "srl1": {
+        "oper_state": "srl_interface_oper_state",
         "in": "srl_interface_in_octets",
         "out": "srl_interface_out_octets",
         "interface_label": "name",
@@ -75,6 +78,7 @@ _BASELINE_OCTET_METRICS: dict[str, dict[str, str]] = {
         "out_step": 62500.0,
     },
     "srl2": {
+        "oper_state": "ifOperStatus",
         "in": "ifHCInOctets",
         "out": "ifHCOutOctets",
         "interface_label": "ifDescr",
@@ -82,6 +86,32 @@ _BASELINE_OCTET_METRICS: dict[str, dict[str, str]] = {
         "collection_type": "snmp",
         "in_step": 125000.0,
         "out_step": 62500.0,
+    },
+}
+
+# Raw BGP metric names the cascade overrides, per device. Order mirrors
+# _gated_bgp_entries (oper, neighbor, prefix counters) so discovery and
+# restore stay in lockstep with what the cascade emits.
+_BASELINE_BGP_METRICS: dict[str, dict[str, str]] = {
+    "srl1": {
+        "peer_label": "peer_address",
+        "device_label": "source",
+        "oper": "srl_bgp_oper_state",
+        "neighbor": "srl_bgp_neighbor_state",
+        "prefixes_accepted": "srl_bgp_prefixes_accepted",
+        "received_routes": "srl_bgp_received_routes",
+        "sent_routes": "srl_bgp_sent_routes",
+        "active_routes": "srl_bgp_active_routes",
+    },
+    "srl2": {
+        "peer_label": "bgpPeerRemoteAddr",
+        "device_label": "agent_host",
+        "oper": "cbgpPeerOperStatus",
+        "neighbor": "bgpPeerState",
+        "prefixes_accepted": "cbgpPeerAcceptedPrefixes",
+        "received_routes": "bgpPeerInPrefixes",
+        "sent_routes": "bgpPeerOutPrefixes",
+        "active_routes": "cbgpPeerActivePrefixes",
     },
 }
 
@@ -199,17 +229,22 @@ def flap_interface(
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
 
-    # Discover the baseline octet scenarios for this interface and pick up
-    # their current counter values, then DELETE them so the cascade body's
-    # gated step counters become the sole source for the interface's octets
-    # during the cascade. A detached cleanup subprocess re-POSTs the baseline
-    # after the cascade reaches `finished` — see flap_cleanup.py.
-    octet_baseline_ids = _discover_octet_baseline_ids(sonda_url, device, interface, headers)
-    in_octet_start, out_octet_start = _query_baseline_octet_values(
-        sonda_url, device, interface, headers
-    )
-    if octet_baseline_ids:
-        _delete_scenarios(sonda_url, octet_baseline_ids, headers)
+    # Discover the baseline scenarios the cascade overrides (interface
+    # oper_state + octets for the flapped interface; bgp_* per cascading
+    # peer) and DELETE them so the cascade body is the sole emitter
+    # during the window. Without this, baseline keeps writing the UP/10
+    # values into the same Prom series the cascade is flapping, and
+    # Telegraf's last-write-wins prometheus_client output causes the
+    # series to alternate on the scrape boundary. flap_cleanup.py
+    # re-POSTs the baseline once the cascade reaches `finished`.
+    interface_baseline_ids = _discover_interface_baseline_ids(sonda_url, device, interface, headers)
+    in_octet_start, out_octet_start = _query_baseline_octet_values(sonda_url, device, interface, headers)
+    bgp_baseline_ids: list[str] = []
+    for peer in peers:
+        bgp_baseline_ids.extend(_discover_bgp_baseline_ids(sonda_url, device, peer.address, headers))
+    pre_cascade_baseline_ids = interface_baseline_ids + bgp_baseline_ids
+    if pre_cascade_baseline_ids:
+        _delete_scenarios(sonda_url, pre_cascade_baseline_ids, headers)
 
     body = _build_cascade(
         device=device,
@@ -245,11 +280,12 @@ def flap_interface(
         fail(f"POST /scenarios failed: {exc}{detail}")
         # If the cascade POST fails, attempt to restore the baseline immediately
         # so the lab doesn't sit in a half-deleted state.
-        if octet_baseline_ids:
+        if pre_cascade_baseline_ids:
             _spawn_baseline_cleanup(
                 sonda_url=sonda_url,
                 device=device,
                 interface=interface,
+                peers=peers,
                 cascade_ids=[],
                 api_key=api_key,
             )
@@ -262,11 +298,12 @@ def flap_interface(
         raise typer.Exit(code=1)
 
     cascade_ids = [item["id"] for item in created]
-    if octet_baseline_ids:
+    if pre_cascade_baseline_ids:
         _spawn_baseline_cleanup(
             sonda_url=sonda_url,
             device=device,
             interface=interface,
+            peers=peers,
             cascade_ids=cascade_ids,
             api_key=api_key,
         )
@@ -506,26 +543,27 @@ def _flatten_created(payload: dict) -> list[dict]:
     return []
 
 
-def _discover_octet_baseline_ids(
-    sonda_url: str, device: str, interface: str, headers: dict[str, str]
-) -> list[str]:
-    """Find the baseline octet scenario UUIDs for one interface on one device."""
-    cfg = _BASELINE_OCTET_METRICS.get(device)
-    if cfg is None:
-        return []
-    metric_names = {cfg["in"], cfg["out"]}
-    intf_label_token = f'{cfg["interface_label"]}="{interface}"'
-    device_label_token = f'{cfg["device_label"]}="{device}"'
-    base = sonda_url.rstrip("/")
-
+def _list_scenarios(sonda_url: str, headers: dict[str, str]) -> list[dict[str, Any]]:
+    """GET /scenarios; warns and returns [] on failure."""
     try:
-        r = requests.get(f"{base}/scenarios", headers=headers, timeout=5)
+        r = requests.get(f"{sonda_url.rstrip('/')}/scenarios", headers=headers, timeout=5)
         r.raise_for_status()
     except requests.RequestException as exc:
         warn(f"failed to list scenarios for baseline discovery: {exc}")
         return []
+    return r.json().get("scenarios", []) or []
 
-    candidates = [s["id"] for s in r.json().get("scenarios", []) if s.get("name") in metric_names]
+
+def _scenarios_matching_label_tokens(
+    sonda_url: str,
+    headers: dict[str, str],
+    scenarios: list[dict[str, Any]],
+    metric_names: set[str],
+    required_tokens: list[str],
+) -> list[str]:
+    """Return scenario IDs whose name is in metric_names and whose /metrics body contains every token."""
+    base = sonda_url.rstrip("/")
+    candidates = [s["id"] for s in scenarios if s.get("name") in metric_names]
     matching: list[str] = []
     for sid in candidates:
         try:
@@ -534,16 +572,48 @@ def _discover_octet_baseline_ids(
                 continue
         except requests.RequestException:
             continue
-        if intf_label_token in m.text and device_label_token in m.text:
+        if all(token in m.text for token in required_tokens):
             matching.append(sid)
     return matching
+
+
+def _discover_interface_baseline_ids(sonda_url: str, device: str, interface: str, headers: dict[str, str]) -> list[str]:
+    """Find baseline oper_state + octet scenario UUIDs for one interface on one device."""
+    cfg = _BASELINE_INTERFACE_METRICS.get(device)
+    if cfg is None:
+        return []
+    metric_names = {cfg["oper_state"], cfg["in"], cfg["out"]}
+    tokens = [
+        f'{cfg["interface_label"]}="{interface}"',
+        f'{cfg["device_label"]}="{device}"',
+    ]
+    return _scenarios_matching_label_tokens(
+        sonda_url, headers, _list_scenarios(sonda_url, headers), metric_names, tokens
+    )
+
+
+def _discover_bgp_baseline_ids(sonda_url: str, device: str, peer_address: str, headers: dict[str, str]) -> list[str]:
+    """Find baseline BGP scenario UUIDs for one peer on one device."""
+    cfg = _BASELINE_BGP_METRICS.get(device)
+    if cfg is None:
+        return []
+    metric_names = {
+        cfg[k] for k in ("oper", "neighbor", "prefixes_accepted", "received_routes", "sent_routes", "active_routes")
+    }
+    tokens = [
+        f'{cfg["peer_label"]}="{peer_address}"',
+        f'{cfg["device_label"]}="{device}"',
+    ]
+    return _scenarios_matching_label_tokens(
+        sonda_url, headers, _list_scenarios(sonda_url, headers), metric_names, tokens
+    )
 
 
 def _query_baseline_octet_values(
     sonda_url: str, device: str, interface: str, headers: dict[str, str]
 ) -> tuple[float, float]:
     """Read current baseline counter values so the cascade can resume from them."""
-    cfg = _BASELINE_OCTET_METRICS.get(device)
+    cfg = _BASELINE_INTERFACE_METRICS.get(device)
     if cfg is None:
         return 0.0, 0.0
     label_filter = f"{cfg['device_label']}:{device}"
@@ -609,7 +679,7 @@ def _gated_octet_entries(
     resume from the frozen value when the gate reopens — same pattern as
     sonda's `bytes_total + link_state` example.
     """
-    cfg = _BASELINE_OCTET_METRICS.get(device)
+    cfg = _BASELINE_INTERFACE_METRICS.get(device)
     if cfg is None:
         return []
     octet_labels = {
@@ -647,6 +717,7 @@ def _spawn_baseline_cleanup(
     sonda_url: str,
     device: str,
     interface: str,
+    peers: list[Peer],
     cascade_ids: list[str],
     api_key: str,
 ) -> None:
@@ -666,6 +737,8 @@ def _spawn_baseline_cleanup(
     ]
     for cid in cascade_ids:
         args.extend(["--cascade-id", cid])
+    for peer in peers:
+        args.extend(["--peer", f"{peer.address}:{peer.asn}"])
     with contextlib.suppress(Exception):
         subprocess.Popen(  # noqa: S603
             args,
