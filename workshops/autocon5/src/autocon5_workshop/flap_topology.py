@@ -1,9 +1,7 @@
 """Lab topology lookups for the flap-interface CLI.
 
-Reads `lab_vars.yml` once at import time and exposes:
-- `peers_for(device, interface)` — BGP peer addresses on the link.
-- `interface_labels(device, name)` — Prometheus label set for `interface_oper_state`.
-- `bgp_labels(device, peer_address, neighbor_asn)` — label set for BGP per-peer metrics.
+Reads `lab_vars.yml` once at import time and exposes `peers_for(device, interface)`
+— BGP peer addresses on the link.
 
 The healthy interface↔peer mapping is derived from the YAML by `/24`
 subnet membership. The deliberately-broken peers (`10.1.99.2` on srl1 and
@@ -27,24 +25,6 @@ _LAB_VARS_PATH = _WORKSHOP_DIR / "lab_vars.yml"
 _BROKEN_PEER_OVERRIDES: dict[tuple[str, str], tuple[str, str]] = {
     ("srl1", "ethernet-1/11"): ("10.1.99.2", "65102"),
     ("srl2", "ethernet-1/11"): ("10.1.11.1", "65101"),
-}
-
-# Each device's baseline series carry the Prometheus-scrape provenance
-# tags from its dedicated Telegraf instance (instance/job land from the
-# scrape job in prometheus.yml). Cascade scenarios POST direct to
-# remote_write, so the cascade body needs to set these explicitly to keep
-# its series indistinguishable from baseline for queries that group by
-# job/instance. `host` is stripped on baseline (Telegraf's auto-injected
-# tag is noise), so cascade omits it too.
-_TELEGRAF_LABELS_BY_DEVICE: dict[str, dict[str, str]] = {
-    "srl1": {
-        "instance": "telegraf-srl1:9005",
-        "job": "telegraf-srl1",
-    },
-    "srl2": {
-        "instance": "telegraf-srl2:9005",
-        "job": "telegraf-srl2",
-    },
 }
 
 
@@ -110,36 +90,3 @@ def peers_for(device: str, interface: str) -> list[Peer]:
 
 def known_devices() -> Iterable[str]:
     return tuple((_LAB_VARS.get("nodes") or {}).keys())
-
-
-def _collection_type(device: str) -> str:
-    """srl1 baseline is gNMI-collected, srl2 is SNMP-collected."""
-    return "snmp" if device == "srl2" else "gnmi"
-
-
-def interface_labels(device: str, name: str) -> dict[str, str]:
-    """Label set for `interface_oper_state` matching the lab's continuous emitters."""
-    base: dict[str, str] = {
-        "device": device,
-        "name": name,
-        "intf_role": "peer",
-        "collection_type": _collection_type(device),
-        "pipeline": "telegraf",
-    }
-    base.update(_TELEGRAF_LABELS_BY_DEVICE.get(device, {}))
-    return base
-
-
-def bgp_labels(device: str, peer_address: str, neighbor_asn: str) -> dict[str, str]:
-    """Label set for `bgp_oper_state`/`bgp_neighbor_state`/prefix counters."""
-    base: dict[str, str] = {
-        "device": device,
-        "peer_address": peer_address,
-        "neighbor_asn": neighbor_asn,
-        "name": "default",
-        "afi_safi_name": "ipv4-unicast",
-        "collection_type": _collection_type(device),
-        "pipeline": "telegraf",
-    }
-    base.update(_TELEGRAF_LABELS_BY_DEVICE.get(device, {}))
-    return base

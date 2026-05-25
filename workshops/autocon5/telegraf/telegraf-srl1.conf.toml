@@ -5,8 +5,12 @@
 ###############################################################################
 #                            DATA COLLECTION                                  #
 ###############################################################################
-# Baseline: scrape sonda-server's aggregate /metrics endpoint, filtered to
-# srl1 via the `source` label (gNMI shape).
+# Scrape sonda-server's aggregate /metrics endpoint, filtered to srl1 via
+# the `source` label (gNMI shape). Cascade samples land in the same
+# endpoint with the same raw names and labels — `flap-interface` DELETEs
+# the baseline scenarios for the flapped interface/peers and POSTs the
+# cascade as the sole emitter, so the scrape always sees one consistent
+# typed series per metric name.
 [[inputs.prometheus]]
   urls = ["http://sonda-server:8080/metrics?label=source:srl1"]
   metric_version = 2
@@ -16,52 +20,18 @@
   [inputs.prometheus.tags]
     pipeline = "telegraf"
 
-# Cascade: `flap-interface` posts a dynamic scenario to sonda-server with a
-# remote_write sink targeting this port. The cascade's `srl_*` samples land
-# here, flow through the same processors, and merge into the baseline series
-# in Prometheus. See packages/nobs/.../flap.py.
-[[inputs.http_listener_v2]]
-  service_address = ":1316"
-  paths = ["/api/v1/write"]
-  methods = ["POST", "PUT"]
-  data_format = "prometheusremotewrite"
-  # Strip the agent-injected `host` tag so cascade samples carry the same
-  # label set as baseline (which already strips it). Without this, baseline
-  # and cascade store as two distinct series in Prometheus and the cascade's
-  # flap values never overlay the baseline `1`.
-  tagexclude = ["host"]
-
-  [inputs.http_listener_v2.tags]
-    pipeline = "telegraf"
-
 
 ###############################################################################
 #                            DATA NORMALIZATION                               #
 ###############################################################################
 # Strip the vendor `srl_` prefix to converge srl1 series with srl2's
-# canonical names. Both inputs keep the metric name in the field
-# (baseline `inputs.prometheus` uses measurement="prometheus"; cascade
-# `prometheusremotewrite` uses measurement="prometheus_remote_write")
-# so `field_rename` covers both paths.
+# canonical names.
 [[processors.regex]]
   order = 1
 
   [[processors.regex.field_rename]]
     pattern = "^srl_(.*)$"
     replacement = "${1}"
-
-# Telegraf's prometheus_client output strips the measurement prefix
-# (when metric_version=2) only if measurement="prometheus" exactly.
-# The cascade's prometheusremotewrite data_format produces
-# measurement="prometheus_remote_write", so we rename it down to
-# "prometheus" — that way Prometheus sees `bgp_oper_state` instead
-# of `prometheus_remote_write_bgp_oper_state`.
-[[processors.rename]]
-  order = 1
-
-  [[processors.rename.replace]]
-    measurement = "prometheus_remote_write"
-    dest = "prometheus"
 
 # gNMI's device-identifier tag is `source`; canonical schema uses `device`.
 [[processors.rename]]

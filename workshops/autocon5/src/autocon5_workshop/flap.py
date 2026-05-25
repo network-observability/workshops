@@ -1,24 +1,19 @@
 """`nobs autocon5 flap-interface` — declarative BGP cascade via sonda /scenarios.
 
-Builds a v2 scenario body that flaps `interface_oper_state`, gates per-peer
-BGP metrics (and a UPDOWN log stream) behind a `while:` clause on the flap
-signal, and freezes `interface_in/out_octets` counters during the down phase
-via gated `step` entries with `delay.close.snap_to: null`. Posts the body
-once to `/scenarios`; sonda's runtime drives the cascade.
+Builds a v2 scenario body that flaps the per-device `oper_state` metric,
+gates per-peer BGP metrics (and a UPDOWN log stream) behind a `while:`
+clause on the flap signal, and freezes the in/out octet counters during
+the down phase via gated `step` entries with `delay.close.snap_to: null`.
+Posts the body once to `/scenarios`; sonda's runtime drives the cascade
+and Telegraf scrapes sonda's aggregate `/metrics` endpoint the same way
+it scrapes the baseline.
 
-The octet counters can't be gated against the baseline scenarios in
-`srl1-metrics.yaml` directly because sonda resolves `while: ref:` per
-compilation unit (one ref namespace per POST). The cascade is a separate
-POST, so the gated counter and its gate signal have to be colocated in
-the cascade body. We achieve that with DELETE-and-replace: the cascade
-discovers the baseline octet scenarios for the flapped interface, deletes
-them, POSTs the cascade (which includes gated step counters as the new
-emitters), and a detached cleanup subprocess re-POSTs the baseline once
-the cascade reaches `finished`. The pattern is explained in detail in
-`~/.claude/projects/-Users-netpanda-projects-workshops/notes/
-sonda-while-clause-cross-post-scoping.md` along with the upstream sonda
-feature request (cross-POST `while:` ref resolution) that would let us
-drop the orchestration.
+Sonda resolves `while: ref:` per compilation unit (one ref namespace per
+POST), so gated counters and their gate signal must be colocated in the
+same POST. The cascade DELETEs baseline scenarios for the flapped
+interface and per-peer BGP, POSTs the cascade body as the sole emitter
+during the window, and a detached cleanup subprocess re-POSTs the
+baselines once the cascade reaches `finished`.
 """
 
 from __future__ import annotations
@@ -35,7 +30,7 @@ import typer
 from nobs._console import console, fail, ok, warn
 from rich.table import Table
 
-from autocon5_workshop.flap_topology import Peer, bgp_labels, interface_labels, peers_for
+from autocon5_workshop.flap_topology import Peer, peers_for
 
 _BGP_DOWN_OPER = 2.0
 _BGP_DOWN_NEIGHBOR = 1.0
@@ -45,37 +40,19 @@ _BGP_UP_OPER = 1.0
 _BGP_UP_NEIGHBOR = 1.0
 _BGP_UP_PREFIXES = 10.0
 
-_BGP_PREFIX_METRICS = (
-    "bgp_prefixes_accepted",
-    "bgp_received_routes",
-    "bgp_sent_routes",
-    "bgp_active_routes",
-)
-
-_CASCADE_PROVENANCE_KEYS = ("instance", "job", "pipeline", "collection_type")
-
-_SCRAPE_PROVENANCE_KEYS = ("instance", "job")
-
-_DEVICE_TELEGRAF_URLS = {
-    "srl1": "http://telegraf-srl1:1316/api/v1/write",
-    "srl2": "http://telegraf-srl2:1326/api/v1/write",
-}
-
 # Per-device baseline metric names and label-key conventions. The cascade
-# DELETEs baseline scenarios for the affected interface and peers, then
-# becomes the sole emitter — eliminating Telegraf's prom_client merge
-# race where baseline samples (interval-rounded timestamps) overwhelm
-# cascade samples (sub-second timestamps) and make the cascade signal
-# invisible in Prometheus.
+# emits via sonda's aggregate /metrics endpoint, same as baseline, with
+# matching raw names and labels — Telegraf renames both alike. The
+# cascade DELETEs baseline scenarios for the affected interface and peers
+# so its samples replace baseline in the aggregated output rather than
+# competing with it.
 _BASELINE_METRICS: dict[str, dict[str, Any]] = {
     "srl1": {
-        # Per-interface raw metrics sonda emits (pre-Telegraf rename).
         "interface_metrics": [
             "srl_interface_oper_state",
             "srl_interface_in_octets",
             "srl_interface_out_octets",
         ],
-        # Per-peer raw BGP metrics sonda emits.
         "bgp_metrics": [
             "srl_bgp_oper_state",
             "srl_bgp_neighbor_state",
@@ -90,6 +67,7 @@ _BASELINE_METRICS: dict[str, dict[str, Any]] = {
         "interface_label": "name",
         "device_label": "source",
         "peer_label": "peer_address",
+        "asn_label": "neighbor_asn",
         "collection_type": "gnmi",
         "in_step": 125000.0,
         "out_step": 62500.0,
@@ -114,29 +92,12 @@ _BASELINE_METRICS: dict[str, dict[str, Any]] = {
         "interface_label": "ifDescr",
         "device_label": "agent_host",
         "peer_label": "bgpPeerRemoteAddr",
+        "asn_label": "bgpPeerRemoteAs",
         "collection_type": "snmp",
         "in_step": 125000.0,
         "out_step": 62500.0,
     },
 }
-
-
-def _resolve_routing(device: str, explicit_url: str) -> tuple[str, bool]:
-    if explicit_url:
-        return explicit_url, False
-    telegraf_url = _DEVICE_TELEGRAF_URLS.get(device)
-    if telegraf_url:
-        return telegraf_url, True
-    return "http://prometheus:9090/api/v1/write", False
-
-
-def _cascade_default_labels(device: str, intf_labels: dict[str, str]) -> dict[str, str]:
-    return {"device": device}
-
-
-def _metric_provenance(intf_labels: dict[str, str]) -> dict[str, str]:
-    """Provenance labels (instance/job/pipeline/collection_type) for metric entries."""
-    return {key: intf_labels[key] for key in _CASCADE_PROVENANCE_KEYS if key in intf_labels}
 
 
 def flap_interface(
@@ -191,14 +152,6 @@ def flap_interface(
             help="Base sonda-server URL (the cascade is posted to /scenarios).",
         ),
     ] = "http://localhost:8085",
-    prom_url: Annotated[
-        str,
-        typer.Option(
-            "--prom-url",
-            envvar="SONDA_PROM_REMOTE_WRITE_URL",
-            help="Remote_write URL for cascade metrics. Empty auto-routes per device.",
-        ),
-    ] = "",
     loki_url: Annotated[
         str,
         typer.Option(
@@ -236,8 +189,6 @@ def flap_interface(
     if not peers and not no_cascade:
         warn(f"no BGP peers mapped to {device}:{interface}; running interface flap only.")
 
-    resolved_prom_url, strip_provenance = _resolve_routing(device, prom_url)
-
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
@@ -248,12 +199,8 @@ def flap_interface(
     # then DELETE the baselines so cascade entries become the sole emitter.
     # A detached cleanup subprocess re-POSTs the baselines after the cascade
     # reaches `finished` — see flap_cleanup.py.
-    cascade_baseline_ids = _discover_cascade_baseline_ids(
-        sonda_url, device, interface, peers, headers
-    )
-    in_octet_start, out_octet_start = _query_baseline_octet_values(
-        prom_query_url, device, interface
-    )
+    cascade_baseline_ids = _discover_cascade_baseline_ids(sonda_url, device, interface, peers, headers)
+    in_octet_start, out_octet_start = _query_baseline_octet_values(prom_query_url, device, interface)
     if cascade_baseline_ids:
         _delete_scenarios(sonda_url, cascade_baseline_ids, headers)
 
@@ -265,9 +212,7 @@ def flap_interface(
         up_duration=up_duration,
         down_duration=down_duration,
         cascade_delay=cascade_delay,
-        prom_url=resolved_prom_url,
         loki_url=loki_url,
-        strip_scrape_provenance=strip_provenance,
         in_octet_start=in_octet_start,
         out_octet_start=out_octet_start,
     )
@@ -289,8 +234,6 @@ def flap_interface(
             with contextlib.suppress(Exception):
                 detail = f" — {exc.response.text}"
         fail(f"POST /scenarios failed: {exc}{detail}")
-        # If the cascade POST fails, attempt to restore the baseline immediately
-        # so the lab doesn't sit in a half-deleted state.
         if cascade_baseline_ids:
             _spawn_baseline_cleanup(
                 sonda_url=sonda_url,
@@ -354,35 +297,31 @@ def _build_cascade(
     up_duration: str,
     down_duration: str,
     cascade_delay: str,
-    prom_url: str,
     loki_url: str,
-    strip_scrape_provenance: bool = False,
     in_octet_start: float = 0.0,
     out_octet_start: float = 0.0,
 ) -> dict[str, Any]:
     """Assemble the v2 scenario body for the interface→BGP cascade."""
-    intf_labels = interface_labels(device, interface)
-    if strip_scrape_provenance:
-        intf_labels = {k: v for k, v in intf_labels.items() if k not in _SCRAPE_PROVENANCE_KEYS}
-    metric_prov = _metric_provenance(intf_labels)
+    cfg = _BASELINE_METRICS[device]
+    interface_label = cfg["interface_label"]
     primary_id = "primary_flap"
+    interface_labels = {
+        interface_label: interface,
+        "collection_type": cfg["collection_type"],
+    }
 
     scenarios: list[dict[str, Any]] = [
         {
             "id": primary_id,
             "signal_type": "metrics",
-            "name": "interface_oper_state",
+            "name": cfg["oper_state_metric"],
             "generator": {
                 "type": "flap",
                 "up_duration": up_duration,
                 "down_duration": down_duration,
                 "enum": "oper_state",
             },
-            "labels": {
-                "name": interface,
-                "intf_role": intf_labels.get("intf_role", "peer"),
-                **metric_prov,
-            },
+            "labels": dict(interface_labels),
         }
     ]
 
@@ -394,7 +333,6 @@ def _build_cascade(
                 up_duration=up_duration,
                 down_duration=down_duration,
                 cascade_delay=cascade_delay,
-                extra_labels=metric_prov,
             )
         )
 
@@ -403,8 +341,7 @@ def _build_cascade(
             device=device,
             interface=interface,
             primary_id=primary_id,
-            metric_prov=metric_prov,
-            intf_role=intf_labels.get("intf_role", "peer"),
+            interface_labels=interface_labels,
             in_start=in_octet_start,
             out_start=out_octet_start,
             cascade_delay=cascade_delay,
@@ -429,9 +366,7 @@ def _build_cascade(
         "defaults": {
             "rate": 1,
             "duration": duration,
-            "encoder": {"type": "remote_write"},
-            "sink": {"type": "remote_write", "url": prom_url},
-            "labels": _cascade_default_labels(device, intf_labels),
+            "labels": {cfg["device_label"]: device},
         },
         "scenarios": scenarios,
     }
@@ -458,26 +393,21 @@ def _flap_bgp_entries(
     up_duration: str,
     down_duration: str,
     cascade_delay: str,
-    extra_labels: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """Build cascade BGP entries using `flap` generators with phase-shifted timing.
 
     Each BGP metric per peer becomes one cascade scenario that cycles in
-    lockstep with `primary_flap`'s 90s cycle, but offset so BGP lags
-    interface on the down transition (matching real BGP hold-down timer
-    behavior) and recovers simultaneously on the up transition.
+    lockstep with `primary_flap`'s cycle, but offset so BGP lags interface
+    on the down transition (matching real BGP hold-down timer behavior)
+    and recovers simultaneously on the up transition.
 
-    BGP up_duration  = primary_up + cascade_delay   (e.g. 30s + 10s = 40s)
-    BGP down_duration = primary_down - cascade_delay (e.g. 60s - 10s = 50s)
-    BGP cycle = primary cycle (e.g. both 90s) so they re-sync each cycle.
-
-    Replaces the older `_gated_bgp_entries` (while:+delay.open) pattern,
-    which produced no continuous emission during cascade up phases — with
-    baseline DELETEd that left the merged series stale and dashboards
-    showed gaps. The flap-based entries emit continuously for the full
-    cascade lifetime.
+    BGP up_duration   = primary_up + cascade_delay
+    BGP down_duration = primary_down - cascade_delay
+    BGP cycle         = primary cycle (so they re-sync each cycle).
     """
-    base_labels = {**_entry_only_bgp_labels(device, peer), **(extra_labels or {})}
+    cfg = _BASELINE_METRICS[device]
+    bgp_metric_names = cfg["bgp_metrics"]
+    base_labels = _bgp_entry_labels(device, peer)
     safe_peer = peer.address.replace(".", "_")
 
     up_s = _parse_duration_secs(up_duration)
@@ -486,21 +416,23 @@ def _flap_bgp_entries(
     bgp_up = f"{up_s + delay_s:g}s"
     bgp_down = f"{max(down_s - delay_s, 0.0):g}s"
 
-    bgp_specs: list[tuple[str, float, float]] = [
-        ("bgp_oper_state", _BGP_UP_OPER, _BGP_DOWN_OPER),
-        ("bgp_neighbor_state", _BGP_UP_NEIGHBOR, _BGP_DOWN_NEIGHBOR),
+    up_down_pairs = [
+        (_BGP_UP_OPER, _BGP_DOWN_OPER),
+        (_BGP_UP_NEIGHBOR, _BGP_DOWN_NEIGHBOR),
+        (_BGP_UP_PREFIXES, _BGP_DOWN_PREFIXES),
+        (_BGP_UP_PREFIXES, _BGP_DOWN_PREFIXES),
+        (_BGP_UP_PREFIXES, _BGP_DOWN_PREFIXES),
+        (_BGP_UP_PREFIXES, _BGP_DOWN_PREFIXES),
     ]
-    for metric in _BGP_PREFIX_METRICS:
-        bgp_specs.append((metric, _BGP_UP_PREFIXES, _BGP_DOWN_PREFIXES))
 
     entries: list[dict[str, Any]] = []
-    for metric, up_val, down_val in bgp_specs:
+    for metric_name, (up_val, down_val) in zip(bgp_metric_names, up_down_pairs, strict=True):
         if up_val == down_val:
             entries.append(
                 {
-                    "id": f"{metric}_{safe_peer}",
+                    "id": f"{metric_name}_{safe_peer}",
                     "signal_type": "metrics",
-                    "name": metric,
+                    "name": metric_name,
                     "generator": {"type": "constant", "value": up_val},
                     "labels": base_labels,
                 }
@@ -508,9 +440,9 @@ def _flap_bgp_entries(
         else:
             entries.append(
                 {
-                    "id": f"{metric}_{safe_peer}",
+                    "id": f"{metric_name}_{safe_peer}",
                     "signal_type": "metrics",
-                    "name": metric,
+                    "name": metric_name,
                     "generator": {
                         "type": "flap",
                         "up_duration": bgp_up,
@@ -522,30 +454,6 @@ def _flap_bgp_entries(
                 }
             )
     return entries
-
-
-def _gated_metric_entry(
-    *,
-    entry_id: str,
-    metric_name: str,
-    value: float,
-    snap_to: float,
-    labels: dict[str, str],
-    while_clause: dict[str, Any],
-    cascade_delay: str,
-) -> dict[str, Any]:
-    return {
-        "id": entry_id,
-        "signal_type": "metrics",
-        "name": metric_name,
-        "generator": {"type": "constant", "value": value},
-        "while": while_clause,
-        "delay": {
-            "open": cascade_delay,
-            "close": {"duration": "0s", "snap_to": snap_to},
-        },
-        "labels": labels,
-    }
 
 
 def _gated_updown_log_entry(
@@ -582,11 +490,16 @@ def _gated_updown_log_entry(
     }
 
 
-def _entry_only_bgp_labels(device: str, peer: Peer) -> dict[str, str]:
-    """Per-peer labels that should land on the entry, not in defaults."""
-    full = bgp_labels(device, peer.address, peer.asn)
-    inherited = {"device", *_CASCADE_PROVENANCE_KEYS}
-    return {k: v for k, v in full.items() if k not in inherited}
+def _bgp_entry_labels(device: str, peer: Peer) -> dict[str, str]:
+    """Per-peer BGP labels mirroring the baseline shape for `device`."""
+    cfg = _BASELINE_METRICS[device]
+    return {
+        cfg["peer_label"]: peer.address,
+        cfg["asn_label"]: str(peer.asn),
+        "afi_safi_name": "ipv4-unicast",
+        "name": "default",
+        "collection_type": cfg["collection_type"],
+    }
 
 
 def _flatten_created(payload: dict) -> list[dict]:
@@ -604,17 +517,10 @@ def _discover_cascade_baseline_ids(
     peers: list[Peer],
     headers: dict[str, str],
 ) -> list[str]:
-    """Find every baseline scenario UUID the cascade should DELETE.
+    """Find baseline scenario UUIDs the cascade should DELETE.
 
-    Covers two categories per device:
-      - Per-interface metrics (oper_state, in_octets, out_octets) matching
-        labels {<interface_label>=<interface>, <device_label>=<device>}.
-      - Per-peer BGP metrics matching labels {<peer_label>=<peer.address>,
-        <device_label>=<device>} for each peer in `peers`.
-
-    sonda's /scenarios listing doesn't expose labels, so we list candidate
-    IDs by metric name then GET each candidate's /metrics to inspect its
-    labels.
+    sonda's /scenarios listing doesn't expose labels, so we filter by
+    metric name then GET each candidate's /metrics to inspect labels.
     """
     cfg = _BASELINE_METRICS.get(device)
     if cfg is None:
@@ -635,14 +541,10 @@ def _discover_cascade_baseline_ids(
 
     all_scenarios = r.json().get("scenarios", [])
     interface_candidates = [
-        s["id"]
-        for s in all_scenarios
-        if s.get("name") in interface_metric_names and s.get("state") == "running"
+        s["id"] for s in all_scenarios if s.get("name") in interface_metric_names and s.get("state") == "running"
     ]
     bgp_candidates = [
-        s["id"]
-        for s in all_scenarios
-        if s.get("name") in bgp_metric_names and s.get("state") == "running"
+        s["id"] for s in all_scenarios if s.get("name") in bgp_metric_names and s.get("state") == "running"
     ]
 
     matching: list[str] = []
@@ -666,18 +568,8 @@ def _discover_cascade_baseline_ids(
     return matching
 
 
-def _query_baseline_octet_values(
-    prom_query_url: str, device: str, interface: str
-) -> tuple[float, float]:
-    """Read the canonical interface_in/out_octets values from Prometheus.
-
-    Prometheus is the authoritative source for what Telegraf has been
-    feeding into the TSDB. Seeding the cascade's gated step counter from
-    here (rather than from sonda's per-scenario /metrics) means there is
-    no value discontinuity between the baseline scenario being DELETEd
-    and the cascade's first emitted sample — `rate()` doesn't see a
-    spurious large increment.
-    """
+def _query_baseline_octet_values(prom_query_url: str, device: str, interface: str) -> tuple[float, float]:
+    """Return current `interface_in/out_octets` values from Prometheus."""
     base = prom_query_url.rstrip("/")
     queries = {
         "in": f'interface_in_octets{{device="{device}",name="{interface}"}}',
@@ -717,48 +609,39 @@ def _gated_octet_entries(
     device: str,
     interface: str,
     primary_id: str,
-    metric_prov: dict[str, str],
-    intf_role: str,
+    interface_labels: dict[str, str],
     in_start: float,
     out_start: float,
     cascade_delay: str,
 ) -> list[dict[str, Any]]:
-    """Build the gated `interface_in/out_octets` step counters for the cascade.
+    """Build the gated in/out octet step counters for the cascade.
 
     The counters tick during the cascade's up phase and pause (with position
     preserved via `delay.close.snap_to: null`) during the down phase, then
-    resume from the frozen value when the gate reopens — same pattern as
-    sonda's `bytes_total + link_state` example.
+    resume from the frozen value when the gate reopens.
     """
-    cfg = _BASELINE_METRICS.get(device)
-    if cfg is None:
-        return []
-    octet_labels = {
-        "name": interface,
-        "intf_role": intf_role,
-        **metric_prov,
-    }
+    cfg = _BASELINE_METRICS[device]
     while_clause = {"ref": primary_id, "op": "<", "value": 2}
     return [
         {
             "id": "interface_in_octets_gated",
             "signal_type": "metrics",
-            "name": "interface_in_octets",
+            "name": cfg["in_octets_metric"],
             "metric_type": "counter",
             "generator": {"type": "step", "start": in_start, "step_size": cfg["in_step"] / 10.0},
             "while": while_clause,
             "delay": {"open": cascade_delay, "close": {"duration": "0s", "snap_to": None}},
-            "labels": octet_labels,
+            "labels": dict(interface_labels),
         },
         {
             "id": "interface_out_octets_gated",
             "signal_type": "metrics",
-            "name": "interface_out_octets",
+            "name": cfg["out_octets_metric"],
             "metric_type": "counter",
             "generator": {"type": "step", "start": out_start, "step_size": cfg["out_step"] / 10.0},
             "while": while_clause,
             "delay": {"open": cascade_delay, "close": {"duration": "0s", "snap_to": None}},
-            "labels": octet_labels,
+            "labels": dict(interface_labels),
         },
     ]
 

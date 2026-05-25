@@ -84,12 +84,14 @@ scenarios:
           value: 2.0
       srl_interface_in_octets:
         generator:
-          type: constant
-          value: 0.0
+          type: step
+          start: 0.0
+          step_size: 0.0
       srl_interface_out_octets:
         generator:
-          type: constant
-          value: 0.0
+          type: step
+          start: 0.0
+          step_size: 0.0
 
   # Reachability
   - id: ping_srl1

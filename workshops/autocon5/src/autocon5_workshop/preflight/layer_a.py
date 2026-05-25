@@ -137,10 +137,6 @@ def main() -> int:
         down_duration="3s",
         cascade_delay="10s",
         sonda_url=os.environ.get("SONDA_SERVER_URL", "http://localhost:8085"),
-        prom_url=os.environ.get(
-            "SONDA_PROM_REMOTE_WRITE_URL",
-            "http://prometheus:9090/api/v1/write",
-        ),
         loki_url=os.environ.get("SONDA_LOKI_SINK_URL", "http://loki:3001"),
         api_key=os.environ.get("SONDA_API_KEY", ""),
         follow=False,

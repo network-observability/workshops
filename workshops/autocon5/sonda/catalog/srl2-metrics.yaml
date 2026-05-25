@@ -86,12 +86,14 @@ scenarios:
           value: 2.0
       ifHCInOctets:
         generator:
-          type: constant
-          value: 0.0
+          type: step
+          start: 0.0
+          step_size: 0.0
       ifHCOutOctets:
         generator:
-          type: constant
-          value: 0.0
+          type: step
+          start: 0.0
+          step_size: 0.0
 
   # Reachability
   - id: ping_srl2
