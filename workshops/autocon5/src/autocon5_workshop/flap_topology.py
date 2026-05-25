@@ -30,19 +30,18 @@ _BROKEN_PEER_OVERRIDES: dict[tuple[str, str], tuple[str, str]] = {
 }
 
 # Each device's baseline series carry the Prometheus-scrape provenance
-# tags from its dedicated Telegraf instance (host/instance/job land
-# from the scrape job in prometheus.yml). Cascade scenarios POST direct
-# to remote_write, so the cascade body needs to set these explicitly to
-# keep its series indistinguishable from baseline for queries that
-# group by job/host/instance.
+# tags from its dedicated Telegraf instance (instance/job land from the
+# scrape job in prometheus.yml). Cascade scenarios POST direct to
+# remote_write, so the cascade body needs to set these explicitly to keep
+# its series indistinguishable from baseline for queries that group by
+# job/instance. `host` is stripped on baseline (Telegraf's auto-injected
+# tag is noise), so cascade omits it too.
 _TELEGRAF_LABELS_BY_DEVICE: dict[str, dict[str, str]] = {
     "srl1": {
-        "host": "telegraf-srl1",
         "instance": "telegraf-srl1:9005",
         "job": "telegraf-srl1",
     },
     "srl2": {
-        "host": "telegraf-srl2",
         "instance": "telegraf-srl2:9005",
         "job": "telegraf-srl2",
     },

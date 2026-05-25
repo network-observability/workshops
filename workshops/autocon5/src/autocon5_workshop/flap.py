@@ -37,9 +37,11 @@ _BGP_PREFIX_METRICS = (
     "bgp_active_routes",
 )
 
-_CASCADE_PROVENANCE_KEYS = ("host", "instance", "job", "pipeline", "collection_type")
+_OCTET_FREEZE_VALUE = 0.0
 
-_SCRAPE_PROVENANCE_KEYS = ("host", "instance", "job")
+_CASCADE_PROVENANCE_KEYS = ("instance", "job", "pipeline", "collection_type")
+
+_SCRAPE_PROVENANCE_KEYS = ("instance", "job")
 
 _DEVICE_TELEGRAF_URLS = {
     "srl1": "http://telegraf-srl1:1316/api/v1/write",
@@ -60,7 +62,7 @@ def _cascade_default_labels(device: str, intf_labels: dict[str, str]) -> dict[st
 
 
 def _metric_provenance(intf_labels: dict[str, str]) -> dict[str, str]:
-    """Provenance labels (host/instance/job/pipeline/collection_type) for metric entries."""
+    """Provenance labels (instance/job/pipeline/collection_type) for metric entries."""
     return {key: intf_labels[key] for key in _CASCADE_PROVENANCE_KEYS if key in intf_labels}
 
 
@@ -270,6 +272,25 @@ def _build_cascade(
             )
         )
 
+    octet_labels = {
+        "name": interface,
+        "intf_role": intf_labels.get("intf_role", "peer"),
+        **metric_prov,
+    }
+    for octet_metric in ("interface_in_octets", "interface_out_octets"):
+        scenarios.append(
+            _gated_metric_entry(
+                entry_id=f"{octet_metric}_freeze",
+                metric_name=octet_metric,
+                value=_OCTET_FREEZE_VALUE,
+                snap_to=_OCTET_FREEZE_VALUE,
+                labels=octet_labels,
+                while_clause={"ref": primary_id, "op": ">", "value": 1},
+                cascade_delay=cascade_delay,
+                metric_type="gauge",
+            )
+        )
+
     scenarios.append(
         _gated_updown_log_entry(
             interface=interface,
@@ -352,8 +373,9 @@ def _gated_metric_entry(
     labels: dict[str, str],
     while_clause: dict[str, Any],
     cascade_delay: str,
+    metric_type: str | None = None,
 ) -> dict[str, Any]:
-    return {
+    entry: dict[str, Any] = {
         "id": entry_id,
         "signal_type": "metrics",
         "name": metric_name,
@@ -365,6 +387,9 @@ def _gated_metric_entry(
         },
         "labels": labels,
     }
+    if metric_type is not None:
+        entry["metric_type"] = metric_type
+    return entry
 
 
 def _gated_updown_log_entry(
