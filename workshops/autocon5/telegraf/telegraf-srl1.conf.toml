@@ -25,6 +25,11 @@
   paths = ["/api/v1/write"]
   methods = ["POST", "PUT"]
   data_format = "prometheusremotewrite"
+  # Strip the agent-injected `host` tag so cascade samples carry the same
+  # label set as baseline (which already strips it). Without this, baseline
+  # and cascade store as two distinct series in Prometheus and the cascade's
+  # flap values never overlay the baseline `1`.
+  tagexclude = ["host"]
 
   [inputs.http_listener_v2.tags]
     pipeline = "telegraf"

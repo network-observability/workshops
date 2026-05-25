@@ -37,9 +37,9 @@ _BGP_PREFIX_METRICS = (
     "bgp_active_routes",
 )
 
-_CASCADE_PROVENANCE_KEYS = ("host", "instance", "job", "pipeline", "collection_type")
+_CASCADE_PROVENANCE_KEYS = ("instance", "job", "pipeline", "collection_type")
 
-_SCRAPE_PROVENANCE_KEYS = ("host", "instance", "job")
+_SCRAPE_PROVENANCE_KEYS = ("instance", "job")
 
 _DEVICE_TELEGRAF_URLS = {
     "srl1": "http://telegraf-srl1:1316/api/v1/write",
@@ -60,7 +60,7 @@ def _cascade_default_labels(device: str, intf_labels: dict[str, str]) -> dict[st
 
 
 def _metric_provenance(intf_labels: dict[str, str]) -> dict[str, str]:
-    """Provenance labels (host/instance/job/pipeline/collection_type) for metric entries."""
+    """Provenance labels (instance/job/pipeline/collection_type) for metric entries."""
     return {key: intf_labels[key] for key in _CASCADE_PROVENANCE_KEYS if key in intf_labels}
 
 
