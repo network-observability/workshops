@@ -1,17 +1,32 @@
 """`nobs autocon5 flap-interface` — declarative BGP cascade via sonda /scenarios.
 
-Builds a v2 scenario body that flaps `interface_oper_state` and gates
-per-peer BGP metrics (and a UPDOWN log stream) behind a `while:` clause
-on the flap signal. Posts the body once to `/scenarios`; sonda's runtime
-drives the cascade. Restore is automatic via gate-close: when the flap
-returns to up, the gated entries pause and the lab's continuous emitters
-resume publishing baseline values via Prometheus latest-sample-wins.
+Builds a v2 scenario body that flaps `interface_oper_state`, gates per-peer
+BGP metrics (and a UPDOWN log stream) behind a `while:` clause on the flap
+signal, and freezes `interface_in/out_octets` counters during the down phase
+via gated `step` entries with `delay.close.snap_to: null`. Posts the body
+once to `/scenarios`; sonda's runtime drives the cascade.
+
+The octet counters can't be gated against the baseline scenarios in
+`srl1-metrics.yaml` directly because sonda resolves `while: ref:` per
+compilation unit (one ref namespace per POST). The cascade is a separate
+POST, so the gated counter and its gate signal have to be colocated in
+the cascade body. We achieve that with DELETE-and-replace: the cascade
+discovers the baseline octet scenarios for the flapped interface, deletes
+them, POSTs the cascade (which includes gated step counters as the new
+emitters), and a detached cleanup subprocess re-POSTs the baseline once
+the cascade reaches `finished`. The pattern is explained in detail in
+`~/.claude/projects/-Users-netpanda-projects-workshops/notes/
+sonda-while-clause-cross-post-scoping.md` along with the upstream sonda
+feature request (cross-POST `while:` ref resolution) that would let us
+drop the orchestration.
 """
 
 from __future__ import annotations
 
 import contextlib
 import json
+import subprocess
+import sys
 import time
 from typing import Annotated, Any
 
@@ -43,6 +58,31 @@ _SCRAPE_PROVENANCE_KEYS = ("instance", "job")
 
 _DEVICE_TELEGRAF_URLS = {
     "srl1": "http://telegraf-srl1:1316/api/v1/write",
+}
+
+# Per-device baseline octet metric names and label-key conventions. These
+# are the raw shape sonda emits before Telegraf renames them to the
+# canonical schema; we DELETE-and-replace the baseline scenarios that
+# emit these names for the flapped interface during a cascade.
+_BASELINE_OCTET_METRICS: dict[str, dict[str, str]] = {
+    "srl1": {
+        "in": "srl_interface_in_octets",
+        "out": "srl_interface_out_octets",
+        "interface_label": "name",
+        "device_label": "source",
+        "collection_type": "gnmi",
+        "in_step": 125000.0,
+        "out_step": 62500.0,
+    },
+    "srl2": {
+        "in": "ifHCInOctets",
+        "out": "ifHCOutOctets",
+        "interface_label": "ifDescr",
+        "device_label": "agent_host",
+        "collection_type": "snmp",
+        "in_step": 125000.0,
+        "out_step": 62500.0,
+    },
 }
 
 
@@ -154,6 +194,23 @@ def flap_interface(
         warn(f"no BGP peers mapped to {device}:{interface}; running interface flap only.")
 
     resolved_prom_url, strip_provenance = _resolve_routing(device, prom_url)
+
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    # Discover the baseline octet scenarios for this interface and pick up
+    # their current counter values, then DELETE them so the cascade body's
+    # gated step counters become the sole source for the interface's octets
+    # during the cascade. A detached cleanup subprocess re-POSTs the baseline
+    # after the cascade reaches `finished` — see flap_cleanup.py.
+    octet_baseline_ids = _discover_octet_baseline_ids(sonda_url, device, interface, headers)
+    in_octet_start, out_octet_start = _query_baseline_octet_values(
+        sonda_url, device, interface, headers
+    )
+    if octet_baseline_ids:
+        _delete_scenarios(sonda_url, octet_baseline_ids, headers)
+
     body = _build_cascade(
         device=device,
         interface=interface,
@@ -165,11 +222,9 @@ def flap_interface(
         prom_url=resolved_prom_url,
         loki_url=loki_url,
         strip_scrape_provenance=strip_provenance,
+        in_octet_start=in_octet_start,
+        out_octet_start=out_octet_start,
     )
-
-    headers = {"Content-Type": "application/json"}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
 
     scenarios_url = f"{sonda_url.rstrip('/')}/scenarios"
     peer_summary = ", ".join(p.address for p in peers) if peers else "no BGP peers"
@@ -188,6 +243,16 @@ def flap_interface(
             with contextlib.suppress(Exception):
                 detail = f" — {exc.response.text}"
         fail(f"POST /scenarios failed: {exc}{detail}")
+        # If the cascade POST fails, attempt to restore the baseline immediately
+        # so the lab doesn't sit in a half-deleted state.
+        if octet_baseline_ids:
+            _spawn_baseline_cleanup(
+                sonda_url=sonda_url,
+                device=device,
+                interface=interface,
+                cascade_ids=[],
+                api_key=api_key,
+            )
         raise typer.Exit(code=1) from exc
 
     payload = response.json()
@@ -195,6 +260,16 @@ def flap_interface(
     if not created:
         fail(f"unexpected response shape: {json.dumps(payload)[:300]}")
         raise typer.Exit(code=1)
+
+    cascade_ids = [item["id"] for item in created]
+    if octet_baseline_ids:
+        _spawn_baseline_cleanup(
+            sonda_url=sonda_url,
+            device=device,
+            interface=interface,
+            cascade_ids=cascade_ids,
+            api_key=api_key,
+        )
 
     table = Table(show_header=True, header_style="bold")
     table.add_column("id")
@@ -232,6 +307,8 @@ def _build_cascade(
     prom_url: str,
     loki_url: str,
     strip_scrape_provenance: bool = False,
+    in_octet_start: float = 0.0,
+    out_octet_start: float = 0.0,
 ) -> dict[str, Any]:
     """Assemble the v2 scenario body for the interface→BGP cascade."""
     intf_labels = interface_labels(device, interface)
@@ -269,6 +346,19 @@ def _build_cascade(
                 extra_labels=metric_prov,
             )
         )
+
+    scenarios.extend(
+        _gated_octet_entries(
+            device=device,
+            interface=interface,
+            primary_id=primary_id,
+            metric_prov=metric_prov,
+            intf_role=intf_labels.get("intf_role", "peer"),
+            in_start=in_octet_start,
+            out_start=out_octet_start,
+            cascade_delay=cascade_delay,
+        )
+    )
 
     scenarios.append(
         _gated_updown_log_entry(
@@ -414,6 +504,176 @@ def _flatten_created(payload: dict) -> list[dict]:
     if "id" in payload:
         return [payload]
     return []
+
+
+def _discover_octet_baseline_ids(
+    sonda_url: str, device: str, interface: str, headers: dict[str, str]
+) -> list[str]:
+    """Find the baseline octet scenario UUIDs for one interface on one device."""
+    cfg = _BASELINE_OCTET_METRICS.get(device)
+    if cfg is None:
+        return []
+    metric_names = {cfg["in"], cfg["out"]}
+    intf_label_token = f'{cfg["interface_label"]}="{interface}"'
+    device_label_token = f'{cfg["device_label"]}="{device}"'
+    base = sonda_url.rstrip("/")
+
+    try:
+        r = requests.get(f"{base}/scenarios", headers=headers, timeout=5)
+        r.raise_for_status()
+    except requests.RequestException as exc:
+        warn(f"failed to list scenarios for baseline discovery: {exc}")
+        return []
+
+    candidates = [s["id"] for s in r.json().get("scenarios", []) if s.get("name") in metric_names]
+    matching: list[str] = []
+    for sid in candidates:
+        try:
+            m = requests.get(f"{base}/scenarios/{sid}/metrics", headers=headers, timeout=5)
+            if not m.ok:
+                continue
+        except requests.RequestException:
+            continue
+        if intf_label_token in m.text and device_label_token in m.text:
+            matching.append(sid)
+    return matching
+
+
+def _query_baseline_octet_values(
+    sonda_url: str, device: str, interface: str, headers: dict[str, str]
+) -> tuple[float, float]:
+    """Read current baseline counter values so the cascade can resume from them."""
+    cfg = _BASELINE_OCTET_METRICS.get(device)
+    if cfg is None:
+        return 0.0, 0.0
+    label_filter = f"{cfg['device_label']}:{device}"
+    intf_label_token = f'{cfg["interface_label"]}="{interface}"'
+    in_prefix = f"{cfg['in']}{{"
+    out_prefix = f"{cfg['out']}{{"
+
+    try:
+        r = requests.get(
+            f"{sonda_url.rstrip('/')}/metrics",
+            params={"label": label_filter},
+            headers=headers,
+            timeout=5,
+        )
+        r.raise_for_status()
+    except requests.RequestException:
+        return 0.0, 0.0
+
+    in_value = 0.0
+    out_value = 0.0
+    for line in r.text.splitlines():
+        if not line or line.startswith("#"):
+            continue
+        if intf_label_token not in line:
+            continue
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        try:
+            value = float(parts[1])
+        except ValueError:
+            continue
+        if line.startswith(in_prefix):
+            in_value = value
+        elif line.startswith(out_prefix):
+            out_value = value
+    return in_value, out_value
+
+
+def _delete_scenarios(sonda_url: str, ids: list[str], headers: dict[str, str]) -> None:
+    """Best-effort DELETE for each id. Silent on individual failure."""
+    base = sonda_url.rstrip("/")
+    for sid in ids:
+        with contextlib.suppress(requests.RequestException):
+            requests.delete(f"{base}/scenarios/{sid}", headers=headers, timeout=5)
+
+
+def _gated_octet_entries(
+    *,
+    device: str,
+    interface: str,
+    primary_id: str,
+    metric_prov: dict[str, str],
+    intf_role: str,
+    in_start: float,
+    out_start: float,
+    cascade_delay: str,
+) -> list[dict[str, Any]]:
+    """Build the gated `interface_in/out_octets` step counters for the cascade.
+
+    The counters tick during the cascade's up phase and pause (with position
+    preserved via `delay.close.snap_to: null`) during the down phase, then
+    resume from the frozen value when the gate reopens — same pattern as
+    sonda's `bytes_total + link_state` example.
+    """
+    cfg = _BASELINE_OCTET_METRICS.get(device)
+    if cfg is None:
+        return []
+    octet_labels = {
+        "name": interface,
+        "intf_role": intf_role,
+        **metric_prov,
+    }
+    while_clause = {"ref": primary_id, "op": "<", "value": 2}
+    return [
+        {
+            "id": "interface_in_octets_gated",
+            "signal_type": "metrics",
+            "name": "interface_in_octets",
+            "metric_type": "counter",
+            "generator": {"type": "step", "start": in_start, "step_size": cfg["in_step"] / 10.0},
+            "while": while_clause,
+            "delay": {"open": cascade_delay, "close": {"duration": "0s", "snap_to": None}},
+            "labels": octet_labels,
+        },
+        {
+            "id": "interface_out_octets_gated",
+            "signal_type": "metrics",
+            "name": "interface_out_octets",
+            "metric_type": "counter",
+            "generator": {"type": "step", "start": out_start, "step_size": cfg["out_step"] / 10.0},
+            "while": while_clause,
+            "delay": {"open": cascade_delay, "close": {"duration": "0s", "snap_to": None}},
+            "labels": octet_labels,
+        },
+    ]
+
+
+def _spawn_baseline_cleanup(
+    *,
+    sonda_url: str,
+    device: str,
+    interface: str,
+    cascade_ids: list[str],
+    api_key: str,
+) -> None:
+    """Detach a subprocess that re-POSTs the deleted baseline after cascade ends."""
+    args = [
+        sys.executable,
+        "-m",
+        "autocon5_workshop.flap_cleanup",
+        "--sonda-url",
+        sonda_url,
+        "--device",
+        device,
+        "--interface",
+        interface,
+        "--api-key",
+        api_key,
+    ]
+    for cid in cascade_ids:
+        args.extend(["--cascade-id", cid])
+    with contextlib.suppress(Exception):
+        subprocess.Popen(  # noqa: S603
+            args,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+        )
 
 
 def _follow_until_done(sonda_url: str, ids: list[str], headers: dict[str, str]) -> None:
