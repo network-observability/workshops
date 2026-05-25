@@ -1,36 +1,49 @@
 """Detached cleanup subprocess for `nobs autocon5 flap-interface`.
 
-When the parent flap-interface command DELETEs the baseline octet
-scenarios for the flapped interface and POSTs the cascade body that
-contains gated step counters as the new emitters, it spawns this module
-as a detached subprocess to handle the post-cascade restore:
+When the parent flap-interface command DELETEs the baseline scenarios for
+the flapped interface (and per-peer BGP) and POSTs the cascade body, it
+spawns this module as a detached subprocess to handle the post-cascade
+restore:
 
-1. Poll the cascade scenario UUIDs until they all reach `finished`
-   (or until a generous timeout elapses).
-2. DELETE the cascade scenarios so they don't linger in the registry.
-3. POST a fresh baseline body for the affected interface, mirroring
-   what `sonda-setup.sh` would have POSTed at lab boot.
+1. Sleep for the cascade duration plus a small buffer.
+2. DELETE the cascade scenarios so they don't linger as `finished` rows
+   in the registry.
+3. POST a fresh baseline body covering the per-interface and per-peer
+   scenarios that were DELETEd at flap time.
 
 Idempotent and best-effort. If the parent dies or the cleanup is killed,
-`nobs autocon5 reset` will detect a missing baseline and re-POST it.
+`nobs autocon5 reset` will catch the lingering state.
 """
 
 from __future__ import annotations
 
 import argparse
 import contextlib
+import re
 import sys
 import time
 from typing import Any
 
 import requests
 
-_RESTORE_BODIES: dict[str, dict[str, Any]] = {
+# Per-device baseline scenario shape, in the form sonda POSTs at lab boot.
+# Each entry uses `__INTERFACE__` / `__PEER_ADDRESS__` / `__PEER_ASN__`
+# placeholders that the cleanup substitutes before POSTing.
+_BASELINE_TEMPLATES: dict[str, dict[str, Any]] = {
     "srl1": {
-        "version": 2,
-        "kind": "runnable",
         "defaults": {"rate": 0.1},
-        "scenarios": [
+        "interface_scenarios": [
+            {
+                "signal_type": "metrics",
+                "name": "srl_interface_oper_state",
+                "metric_type": "gauge",
+                "generator": {"type": "constant", "value": 1.0},
+                "labels": {
+                    "source": "srl1",
+                    "name": "__INTERFACE__",
+                    "collection_type": "gnmi",
+                },
+            },
             {
                 "signal_type": "metrics",
                 "name": "srl_interface_in_octets",
@@ -54,12 +67,37 @@ _RESTORE_BODIES: dict[str, dict[str, Any]] = {
                 },
             },
         ],
+        "bgp_scenarios": [
+            ("srl_bgp_oper_state", 1.0),
+            ("srl_bgp_neighbor_state", 1.0),
+            ("srl_bgp_prefixes_accepted", 10.0),
+            ("srl_bgp_received_routes", 10.0),
+            ("srl_bgp_sent_routes", 10.0),
+            ("srl_bgp_active_routes", 10.0),
+        ],
+        "bgp_label_template": {
+            "source": "srl1",
+            "peer_address": "__PEER_ADDRESS__",
+            "neighbor_asn": "__PEER_ASN__",
+            "afi_safi_name": "ipv4-unicast",
+            "name": "default",
+            "collection_type": "gnmi",
+        },
     },
     "srl2": {
-        "version": 2,
-        "kind": "runnable",
         "defaults": {"rate": 0.1},
-        "scenarios": [
+        "interface_scenarios": [
+            {
+                "signal_type": "metrics",
+                "name": "ifOperStatus",
+                "metric_type": "gauge",
+                "generator": {"type": "constant", "value": 1.0},
+                "labels": {
+                    "agent_host": "srl2",
+                    "ifDescr": "__INTERFACE__",
+                    "collection_type": "snmp",
+                },
+            },
             {
                 "signal_type": "metrics",
                 "name": "ifHCInOctets",
@@ -83,51 +121,84 @@ _RESTORE_BODIES: dict[str, dict[str, Any]] = {
                 },
             },
         ],
+        "bgp_scenarios": [
+            ("cbgpPeerOperStatus", 1.0),
+            ("bgpPeerState", 1.0),
+            ("cbgpPeerAcceptedPrefixes", 10.0),
+            ("bgpPeerInPrefixes", 10.0),
+            ("bgpPeerOutPrefixes", 10.0),
+            ("cbgpPeerActivePrefixes", 10.0),
+        ],
+        "bgp_label_template": {
+            "agent_host": "srl2",
+            "bgpPeerRemoteAddr": "__PEER_ADDRESS__",
+            "bgpPeerRemoteAs": "__PEER_ASN__",
+            "afi_safi_name": "ipv4-unicast",
+            "name": "default",
+            "collection_type": "snmp",
+        },
     },
 }
 
 
-def _wait_for_finished(
-    base: str, ids: list[str], headers: dict[str, str], timeout_secs: int
-) -> None:
-    pending = set(ids)
-    deadline = time.time() + timeout_secs
-    while pending and time.time() < deadline:
-        time.sleep(3)
-        for sid in list(pending):
-            try:
-                r = requests.get(f"{base}/scenarios/{sid}", headers=headers, timeout=5)
-            except requests.RequestException:
-                continue
-            if r.status_code == 404:
-                pending.discard(sid)
-                continue
-            if not r.ok:
-                continue
-            if r.json().get("state") == "finished":
-                pending.discard(sid)
+def _parse_duration_secs(duration: str) -> float:
+    m = re.match(r"^\s*([0-9.]+)\s*(ms|s|m|h)?\s*$", duration)
+    if not m:
+        return 240.0
+    value = float(m.group(1))
+    unit = m.group(2) or "s"
+    return {
+        "ms": value / 1000.0,
+        "s": value,
+        "m": value * 60.0,
+        "h": value * 3600.0,
+    }[unit]
 
 
-def _restore_body(device: str, interface: str) -> dict[str, Any] | None:
-    template = _RESTORE_BODIES.get(device)
+def _substitute(value: Any, mapping: dict[str, str]) -> Any:
+    if isinstance(value, str):
+        return mapping.get(value, value)
+    if isinstance(value, dict):
+        return {k: _substitute(v, mapping) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_substitute(v, mapping) for v in value]
+    return value
+
+
+def _restore_body(
+    device: str, interface: str, peers: list[tuple[str, str]]
+) -> dict[str, Any] | None:
+    template = _BASELINE_TEMPLATES.get(device)
     if template is None:
         return None
-    body: dict[str, Any] = {
-        "version": template["version"],
-        "kind": template["kind"],
+
+    scenarios: list[dict[str, Any]] = []
+    for entry in template["interface_scenarios"]:
+        scenarios.append(_substitute(entry, {"__INTERFACE__": interface}))
+
+    for peer_addr, peer_asn in peers:
+        labels = _substitute(
+            template["bgp_label_template"],
+            {"__PEER_ADDRESS__": peer_addr, "__PEER_ASN__": peer_asn},
+        )
+        for metric_name, value in template["bgp_scenarios"]:
+            scenarios.append(
+                {
+                    "signal_type": "metrics",
+                    "name": metric_name,
+                    "metric_type": "gauge",
+                    "generator": {"type": "constant", "value": value},
+                    "labels": labels,
+                }
+            )
+
+    return {
+        "version": 2,
+        "kind": "runnable",
         "scenario_name": f"autocon5-restore-{device}-{interface.replace('/', '-')}-{int(time.time())}",
         "defaults": dict(template["defaults"]),
-        "scenarios": [],
+        "scenarios": scenarios,
     }
-    for entry in template["scenarios"]:
-        new_entry = {
-            **entry,
-            "labels": {
-                k: (interface if v == "__INTERFACE__" else v) for k, v in entry["labels"].items()
-            },
-        }
-        body["scenarios"].append(new_entry)
-    return body
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -137,7 +208,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--interface", required=True)
     parser.add_argument("--api-key", default="")
     parser.add_argument("--cascade-id", action="append", default=[])
-    parser.add_argument("--timeout-secs", type=int, default=600)
+    parser.add_argument(
+        "--peer",
+        action="append",
+        default=[],
+        help="Peer in 'address:asn' form. Repeat for multiple peers.",
+    )
+    parser.add_argument("--cascade-duration", default="4m")
+    parser.add_argument("--cleanup-buffer-secs", type=float, default=5.0)
     args = parser.parse_args(argv)
 
     base = args.sonda_url.rstrip("/")
@@ -145,13 +223,21 @@ def main(argv: list[str] | None = None) -> int:
     if args.api_key:
         headers["Authorization"] = f"Bearer {args.api_key}"
 
-    if args.cascade_id:
-        _wait_for_finished(base, args.cascade_id, headers, args.timeout_secs)
-        for sid in args.cascade_id:
-            with contextlib.suppress(requests.RequestException):
-                requests.delete(f"{base}/scenarios/{sid}", headers=headers, timeout=5)
+    peers: list[tuple[str, str]] = []
+    for raw in args.peer:
+        if ":" not in raw:
+            continue
+        addr, asn = raw.split(":", 1)
+        peers.append((addr, asn))
 
-    body = _restore_body(args.device, args.interface)
+    sleep_secs = _parse_duration_secs(args.cascade_duration) + args.cleanup_buffer_secs
+    time.sleep(sleep_secs)
+
+    for sid in args.cascade_id:
+        with contextlib.suppress(requests.RequestException):
+            requests.delete(f"{base}/scenarios/{sid}", headers=headers, timeout=5)
+
+    body = _restore_body(args.device, args.interface, peers)
     if body is None:
         return 0
     try:
