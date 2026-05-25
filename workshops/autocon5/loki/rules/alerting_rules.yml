@@ -12,5 +12,5 @@ groups:
           device: '{{ $labels.device }}'
           interface: '{{ $labels.interface }}'
         annotations:
-          summary: "[NET] Flappig interface in {{ $labels.device }}/{{ $labels.interface }}"
+          summary: "[NET] Flapping interface in {{ $labels.device }}/{{ $labels.interface }}"
           description: "The interface {{ $labels.device }}/{{ $labels.interface }} is flapping"
