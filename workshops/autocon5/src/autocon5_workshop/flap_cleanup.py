@@ -93,7 +93,7 @@ def _wait_for_finished(
     pending = set(ids)
     deadline = time.time() + timeout_secs
     while pending and time.time() < deadline:
-        time.sleep(10)
+        time.sleep(3)
         for sid in list(pending):
             try:
                 r = requests.get(f"{base}/scenarios/{sid}", headers=headers, timeout=5)

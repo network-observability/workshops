@@ -58,6 +58,7 @@ _SCRAPE_PROVENANCE_KEYS = ("instance", "job")
 
 _DEVICE_TELEGRAF_URLS = {
     "srl1": "http://telegraf-srl1:1316/api/v1/write",
+    "srl2": "http://telegraf-srl2:1326/api/v1/write",
 }
 
 # Per-device baseline octet metric names and label-key conventions. These
@@ -180,6 +181,14 @@ def flap_interface(
             help="Bearer token if sonda-server has SONDA_API_KEY set; empty otherwise.",
         ),
     ] = "",
+    prom_query_url: Annotated[
+        str,
+        typer.Option(
+            "--prom-query-url",
+            envvar="SONDA_PROM_QUERY_URL",
+            help="Prometheus query API (used to seed the cascade's gated counter from the canonical series' current value).",
+        ),
+    ] = "http://localhost:9090",
     follow: Annotated[
         bool,
         typer.Option(
@@ -206,7 +215,7 @@ def flap_interface(
     # after the cascade reaches `finished` — see flap_cleanup.py.
     octet_baseline_ids = _discover_octet_baseline_ids(sonda_url, device, interface, headers)
     in_octet_start, out_octet_start = _query_baseline_octet_values(
-        sonda_url, device, interface, headers
+        prom_query_url, device, interface
     )
     if octet_baseline_ids:
         _delete_scenarios(sonda_url, octet_baseline_ids, headers)
@@ -540,47 +549,41 @@ def _discover_octet_baseline_ids(
 
 
 def _query_baseline_octet_values(
-    sonda_url: str, device: str, interface: str, headers: dict[str, str]
+    prom_query_url: str, device: str, interface: str
 ) -> tuple[float, float]:
-    """Read current baseline counter values so the cascade can resume from them."""
-    cfg = _BASELINE_OCTET_METRICS.get(device)
-    if cfg is None:
-        return 0.0, 0.0
-    label_filter = f"{cfg['device_label']}:{device}"
-    intf_label_token = f'{cfg["interface_label"]}="{interface}"'
-    in_prefix = f"{cfg['in']}{{"
-    out_prefix = f"{cfg['out']}{{"
+    """Read the canonical interface_in/out_octets values from Prometheus.
 
-    try:
-        r = requests.get(
-            f"{sonda_url.rstrip('/')}/metrics",
-            params={"label": label_filter},
-            headers=headers,
-            timeout=5,
-        )
-        r.raise_for_status()
-    except requests.RequestException:
-        return 0.0, 0.0
-
-    in_value = 0.0
-    out_value = 0.0
-    for line in r.text.splitlines():
-        if not line or line.startswith("#"):
+    Prometheus is the authoritative source for what Telegraf has been
+    feeding into the TSDB. Seeding the cascade's gated step counter from
+    here (rather than from sonda's per-scenario /metrics) means there is
+    no value discontinuity between the baseline scenario being DELETEd
+    and the cascade's first emitted sample — `rate()` doesn't see a
+    spurious large increment.
+    """
+    base = prom_query_url.rstrip("/")
+    queries = {
+        "in": f'interface_in_octets{{device="{device}",name="{interface}"}}',
+        "out": f'interface_out_octets{{device="{device}",name="{interface}"}}',
+    }
+    values: dict[str, float] = {"in": 0.0, "out": 0.0}
+    for direction, query in queries.items():
+        try:
+            r = requests.get(
+                f"{base}/api/v1/query",
+                params={"query": query},
+                timeout=5,
+            )
+            r.raise_for_status()
+            results = r.json().get("data", {}).get("result", [])
+        except requests.RequestException:
             continue
-        if intf_label_token not in line:
-            continue
-        parts = line.split()
-        if len(parts) < 2:
+        if not results:
             continue
         try:
-            value = float(parts[1])
-        except ValueError:
+            values[direction] = float(results[0]["value"][1])
+        except (KeyError, IndexError, ValueError, TypeError):
             continue
-        if line.startswith(in_prefix):
-            in_value = value
-        elif line.startswith(out_prefix):
-            out_value = value
-    return in_value, out_value
+    return values["in"], values["out"]
 
 
 def _delete_scenarios(sonda_url: str, ids: list[str], headers: dict[str, str]) -> None:

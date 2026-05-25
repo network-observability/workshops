@@ -17,10 +17,35 @@
   [inputs.prometheus.tags]
     pipeline = "telegraf"
 
+# Cascade: `flap-interface --device srl2` posts a dynamic scenario with a
+# remote_write sink targeting this port (mirrors telegraf-srl1:1316). Routes
+# srl2's cascade through Telegraf so baseline and cascade merge at a single
+# point — otherwise Prom would see two concurrent writers (Telegraf scrape +
+# direct remote_write) and rate() would catch transient artifacts.
+[[inputs.http_listener_v2]]
+  service_address = ":1326"
+  paths = ["/api/v1/write"]
+  methods = ["POST", "PUT"]
+  data_format = "prometheusremotewrite"
+  tagexclude = ["host"]
+
+  [inputs.http_listener_v2.tags]
+    pipeline = "telegraf"
+
 
 ###############################################################################
 #                            DATA NORMALIZATION                               #
 ###############################################################################
+# The cascade's prometheusremotewrite parser produces measurement=
+# "prometheus_remote_write"; rename it down to "prometheus" so the v2
+# prometheus_client output strips the measurement prefix correctly.
+[[processors.rename]]
+  order = 0
+
+  [[processors.rename.replace]]
+    measurement = "prometheus_remote_write"
+    dest = "prometheus"
+
 # IF-MIB / BGP4-MIB / CISCO-BGP4-MIB metric names → canonical schema.
 # The prometheus parser keeps measurement="prometheus" and uses the
 # metric name as the field; metric_version=2 below publishes the field

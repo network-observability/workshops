@@ -113,7 +113,8 @@ services:
 
   # telegraf-srl2: scrapes the aggregate /metrics endpoint filtered by
   # `agent_host:srl2` (SNMP-raw `ifHC*`, `bgpPeer*`), renames to canonical,
-  # exposes a Prom scrape endpoint on :9005.
+  # exposes a Prom scrape endpoint on :9005. The :1326 listener accepts the
+  # srl2 cascade's remote_write samples — mirrors telegraf-srl1's :1316.
   telegraf-srl2:
     container_name: telegraf-srl2
     build:
@@ -126,6 +127,7 @@ services:
     volumes:
       - ./telegraf/telegraf-srl2.conf.toml:/etc/telegraf/telegraf.conf
     expose:
+      - "1326"
       - "9005"
     depends_on:
       sonda-setup:
