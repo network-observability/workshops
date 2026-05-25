@@ -189,7 +189,7 @@ curl -s 'http://localhost:8085/metrics?label=source:srl1' | grep '^srl_bgp_oper_
 ```
 
 ```
-srl_bgp_oper_state{afi_safi_name="ipv4-unicast",collection_type="gnmi",name="default",neighbor_asn="65102",peer_address="10.1.2.2",source="srl1"} 1 1779662362111
+srl_bgp_oper_state{afi_safi_name="ipv4-unicast",collection_type="gnmi",name="default",neighbor_asn="65102",peer_address="10.1.2.2",source="srl1"} 1
 ```
 
 The `peer_address` value will vary — the curl returns whichever peer's scenario was registered first. The label structure is what matters: note the metric name (`srl_bgp_oper_state`) and the device label (`source="srl1"`) — that's the gNMI shape SR Linux puts on the wire. The pack `workshops/autocon5/sonda/catalog/srlinux-gnmi-bgp-raw.yaml` lists every metric in this shape.
@@ -201,7 +201,7 @@ curl -s 'http://localhost:8085/metrics?label=agent_host:srl2' | grep '^bgpPeerSt
 ```
 
 ```
-bgpPeerState{afi_safi_name="ipv4-unicast",agent_host="srl2",bgpPeerRemoteAddr="10.1.2.1",bgpPeerRemoteAs="65101",collection_type="snmp",name="default"} 1 1779662362111
+bgpPeerState{afi_safi_name="ipv4-unicast",agent_host="srl2",bgpPeerRemoteAddr="10.1.2.1",bgpPeerRemoteAs="65101",collection_type="snmp",name="default"} 1
 ```
 
 Field name `bgpPeerState`, tag `agent_host`, value space matches SNMP enum semantics. Different name, different label keys than `srl_bgp_oper_state` — same logical concept, completely different shape. Pack: `workshops/autocon5/sonda/catalog/cisco-snmp-bgp-raw.yaml`.

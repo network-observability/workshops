@@ -88,7 +88,7 @@ curl -s 'http://localhost:8085/metrics?label=source:srl1' | grep '^srl_bgp_oper_
 ```
 
 ```text
-srl_bgp_oper_state{afi_safi_name="ipv4-unicast",collection_type="gnmi",name="default",neighbor_asn="65102",peer_address="10.1.99.2",source="srl1"} 5 1779662362111
+srl_bgp_oper_state{afi_safi_name="ipv4-unicast",collection_type="gnmi",name="default",neighbor_asn="65102",peer_address="10.1.99.2",source="srl1"} 5
 ```
 
 Note the metric name (`srl_bgp_oper_state`) and the `source="srl1"` tag — that's the gNMI shape SR Linux puts on the wire. Compare it to what Prometheus stores after Telegraf renames it (`bgp_oper_state{device="srl1",...}`) and you've seen the entire normalization pipeline end-to-end. Part 1's exercise 6 walks both sides.
@@ -100,7 +100,7 @@ curl -s 'http://localhost:8085/metrics?label=agent_host:srl2' | grep '^bgpPeerSt
 ```
 
 ```text
-bgpPeerState{afi_safi_name="ipv4-unicast",agent_host="srl2",bgpPeerRemoteAddr="10.1.2.1",bgpPeerRemoteAs="65101",collection_type="snmp",name="default"} 1 1779662362111
+bgpPeerState{afi_safi_name="ipv4-unicast",agent_host="srl2",bgpPeerRemoteAddr="10.1.2.1",bgpPeerRemoteAs="65101",collection_type="snmp",name="default"} 1
 ```
 
 ### Inspect the catalog from inside the container
