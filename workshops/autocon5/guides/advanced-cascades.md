@@ -28,7 +28,7 @@ nobs autocon5 status
 Two browser tabs ready:
 
 - **Workshop Home** at <http://localhost:3000/d/workshop-home> — situational awareness, alerts table, recent events feed.
-- **Workshop Lab 2026** at <http://localhost:3000/d/dfb5dpyjbh2wwa> — the dashboard you'll be modifying in Act 4.
+- **Workshop Lab 2026** at <http://localhost:3000/d/dfb5dpyjbh2wwa> — the dashboard you'll lean on in Act 4 as the incident unfolds.
 
 A scratch text file open on the side. The closing act has you write the top five lines of your own runbook entry, and you'll want somewhere to put them.
 
@@ -143,36 +143,23 @@ Empty even longer. Only starts climbing once backup utilisation crosses ~70%. Fr
 
 There's a wall-clock detail worth calling out. The default `--duration 3m` is the bounded lifetime of *each* signal in the cascade, not the total lifetime end-to-end. Each phase has to wait for the previous one to escalate before it starts (the flap has to drop, then backup has to saturate past 70%), so the cascade as a whole takes longer than three minutes to fully unfold. Root cause leads symptoms by minutes — that's the lesson, regardless of the wall-clock numbers.
 
-### Act 4 — Build the dashboard for next time
+### Act 4 — Read the dashboards you already have
 
-The cascade is still running. Dashboards are noisy, latency is climbing, and you've just realised something: there's an alert rule for interface flap (`PeerInterfaceFlapping` fires above 3 UPDOWN log events in 2 minutes), and Part 3's `flap-interface` cascade trips it routinely — but nothing on this dashboard makes the flap signature visible. The next time someone gets paged on a flap, they'll be staring at metrics panels with no view of the log evidence behind the alert. A real on-call would build that panel — right now, while the lessons are fresh.
+The cascade is still unfolding. Latency is climbing, the backup is saturating, the primary is still flapping. The temptation under pressure is to open Grafana's panel editor and start building — *don't*. Real on-call doesn't build dashboards during a fire; you read what's already there.
 
-You're adding a **Flap rate** panel to **Workshop Lab 2026**, with thresholds that match the actual alert rule:
+> *"Your dashboards earned their keep this morning, when you built them in calm. Tonight, you just read them."*
 
-1. Open **Workshop Lab 2026**, top right click **Edit**, then **Add panel** → **Add visualization**.
-2. Datasource: choose `loki`. Flap rate is a log-derived metric, not a Prometheus counter.
-3. Paste the query:
+Open **Workshop Lab 2026** and walk the panels you already have.
 
-   ```logql
-   sum by (interface)(count_over_time({device="$device", vendor_facility_process="UPDOWN"}[1m]))
-   ```
+**The Flap rate panel you built in Part 2.** Set the `Device` dropdown to `srl1`, time range **Last 15 minutes**. You'll see a baseline trickle below the red threshold — and the panel stays quiet, which is itself information. Tonight's `incident` cascade emits three *metrics* (`interface_oper_state`, `incident_backup_link_utilization`, `incident_latency_ms`) and no UPDOWN log lines, so a log-derived flap panel has nothing to count. The panel you built is the right panel for a `PeerInterfaceFlapping` incident; tonight's incident is a different shape.
 
-   `$device` is the dashboard variable — Grafana substitutes it so the panel works for either device. `count_over_time(...[1m])` counts UPDOWN log lines per minute; `sum by (interface)` gives each interface its own line.
-4. Panel type (right-hand panel-type dropdown): **Time series**.
-5. **Panel options** → **Title**: `Flap rate (per minute)`.
-6. **Description**: `UPDOWN log events per interface, counted in a 1-minute window. Above 3 in 2 minutes, the PeerInterfaceFlapping alert fires.`
-7. **Thresholds**: keep green at base, add **Orange** at `1`, add **Red** at `3`. Under **Graph styles** → **Show thresholds**, pick `As lines`. The panel now has a horizontal red line at 3 — a flap rate above it means the alert is firing.
-8. **Apply** to drop back to the dashboard, then **Save dashboard** (disk icon).
+**Interface Operational Status and Interface Traffic.** Same dashboard, same `$device`. The cascade's metrics carry `source="incident-cascade"` rather than the `srl1`/`srl2` labels the provisioned panels filter on, so to see this incident's exact signals you bounce to **Explore** with Act 3's three queries. The dashboard panels show the *baseline* alongside the incident — the lab's steady-state shape during the same window, so you can read deviation against normal noise.
 
-Set the dashboard's `Device` dropdown to `srl1` and confirm the panel renders. You should see a baseline trickle of UPDOWN events from the lab's continuous emitters — well below the red threshold. The `incident` cascade you started in Act 3 is metrics-only (the three signals are `interface_oper_state`, `incident_backup_link_utilization`, `incident_latency_ms` — no log stream), so it won't move this panel; that's expected. To prove the panel reacts the way you want it to, run a one-off flap from a separate terminal:
+**Workshop Home.** Switch tabs. The **Currently Firing Alerts** table still shows the same four steady-state rows from Act 1 — this cascade has its own signals and doesn't trip the existing rules, so the table looks calm. The **Recent events** feed is reflecting cascade activity as it flows. One tab over keeps you aware without losing the detail view.
 
-```bash
-nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1 --no-cascade
-```
+The dashboards together tell the cascade's story — flap on Operational Status, pressure rising on Interface Traffic, latency climbing in Explore. The chapters Act 3's queries walked, now visible without typing. Queries are how you discover something is wrong. Dashboards are how you stay aware while you fix it.
 
-Within a minute the line for `ethernet-1/1` should climb past the orange threshold, and on a noisy moment past the red one — exactly the shape `PeerInterfaceFlapping` fires on.
-
-**Stop and notice.** Real on-call teams build dashboards in the wake of incidents, not before them. The panel you just added makes the alert rule's log-derived condition visible — so the next time someone gets paged on `PeerInterfaceFlapping`, they have a panel that *is* the alert condition rather than guessing what tripped it. That's how dashboards earn their keep: they encode the lessons of yesterday's incidents. The threshold lines in the panel match the rule's condition, so reading the panel and reading the rule give the same answer.
+**Stop and notice.** Dashboards earn their keep *before* incidents, by being there when the page lands. You build during calm; you read during fire. The panel you built in Part 2 didn't move tonight — and that's the right outcome, because tonight wasn't a `PeerInterfaceFlapping` incident. Tomorrow's might be. The work is done before the page, not after.
 
 ### Act 5 — Contain: silence the noise with maintenance
 
