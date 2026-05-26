@@ -5,63 +5,26 @@
 ###############################################################################
 #                            DATA COLLECTION                                  #
 ###############################################################################
-# Baseline: scrape sonda-server's aggregate /metrics endpoint, filtered to
-# srl1 via the `source` label (gNMI shape).
+# Scrape sonda's aggregate /metrics, filtered to srl1 (gNMI shape).
 [[inputs.prometheus]]
   urls = ["http://sonda-server:8080/metrics?label=source:srl1"]
   metric_version = 2
-  # Strip Telegraf's default scrape-noise tags so they don't show up in Prom.
   tagexclude = ["url", "host"]
 
   [inputs.prometheus.tags]
-    pipeline = "telegraf"
-
-# Cascade: `flap-interface` posts a dynamic scenario to sonda-server with a
-# remote_write sink targeting this port. The cascade's `srl_*` samples land
-# here, flow through the same processors, and merge into the baseline series
-# in Prometheus. See packages/nobs/.../flap.py.
-[[inputs.http_listener_v2]]
-  service_address = ":1316"
-  paths = ["/api/v1/write"]
-  methods = ["POST", "PUT"]
-  data_format = "prometheusremotewrite"
-  # Strip the agent-injected `host` tag so cascade samples carry the same
-  # label set as baseline (which already strips it). Without this, baseline
-  # and cascade store as two distinct series in Prometheus and the cascade's
-  # flap values never overlay the baseline `1`.
-  tagexclude = ["host"]
-
-  [inputs.http_listener_v2.tags]
     pipeline = "telegraf"
 
 
 ###############################################################################
 #                            DATA NORMALIZATION                               #
 ###############################################################################
-# Strip the vendor `srl_` prefix to converge srl1 series with srl2's
-# canonical names. Both inputs keep the metric name in the field
-# (baseline `inputs.prometheus` uses measurement="prometheus"; cascade
-# `prometheusremotewrite` uses measurement="prometheus_remote_write")
-# so `field_rename` covers both paths.
+# Strip the `srl_` prefix to converge with srl2's canonical names.
 [[processors.regex]]
   order = 1
 
   [[processors.regex.field_rename]]
     pattern = "^srl_(.*)$"
     replacement = "${1}"
-
-# Telegraf's prometheus_client output strips the measurement prefix
-# (when metric_version=2) only if measurement="prometheus" exactly.
-# The cascade's prometheusremotewrite data_format produces
-# measurement="prometheus_remote_write", so we rename it down to
-# "prometheus" — that way Prometheus sees `bgp_oper_state` instead
-# of `prometheus_remote_write_bgp_oper_state`.
-[[processors.rename]]
-  order = 1
-
-  [[processors.rename.replace]]
-    measurement = "prometheus_remote_write"
-    dest = "prometheus"
 
 # gNMI's device-identifier tag is `source`; canonical schema uses `device`.
 [[processors.rename]]
@@ -75,9 +38,7 @@
 ###############################################################################
 #                            DATA ENRICHMENT                                  #
 ###############################################################################
-# Derive `intf_role` from the `name` tag. The regex only matches
-# `ethernet*` / `mgmt*`, so BGP (`name="default"`) and system metrics
-# pass through unchanged.
+# Derive `intf_role` from `name`. Non-matching tags (BGP, system) pass through.
 [[processors.regex]]
   order = 3
 
@@ -105,9 +66,5 @@
 
 
 [[outputs.prometheus_client]]
-  # HTTP port to listen on — Prometheus scrapes this endpoint
   listen = ":9005"
-  # v2 emits `<field>{tags}` (e.g. `bgp_oper_state{...}`); v1 (default) emits
-  # `<measurement>_<field>{tags}`. The alert rules and dashboards query the
-  # raw metric names, so v2 is required.
   metric_version = 2

@@ -89,10 +89,7 @@ services:
 
   # telegraf-srl1: scrapes the aggregate /metrics endpoint filtered by
   # `source:srl1` (gNMI-raw `srl_*`), renames to canonical (`interface_*`,
-  # `bgp_*`), exposes a Prom scrape endpoint on :9005. The :1316 listener
-  # stays open for `flap-interface`'s cascade — it posts a dynamic scenario
-  # to sonda-server with a remote_write sink targeting this port. See
-  # packages/nobs/.../flap.py.
+  # `bgp_*`), exposes a Prom scrape endpoint on :9005.
   telegraf-srl1:
     container_name: telegraf-srl1
     build:
@@ -105,7 +102,6 @@ services:
     volumes:
       - ./telegraf/telegraf-srl1.conf.toml:/etc/telegraf/telegraf.conf
     expose:
-      - "1316"
       - "9005"
     depends_on:
       sonda-setup:
