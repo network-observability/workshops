@@ -141,7 +141,9 @@ Empty even longer. Only starts climbing once backup utilisation crosses ~70%. Fr
 
 **Stop and notice.** By the time latency is the visible problem, the actual root cause — the primary uplink fault — happened minutes ago. This is why incident timelines matter. The latency spike is a *symptom*. The flapping interface was the *cause*. If your alert fires on latency, your runbook needs to walk back through the cascade to find the real failure. The cascade is the story; the metrics are the chapters. Operators read incidents this way every day.
 
-There's a wall-clock detail worth calling out. The default `--duration 3m` is the bounded lifetime of *each* signal in the cascade, not the total lifetime end-to-end. Each phase has to wait for the previous one to escalate before it starts (the flap has to drop, then backup has to saturate past 70%), so the cascade as a whole takes longer than three minutes to fully unfold. Root cause leads symptoms by minutes — that's the lesson, regardless of the wall-clock numbers.
+??? info "Why the cascade takes longer than the --duration flag suggests"
+
+    There's a wall-clock detail worth calling out. The default `--duration 3m` is the bounded lifetime of *each* signal in the cascade, not the total lifetime end-to-end. Each phase has to wait for the previous one to escalate before it starts (the flap has to drop, then backup has to saturate past 70%), so the cascade as a whole takes longer than three minutes to fully unfold. Root cause leads symptoms by minutes — that's the lesson, regardless of the wall-clock numbers.
 
 ### Act 4 — Read the dashboards you already have
 
@@ -220,20 +222,14 @@ Then re-read what you wrote.
 
 **Stop and notice.** Runbooks are the artefact every observability investment is ultimately for. Telemetry shapes you can query, dashboards you can read, alerts that fire at the right time — they all funnel into the runbook entries that make the next on-call's job survivable. You just walked through the shape; you wrote the entry. That's the loop.
 
-## Stretch goals
+??? tip "Stretch goals — if you have time before lunch"
 
-- **Drive the same investigation on srl2.** Re-run the cascade with `--device srl2`. Notice that the existing `BgpSessionNotUp` alert was for srl1's broken peer; on srl2 the broken peer is `10.1.11.1`. The triage decision tree from Act 2 works the same; only the device label changes. Confirm your runbook stub still applies — if it doesn't, either it was too device-specific or you've found a real shape difference worth writing down.
-- **Predict the customer-impact window.** Given the timing you observed (backup utilisation crossing 70% around t=2½ min, latency ramping from there toward 150ms over the next three minutes), at what point would a customer's response-time SLO break? Use the queries from Act 3 to back the answer with data, not feel.
-- **Compare the investigation arc to the automated path.** Run `nobs autocon5 try-it` from Part 3 — it walks the four alert paths automatically. Contrast: `try-it` is the automation handling routine cases without you. The investigation game you just walked is what you do when *automation isn't enough* — when you need to know what the workflow would have done, why, and whether to override it.
+    - **Drive the same investigation on srl2.** Re-run the cascade with `--device srl2`. Notice that the existing `BgpSessionNotUp` alert was for srl1's broken peer; on srl2 the broken peer is `10.1.11.1`. The triage decision tree from Act 2 works the same; only the device label changes. Confirm your runbook stub still applies — if it doesn't, either it was too device-specific or you've found a real shape difference worth writing down.
+    - **Predict the customer-impact window.** Given the timing you observed (backup utilisation crossing 70% around t=2½ min, latency ramping from there toward 150ms over the next three minutes), at what point would a customer's response-time SLO break? Use the queries from Act 3 to back the answer with data, not feel.
+    - **Compare the investigation arc to the automated path.** Run `nobs autocon5 try-it` from Part 3 — it walks the four alert paths automatically. Contrast: `try-it` is the automation handling routine cases without you. The investigation game you just walked is what you do when *automation isn't enough* — when you need to know what the workflow would have done, why, and whether to override it.
 
 ## What you took away
 
-- The shape of an interface-degradation incident — primary fault → failover → backup pressure → latency — is universal. Recognise the shape and you've started triaging.
-- Triage is a decision tree, not a single query. Localise top-down: device → link → peer → log evidence. Each step rules out a class of failure.
-- The metric-to-log bridge from Part 1 is the single most useful pattern under pressure. Metric tells you *what*; log tells you *why*; the same labels on both sides make it cheap.
-- Empty panels at the start of an incident aren't a bug. Some signals only exist once an upstream failure has happened, and that gap is information — it tells you when each stage of the cascade actually fired.
-- Latency is almost always a symptom, not a cause. When latency alerts fire, walk *back* through the cascade to find the real failure.
-- Dashboards earn their keep when they encode lessons from real incidents. Build them after the page lands, not before. The thresholds on a panel should match the alert rule, so the line you see on screen *is* the alert condition.
-- Maintenance is a containment lever, not a static attribute. Use it live to silence noise while you investigate; clear it the moment the device is back in production.
-- Recovery has a shape too. The metrics tell the resolution story the same way they told the failure story — in causal order. Watch for the dashboards going green as confirmation the fix landed.
-- Runbooks are the artefact every observability investment ultimately funnels into. Five good lines, written while the memory is fresh, beats a hundred mediocre ones written months later.
+- The shape of an interface-degradation incident — primary fault → failover → backup pressure → latency — is universal. Latency is almost always a symptom; walk back through the cascade to find the cause.
+- Same labels on metrics and logs means correlation is one query change away. Metric tells you *what*; log tells you *why*. The metric-to-log bridge is the single most useful pattern under pressure.
+- Dashboards earn their keep *before* incidents, by being there when the page lands. Build during calm; read during fire. Runbooks are the durable artefact every observability investment funnels into — five good lines, written while the memory is fresh.
