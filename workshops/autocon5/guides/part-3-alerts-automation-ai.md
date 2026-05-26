@@ -128,6 +128,104 @@ There's a fifth outcome the policy can emit but that `try-it` doesn't exercise: 
 
 Annotations land in Loki under `{source="prefect", workflow="autocon5_quarantine_bgp"}` with a `decision` label that takes one of: `proceed`, `skip`, `resolved`, `stop`. They're visible in **Recent events** feeds on both **Workshop Home** and **Device Health**.
 
+??? info "What does intent actually look like in Infrahub?"
+
+    The flow asks Infrahub two questions per alert payload — *is this peer expected to be up?* (`expected_state`) and *is the device in a maintenance window?* (`maintenance`). Both come from the same `WorkshopDevice` GraphQL query with its `bgp_sessions` relationship expanded.
+
+    Two paths to run it yourself — both valid, both worth knowing:
+
+    1. **Via the Infrahub UI** at <http://localhost:8000>. Login `admin` / `infrahub`. Navigate **Object Management → WorkshopDevice → srl1**. The `maintenance` boolean, `site_name`, `role` are on the detail panel; the BGP sessions list is below. Click any peer (e.g., `10.1.99.2`) to see its `expected_state` and `reason`.
+    2. **Via the GraphQL Sandbox** at <http://localhost:8000/graphql>. Paste the query below and hit run. This is the same query the Prefect flow makes from `automation/workshop_sdk.py` — Step 4A's "See the exact query the flow runs" fold (in [#a-set-maintenance-and-see-the-source-of-truth-flip](#a-set-maintenance-and-see-the-source-of-truth-flip)) covers the verbatim version.
+
+    ```graphql
+    {
+      WorkshopDevice(name__value: "srl1") {
+        edges {
+          node {
+            name { value }
+            maintenance { value }
+            site_name { value }
+            role { value }
+            bgp_sessions {
+              edges {
+                node {
+                  peer_address { value }
+                  expected_state { value }
+                  remote_as { value }
+                  reason { value }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    ```
+
+    What you get back (trimmed to the broken peer's `bgp_session` for readability):
+
+    ```json
+    {
+      "data": {
+        "WorkshopDevice": {
+          "edges": [{
+            "node": {
+              "name": { "value": "srl1" },
+              "maintenance": { "value": false },
+              "site_name": { "value": "lab" },
+              "role": { "value": "edge" },
+              "bgp_sessions": {
+                "edges": [{
+                  "node": {
+                    "peer_address": { "value": "10.1.99.2" },
+                    "expected_state": { "value": "established" },
+                    "remote_as": { "value": 65102 },
+                    "reason": { "value": null }
+                  }
+                }]
+              }
+            }
+          }]
+        }
+      }
+    }
+    ```
+
+    Read it back to the concepts: `maintenance: false` means the policy proceeds to the metrics check (no short-circuit); `expected_state: "established"` for `10.1.99.2` means the SoT believes this peer should be up — so if metrics disagree, the policy returns `proceed`. That's Path 1 (mismatch → proceed) sitting in the data.
+
+    For the deeper "what is Infrahub, why a source of truth" framing, see the Tour's [Infrahub section](../../../docs/workshop/tour.md#infrahub-source-of-truth).
+
+??? info "What does reality actually look like in the metrics?"
+
+    The flow asks Prometheus for the *current* per-peer BGP state — `bgp_admin_state`, `bgp_oper_state`, plus the prefix counters. These are the same metric names you queried in Part 1.
+
+    Three paths, in order of friction (lowest to highest):
+
+    1. **Via `nobs autocon5 evidence`** — the workshop's pre-built convenience command that consolidates SoT + metrics + recent logs into one CLI output. The `BGP metrics snapshot` panel is exactly what the flow's `collect_evidence` task pulls. Step 3.B's [evidence walkthrough](#b-investigate-pull-the-evidence-bundle) drives it directly.
+    2. **Via Grafana Explore** at <http://localhost:3000>. Pick the Prometheus datasource and paste:
+        ```promql
+        bgp_admin_state{device="srl1", peer_address="10.1.99.2"}
+        bgp_oper_state{device="srl1", peer_address="10.1.99.2"}
+        bgp_received_routes{device="srl1", peer_address="10.1.99.2"}
+        bgp_prefixes_accepted{device="srl1", peer_address="10.1.99.2"}
+        ```
+    3. **Via the Prometheus HTTP API directly**, for scripting:
+        ```bash
+        curl -sG 'http://localhost:9090/api/v1/query' \
+          --data-urlencode 'query=bgp_oper_state{device="srl1",peer_address="10.1.99.2"}'
+        ```
+
+    What you'll see on the broken peer:
+
+    ```
+    bgp_admin_state       = 1   (enable)
+    bgp_oper_state        = 5   (active — retrying)
+    bgp_received_routes   = 0
+    bgp_prefixes_accepted = 0
+    ```
+
+    Read it back to the concepts: `admin_state: 1` (enable) means the device intends this session up; `oper_state: 5` (active, not 1=established) means it isn't actually up; the prefix counters at zero confirm no routes are flowing. Combined with the SoT's `expected_state: established`, that's a clear intent-vs-reality mismatch — exactly what triggers the `proceed` path. The numeric-to-meaning decoding (`1=enable`, `5=active/retrying`) is what the `Decoded` column in `nobs autocon5 evidence`'s output shows; Step 3.B walks the full mapping table.
+
 ??? info "What's a decision tree — and why deterministic?"
 
     A **decision tree** in this context is a small Python function (`DecisionPolicy.evaluate` in [`workshops/autocon5/automation/workshop_sdk.py`](https://github.com/network-observability/workshops/blob/main/workshops/autocon5/automation/workshop_sdk.py)) that takes the evidence bundle and walks a fixed set of `if / elif` branches to pick one of `proceed` / `skip` / `resolved` / `stop`. Two stages: first the source-of-truth gate (is the device in maintenance? is this peer even *supposed* to be up?), then — only if the SoT gate doesn't short-circuit — the metrics check.
