@@ -33,7 +33,8 @@ from rich.table import Table
 from autocon5_workshop.flap_topology import Peer, peers_for
 
 _BGP_DOWN_OPER = 2.0
-_BGP_DOWN_NEIGHBOR = 1.0
+# `bgp_neighbor_state` FSM enum (dashboard mapping): 1=ESTABLISHED, 2=IDLE.
+_BGP_DOWN_NEIGHBOR = 2.0
 _BGP_DOWN_PREFIXES = 0.0
 
 _BGP_UP_OPER = 1.0

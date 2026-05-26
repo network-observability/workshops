@@ -119,6 +119,16 @@ def test_log_entry_carries_device_label_for_dashboard_match(two_peers: list[Peer
         assert log_entry["labels"]["device"] == device
 
 
+def test_bgp_neighbor_state_flips_to_idle_so_states_panel_turns_red(two_peers: list[Peer]) -> None:
+    for device, neighbor_metric in (("srl1", "srl_bgp_neighbor_state"), ("srl2", "bgpPeerState")):
+        body = _build(device, two_peers)
+        entry = next(e for e in body["scenarios"] if e["name"] == neighbor_metric)
+        gen = entry["generator"]
+        assert gen["type"] == "flap"
+        assert gen["up_value"] == 1.0
+        assert gen["down_value"] == 2.0
+
+
 def test_no_peers_drops_bgp_entries_but_keeps_flap_octets_and_log() -> None:
     body = _build("srl1", peers=[], interface="ethernet-1/99")
     ids = {e["id"] for e in body["scenarios"]}
