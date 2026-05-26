@@ -492,6 +492,36 @@ docker compose --project-name autocon5 exec prefect-flows \
   --param 'alert_group={"alerts":[{"labels":{"device":"srl1","peer_address":"10.1.2.2","afi_safi_name":"ipv4-unicast"}}],"groupLabels":{"alertname":"BgpSessionNotUp"},"status":"firing"}'
 ```
 
+??? info "What does the webhook payload actually look like?"
+
+    The `alert_group` parameter the direct trigger feeds the deployment is the same JSON shape Alertmanager POSTs to the webhook in production — one envelope per alert group, with the alert(s) and a few group-level fields.
+
+    ```jsonc
+    {
+      // every payload starts with these three top-level fields
+      "alertname": "BgpSessionNotUp",
+      "status": "firing",              // or "resolved"
+
+      "alert_group": {
+        // one entry per firing instance — usually 1 in this lab
+        "alerts": [{
+          "labels": {
+            "device": "srl1",
+            "peer_address": "10.1.2.2",
+            "afi_safi_name": "ipv4-unicast"
+          }
+        }],
+
+        // Alertmanager's grouping keys — what causes alerts to fan in
+        "groupLabels": {"alertname": "BgpSessionNotUp"},
+
+        "status": "firing"
+      }
+    }
+    ```
+
+    Two things to notice. First, the `labels` dict inside each `alert` carries the keys the flow correlates against the SoT — `device`, `peer_address` — exactly as you'd write them in PromQL or LogQL. Same shape, three consumers (alert rule expression, dashboard panel, webhook payload). Second, the `groupLabels` field is what Alertmanager uses to fan multiple firing instances into one webhook delivery — the lab keeps it simple (one alert per group), but the schema is built for the real world where one upstream root cause can fire 20 BGP alerts at once.
+
 Recheck Recent events — `decision=proceed` for `peer_address=10.1.2.2` should be there now.
 
 > Your senior taps the screen. *"That's the flow signalling 'this looks real, escalate it.' In production this is where a runbook fires, a ticket opens, an on-call gets paged. The flow doesn't pretend to fix the underlying problem — it categorises and routes."*
@@ -573,6 +603,27 @@ The CLI flipped `srl1.maintenance=true` in Infrahub and dropped a `Configured fr
 ```
 
 — the most recent line ends in `srl1.maintenance = True`.
+
+??? info "What does the maintenance log line actually look like?"
+
+    The same `nobs autocon5 maintenance` invocation that flipped `srl1.maintenance=true` in Infrahub also dropped an audit annotation into Loki — same envelope shape as the Prefect annotations, different `source` label.
+
+    ```json
+    {
+      "timestamp": "2026-05-26T10:55:24.426Z",
+      "severity": "info",
+      "message": "Configured from CLI: srl1.maintenance = True",
+      "labels": {
+        "device": "srl1",
+        "event": "config-push",
+        "level": "info",
+        "source": "workshop-trigger"
+      },
+      "fields": {}
+    }
+    ```
+
+    Two labels are worth highlighting. `source="workshop-trigger"` distinguishes lines this CLI wrote from the `source="prefect"` lines the flow writes — both are audit annotations, both are queryable with the same LogQL grammar, but they describe different actors. `event="config-push"` is the action type — every change `nobs autocon5 maintenance` makes carries this label, so an operator can ask Loki "show me every config push in the last 24h" with `{source="workshop-trigger", event="config-push"}`. Same correlation pattern as the alert pipeline, just with the CLI as the actor instead of the flow.
 
 Then open the Infrahub UI at <http://localhost:8000> and navigate to **Object Management → WorkshopDevice → srl1**. `maintenance` just flipped to `true`. The surrounding attributes (`intended_peer`, `expected_state`, `reason`, `asn`, `role`, `site_name`) are the schema fields the flow's policy reads when deciding `proceed` vs `skip`. From the device page, click any row in the **bgp_sessions** list — for example `10.1.99.2`:
 
@@ -826,6 +877,45 @@ Open the Prefect UI's Automations page: <http://localhost:4200/automations>.
         This is the same payload shape Step 4B used as a direct trigger — the automation will kick `alert-receiver` with a synthesised alert each time `quarantine_bgp_flow` completes.
     - **Send a notification** — needs a notification block (Slack, Discord, Mattermost, PagerDuty, email, etc.) configured with credentials first. None ship pre-wired in the lab. Skip unless you have a target system you want to wire up live.
 4. Save the automation.
+
+??? info "What does the automation look like once configured?"
+
+    Behind the UI form, Prefect stores the automation as a structured record — trigger + actions — that the API can list, create, or delete. Once you've saved your automation, here's what it looks like.
+
+    ```bash
+    curl -s -X POST 'http://localhost:4200/api/automations/filter' \
+      -H 'content-type: application/json' -d '{"limit": 10}' | jq '.[] | {name, enabled, trigger, actions}'
+    ```
+
+    ```json
+    {
+      "name": "chain-after-quarantine",
+      "description": "Demo: fire alert-receiver when quarantine_bgp_flow completes",
+      "enabled": true,
+      "trigger": {
+        "type": "event",
+        "match": {"prefect.resource.id": "prefect.flow-run.*"},
+        "match_related": {
+          "prefect.resource.id": "prefect.flow.<quarantine_bgp_flow_id>",
+          "prefect.resource.role": "flow"
+        },
+        "expect": ["prefect.flow-run.Completed"],
+        "for_each": ["prefect.resource.id"],
+        "posture": "Reactive",
+        "threshold": 1
+      },
+      "actions": [{
+        "type": "run-deployment",
+        "deployment_id": "<alert-receiver-deployment-id>",
+        "parameters": {
+          "alertname": "automation-fired",
+          "status": "firing"
+        }
+      }]
+    }
+    ```
+
+    The `trigger` block is what the UI's "Trigger" panel writes — `match` and `match_related` together pin the trigger to a specific flow's run-completion events; `expect: ["prefect.flow-run.Completed"]` is the state filter the UI exposes as a dropdown; `posture: "Reactive"` means fire-on-event (as opposed to "Proactive" which fires on absence-of-event). The `actions` array is what the "Action" panel writes — `run-deployment` here, but the same array can hold notification or webhook actions. This whole record can be exported, edited, and POST'd back to the API — same shape as a Terraform resource for an automation, if your team works that way.
 
 Now re-trigger any path:
 
