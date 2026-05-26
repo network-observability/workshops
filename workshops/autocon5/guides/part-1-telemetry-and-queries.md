@@ -371,9 +371,14 @@ bgp_admin_state{device="srl1"} == 1
 
 On a clean lab, this returns **one row** — `peer_address=10.1.99.2`, value `5` (active, retrying). That's the deliberately broken peer.
 
-??? info "Seeing more than one row? Check the query type."
+??? info "Seeing more than one row, or a peer flickering as spots?"
 
-    Grafana Explore's default is **Range** (plots samples over the time window). If a flap or cascade has run inside the window, peers that were briefly `oper_state != 1` will appear as series even after they've recovered. Switch the **Type** dropdown next to the query to **Instant** for a "right now" snapshot — that should drop you back to one row.
+    Grafana Explore's default is **Range** (plots samples over the time window). Two things show up after a recent flap:
+
+    - **Extra peers** — any peer that was briefly `oper_state != 1` during the window stays as a series even after it recovered.
+    - **Spotty appearance** — the cascading peer (e.g., `10.1.2.2`) draws as discrete spots, one per down-phase, because the `!= 1` filter only matches during the down phase. The deliberately broken peer (`10.1.99.2`) stays a continuous line because its `oper_state=5` constantly.
+
+    Switch the **Type** dropdown next to the query to **Instant** for a "right now" snapshot — should drop you to one row, the broken peer.
 
 ??? tip "Or — Prometheus is carrying stale data from a previous session"
 

@@ -65,6 +65,7 @@ def reset(
     note("Resetting lab to known-good state.")
 
     _clear_maintenance_flags()
+    _reapply_sonda_baselines()
     _expire_workshop_silences(alertmanager_url)
     _delete_cascade_scenarios(sonda_url)
     if not skip_sonda_logs:
@@ -96,6 +97,26 @@ def _clear_maintenance_flags() -> None:
             warn(f"maintenance --clear timed out for {device}")
     if cleared:
         console.print(f"  cleared maintenance on: {', '.join(cleared)}")
+
+
+def _reapply_sonda_baselines() -> None:
+    """Re-POST sonda-server's baseline scenarios via the sonda-setup init container."""
+    import subprocess
+
+    try:
+        r = subprocess.run(
+            ["docker", "compose", "--project-name", "autocon5", "up", "sonda-setup"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd=_repo_root() / "workshops" / "autocon5",
+        )
+        if r.returncode == 0:
+            console.print("  re-applied sonda-server baseline scenarios (idempotent)")
+        else:
+            warn(f"sonda-setup up failed: {r.stderr.splitlines()[-1] if r.stderr else 'unknown error'}")
+    except subprocess.TimeoutExpired:
+        warn("sonda-setup up timed out")
 
 
 def _expire_workshop_silences(alertmanager_url: str) -> None:
