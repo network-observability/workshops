@@ -16,14 +16,14 @@ nobs autocon5 incident --help
 
 You should see options for `--device`, `--primary-interface`, `--backup-interface`, `--duration`, and `--kind` (default `link-failover`). If `incident` isn't a recognised subcommand, pull and re-run.
 
-Reset to known-good baseline and confirm the stack is healthy. The investigation will leave the lab in a non-default state mid-flight (a cascade running, a device flagged in maintenance) so the reset matters more here than in the part guides:
+Reset to known-good baseline and confirm the stack is healthy. The investigation puts the lab into states the part guides didn't — so the reset matters more here. Run it before you start:
 
 ```bash
 nobs autocon5 reset
 nobs autocon5 status
 ```
 
-`reset` is safe to run repeatedly — clears any leftover maintenance flags, expires workshop-related silences, removes any cascade scenarios from a prior run, and restarts the log shipper if it has gone quiet. `status` should show every row `ok`; if anything is yellow or red, flag it before continuing.
+`reset` is safe to run repeatedly — it re-loads the Infrahub source-of-truth, clears any device maintenance flags, re-applies sonda's baseline scenarios (so the steady-state broken peers stay firing), and expires any workshop-related Alertmanager silences. `status` should show every row `ok`; if anything is yellow or red, flag it before continuing.
 
 Two browser tabs ready:
 
@@ -53,7 +53,7 @@ First move from the couch: confirm the page is real and the alert is still firin
 nobs autocon5 alerts
 ```
 
-You should see `BgpSessionNotUp` with `srl1 → 10.1.99.2` in the **Device / target** column. **Stop and notice.** This isn't an alert a cascade we just kicked off invented — it's the alert that's been firing since the lab booted, because the topology has a deliberately broken peer wired in. The page is real in lab terms. So: what do you do next?
+You'll see four alerts firing — the two `BgpSessionNotUp` rows (one per broken peer) and the two `InterfaceAdminUpOperDown` rows you met in Part 3. Tonight's page is the **srl1 → 10.1.99.2** row in the first group. The other three are the same steady-state noise that's been on the dashboard all day. **Stop and notice.** This isn't an alert a cascade we just kicked off invented — it's the alert that's been firing since the lab booted, because the topology has a deliberately broken peer wired in. The page is real in lab terms. So: what do you do next?
 
 ### Act 2 — Triage with PromQL and LogQL
 
@@ -77,7 +77,7 @@ Both should sit in normal range. **Conclusion:** the device is fine. This isn't 
 interface_oper_state{device="srl1"}
 ```
 
-Every interface should read UP (value `1` in the gNMI enum convention you saw in Part 1; `2` would be DOWN). **Conclusion:** no interface fault. Whatever is going on, it isn't on the wire — the link to the broken peer's network is intact. This is BGP-only.
+Most interfaces read `1` (UP). You'll see one — `ethernet-1/11` — at `2` (DOWN). That's the always-broken interface you met in Part 1; it's why one of the `InterfaceAdminUpOperDown` alerts is firing. For tonight's page (a BGP session not coming up to a peer), it's a known-quantity background fault, not the symptom. **Conclusion:** no *new* interface fault. The lit interfaces are healthy — whatever is going on, it isn't on the wire to the broken peer's network. This is BGP-only.
 
 **Is the peer reachable at the BGP layer?** Check intent and reality on this specific peer:
 
@@ -89,7 +89,7 @@ bgp_admin_state{device="srl1", peer_address="10.1.99.2"}
 bgp_oper_state{device="srl1", peer_address="10.1.99.2"}
 ```
 
-Admin reads `1` — the configured intent is "this peer should be up". Oper reads something other than `1` — reality says "it isn't established". **Conclusion:** intent-vs-reality mismatch on this specific peer. This is exactly what the alert is firing on.
+Admin reads `1` — the configured intent is "this peer should be up". Oper reads `5` — `active, retrying` in the gNMI enum convention from Part 1. Reality says "BGP is trying and not succeeding". **Conclusion:** intent-vs-reality mismatch on this specific peer. This is exactly what the alert is firing on.
 
 **Is there a log line that explains why?** Bridge to Loki — same labels, different datasource:
 
@@ -109,7 +109,7 @@ While you were triaging, things escalated. A different problem started developin
 nobs autocon5 incident --device srl1
 ```
 
-The CLI returns immediately and prints three IDs (one per cascade stage). The cascade is now unfolding in the lab — three minutes of total runtime by default. Open the **Workshop Lab 2026** dashboard — you'll be running three queries against the `prometheus` datasource in Explore as the incident develops. The Workshop Home dashboard's **Recent events** feed is also reflecting it; switch tabs occasionally to keep both in view.
+The CLI returns immediately and prints three IDs (one per cascade stage). The cascade is now unfolding in the lab — wall-clock timing is in the callout below. Open the **Workshop Lab 2026** dashboard — you'll be running three queries against the `prometheus` datasource in Explore as the incident develops. The Workshop Home dashboard's **Recent events** feed is also reflecting it; switch tabs occasionally to keep both in view.
 
 **The first thing that catches your eye — primary degrading.** The interface starts flipping:
 
@@ -117,7 +117,7 @@ The CLI returns immediately and prints three IDs (one per cascade stage). The ca
 interface_oper_state{device="srl1", source="incident-cascade"}
 ```
 
-Switch to **Time series**. Within seconds you'll see the line flip between `1` (up) and `0` (down). Roughly 60s up, 30s down. An interface flap is the classic *something physical is wrong* signal — in a real network this is what makes you walk to the rack. The `source="incident-cascade"` label scopes the query to the signals this incident is emitting, leaving the lab's steady-state noise out of view.
+Switch to **Time series**. Within seconds you'll see the line flip between `1` (up) and `0` (down). Roughly 60s up, 30s down. An interface flap is the classic *something physical is wrong* signal — in a real network this is what makes you walk to the rack. By default the cascade targets `ethernet-1/10` as the primary — that's the line that flips. The `source="incident-cascade"` filter scopes the query to this incident's signals and keeps the lab's baseline interface noise (Parts 1–3's always-broken `ethernet-1/11`, etc.) off this chart.
 
 **Stop and notice.** The values are `0` and `1`, not the `1`/`2` gNMI-enum pair you saw in Parts 1–3. This cascade is a different shape of incident — generic up/down rather than the BGP-coupled interface story — so it emits with the simpler `0`/`1` scheme and the unique `source=incident-cascade` label. That's also why the existing `BgpSessionNotUp` alert doesn't trip on this incident: the alert rule matches on `bgp_oper_state`, and this cascade emits its own three signals, none of them `bgp_oper_state`. Different incidents, different signal shapes, different alerts. The label is the scoping handle that keeps them separable.
 
@@ -188,7 +188,7 @@ Verify the alert flow's response will now change for this device:
 nobs autocon5 alerts
 ```
 
-The `BgpSessionNotUp` row is still in the firing list — that's expected. The alert isn't "fixed" by going into maintenance; what changes is the *response* path. The webhook flow consults Infrahub on every alert payload, sees `srl1.maintenance=true`, and decides `skip` (reason: `device under maintenance`) instead of `quarantine`. Open Workshop Home and look at the **Recent events** feed: the next time Alertmanager's webhook fires for this alert, the new annotation reads `skip` rather than `quarantine`. (If you don't want to wait for Alertmanager's `repeat_interval`, jump back to Part 3's `try-it` tour after this guide — Path 2 walks exactly this transition.)
+The `BgpSessionNotUp` row is still in the firing list — that's expected. The alert isn't "fixed" by going into maintenance; what changes is the *response* path. The webhook flow consults Infrahub on every alert payload, sees `srl1.maintenance=true`, and decides `skip` (reason: `device under maintenance`) instead of `quarantine`. Open Workshop Home and look at the **Recent events** feed: the next time Alertmanager's webhook fires for this alert, the new annotation reads `skip` rather than `quarantine`. Alertmanager's `repeat_interval` for this alert is 20 minutes, so you may not see the `skip` annotation appear within the time you spend in this guide. Part 3's `try-it` tour, Path 2, walks exactly this transition with an immediate replay if you want to see it land.
 
 **Stop and notice.** Maintenance isn't a static config attribute on the device — it's a *containment lever* the on-call uses live during an incident. Flipping the flag tells the automation "I'm in here; please don't fire automated actions while I'm working." The flow consults the source of truth at decision time, so the change has effect on the very next alert that arrives. This is what the workshop's source-of-truth integration was for.
 
@@ -200,7 +200,7 @@ Time to simulate the fix landing. Stop the cascade mid-flight — `nobs autocon5
 nobs autocon5 reset
 ```
 
-Reset is safe to run repeatedly — it deletes any cascade scenarios still running, expires workshop-related Alertmanager silences, and clears any device maintenance flags. Watch the dashboards. Within ~30 seconds the cascade signals stop changing, the lab's continuous emitters take over, the panels drift back toward green. Latency drops on `incident_latency_ms`. `incident_backup_link_utilization` flatlines.
+Reset is safe to run repeatedly — it re-loads Infrahub, clears any device maintenance flags, re-applies sonda's baseline scenarios, deletes any cascade scenarios still running, and expires any workshop-related Alertmanager silences. Watch the dashboards. Within ~30 seconds the cascade signals stop changing, the lab's continuous emitters take over, the panels drift back toward green. Latency drops on `incident_latency_ms`. `incident_backup_link_utilization` flatlines.
 
 Note that `reset` already cleared the maintenance flag for `srl1` as part of returning the lab to known-good state. Re-run `nobs autocon5 alerts`: the original `BgpSessionNotUp` is still firing — the deliberately broken peer hasn't been "fixed" because that's a configuration issue on the topology side, not what we just simulated. But the *response* path is back to default: the next alert payload routing through the flow will get the full policy treatment again.
 
