@@ -9,7 +9,13 @@ description: Late morning. A real alert lands and your senior narrates how the w
 
 <h1 class="autocon5-section-hero__title">Alerts, automation, AI</h1>
 
-<p class="autocon5-section-hero__subtitle">Watch a real alert flow through Alertmanager → Prefect → Infrahub.</p>
+<p class="autocon5-section-hero__subtitle">An alert lands. Three tools decide together what to do with it.</p>
+
+Part 3 puts three building blocks in the same room and watches them collaborate on a single alert payload. You won't be jumping between unrelated UIs — every step in the next hour is a move inside one of these three:
+
+- **[Alertmanager](tour.md#alertmanager-the-alert-router-and-silence-store)** is the alert plane. It receives `BgpSessionNotUp` from Prometheus, dispatches it to the webhook, and stores the silence the flow asks it to create once the decision lands. You watch state cycle here — `firing` to `suppressed` and back.
+- **[Prefect](tour.md#prefect-workflows-deployments-runs)** is the workflow orchestrator and the decision point. The webhook hands every alert payload to a Python flow (`quarantine_bgp_flow`) that walks a deterministic decision tree, picks one of four outcomes, writes an audit annotation, and — for the `proceed` outcome — asks Alertmanager to silence the alert for 20 minutes.
+- **[Infrahub](tour.md#infrahub-source-of-truth)** is the source of truth the flow consults at decision time. "Is this peer expected to be up? Is this device in a maintenance window?" The answer to those two questions decides which of the four paths the flow takes — before metrics ever come into the picture.
 
 A real alert lands while your senior narrates. Walk the four paths the workflow handles, toggle the AI RCA step, and decide which paths you'd trust the LLM narrative on at 02:14. Your senior signs off as the lunch break lands — you're ready to take primary on the rotation tomorrow.
 

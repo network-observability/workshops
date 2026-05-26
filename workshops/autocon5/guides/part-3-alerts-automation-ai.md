@@ -73,27 +73,49 @@ Reset to known-good baseline first — this expires any silences a prior `try-it
 nobs autocon5 reset
 ```
 
-Two `BgpSessionNotUp` alerts should be firing in the lab — the deliberately broken peers from this morning.
+Four alerts should be firing in the lab — two per category, one per device:
+
+- **`BgpSessionNotUp` × 2** — the deliberately broken peers from this morning (`srl1 → 10.1.99.2`, `srl2 → 10.1.11.1`). State cycles `firing` ↔ `suppressed` as the webhook flow runs and Alertmanager silences expire on a 20-minute window.
+- **`InterfaceAdminUpOperDown` × 2** — `ethernet-1/11` on each device is configured as `admin up` but its `oper` state is `down`. That's a permanent intent-vs-reality mismatch, so the rule fires continuously and never ages out.
 
 ```bash
 nobs autocon5 alerts
 ```
 
-You should see two rows. State will read either `firing` (caught right after the rule trips) or `suppressed` (more common — the webhook flow already ran on the alert and applied a `quarantine` silence). Both states mean the same thing: the alert is real and the workflow has decided what to do with it.
-
 ```
-| Alertname       | Severity | Device / target  |      State | Age |
-| BgpSessionNotUp | warning  | srl1 → 10.1.99.2 | suppressed | ... |
-| BgpSessionNotUp | warning  | srl2 → 10.1.11.1 | suppressed | ... |
+| Alertname                | Severity | Device / target  |      State | Age |
+| BgpSessionNotUp          | warning  | srl1 → 10.1.99.2 | suppressed | ... |
+| BgpSessionNotUp          | warning  | srl2 → 10.1.11.1 | suppressed | ... |
+| InterfaceAdminUpOperDown | warning  | srl1             |     firing | ... |
+| InterfaceAdminUpOperDown | warning  | srl2             |     firing | ... |
 ```
 
-If you see fewer than two, give the stack 60 seconds and try again — alert evaluation has a `for: 30s` clause. If you see *more* than two — common after running Part 2 — give it about five minutes for the prior cascade's `PeerInterfaceFlapping` and `InterfaceAdminUpOperDown` alerts to age out. None of the residue blocks the four paths below.
+`InterfaceAdminUpOperDown` is steady-state — the underlying mismatch is permanent, so the rule will never age out. Step 3.A revisits this when you flap an interface. The only alert that should ever move between `firing` and `suppressed` here is `BgpSessionNotUp`: it's `firing` immediately after the rule trips, then `suppressed` once the webhook flow applies its 20-minute `quarantine` silence, then `firing` again when the silence expires.
 
-Open **Workshop Home** at <http://localhost:3000/d/workshop-home>. The **Currently firing alerts** table at the bottom should show those same two rows. Keep this dashboard open in a tab — you'll watch it react to your CLI commands throughout this part.
+If you see fewer than two `BgpSessionNotUp` rows, give the stack 60 seconds and try again — alert evaluation has a `for: 30s` clause and you might have caught it before promotion. If you ran Part 2 and see a `PeerInterfaceFlapping` row, that's residue from the flap cascade — it ages out within ~5 minutes of the last flap. None of these conditions block the four paths below.
+
+Open **Workshop Home** at <http://localhost:3000/d/workshop-home>. The **Currently firing alerts** table at the bottom should show those same four rows. Keep this dashboard open in a tab — you'll watch it react to your CLI commands throughout this part.
 
 ## The four paths
 
-The webhook flow runs the same decision tree on every alert payload. The four outcomes:
+Every `BgpSessionNotUp` payload that lands on the webhook gets fed through the same **decision tree**: a deterministic Python function that pulls **intent** (from Infrahub) and **reality** (from Prometheus metrics) for the affected peer, compares them, and returns one of a fixed set of outcomes. "Deterministic" here means the same inputs always produce the same decision — no probabilistic step, no LLM judgment in the path. You can replay any historical alert and get bit-identical reasoning, which is what makes the flow reviewable in code review and replayable in a post-mortem. The AI RCA step you'll turn on in Step 6 sits *alongside* this decision, not inside it.
+
+```text
+   alert payload
+        │
+        ▼
+   collect_evidence  ── SoT (Infrahub) + metrics (Prom) + logs (Loki)
+        │
+        ▼
+   evaluate_policy  ── deterministic decision tree
+        │
+        ▼
+   one of: proceed · skip · resolved · stop
+```
+
+Why these four outcomes specifically (three skips and one proceed)? Because the policy needs to distinguish three different *reasons not to act* — the peer is healthy, the device is in a maintenance window, or the alert already resolved itself — from the single reason *to act*: source-of-truth and metrics disagree and a human probably needs to know. Collapsing any pair into one outcome would lose audit signal; splitting any further would mean the policy is doing something the SoT schema can't yet express.
+
+Every decision the flow makes lands in Loki as an **audit annotation** — one log line per evaluation, written by the `annotate_decision` task right after `evaluate_policy` returns. The annotation carries the device, the peer, and a `decision` label, which is what lets you ask Loki "how many alerts has the flow decided `proceed` on in the last hour?" without scrolling. Step 5 is the unguided exercise where you answer that question yourself.
 
 | Path | Trigger | Decision | Outcome |
 |------|---------|---------|---------|
@@ -106,6 +128,39 @@ There's a fifth outcome the policy can emit but that `try-it` doesn't exercise: 
 
 Annotations land in Loki under `{source="prefect", workflow="autocon5_quarantine_bgp"}` with a `decision` label that takes one of: `proceed`, `skip`, `resolved`, `stop`. They're visible in **Recent events** feeds on both **Workshop Home** and **Device Health**.
 
+??? info "What's a decision tree — and why deterministic?"
+
+    A **decision tree** in this context is a small Python function (`DecisionPolicy.evaluate` in [`workshops/autocon5/automation/workshop_sdk.py`](https://github.com/network-observability/workshops/blob/main/workshops/autocon5/automation/workshop_sdk.py)) that takes the evidence bundle and walks a fixed set of `if / elif` branches to pick one of `proceed` / `skip` / `resolved` / `stop`. Two stages: first the source-of-truth gate (is the device in maintenance? is this peer even *supposed* to be up?), then — only if the SoT gate doesn't short-circuit — the metrics check.
+
+    "Deterministic" matters here for four reasons:
+
+    - **Predictable.** Same evidence in, same decision out. No model temperature, no roll of the dice at 02:14.
+    - **Replayable.** Six months from now, you can rerun the same alert payload through the same policy version and see the same outcome — the audit trail is meaningful.
+    - **Version-controlled.** The policy is code. Changes go through a PR like everything else; a reviewer can read what changed before it ships to production.
+    - **Reviewable in incident review.** When the on-call asks "why did the flow silence this?", the answer is a function call you can step through, not a model output to argue about.
+
+    The AI RCA step you'll turn on in Step 6 is the opposite end of this trade-off — a narrative-generating model that consumes the same evidence bundle but produces prose, not a decision. The deterministic policy acts; the AI annotates. They're separate jobs by design.
+
+??? info "What's an audit annotation — and where does it land?"
+
+    An **audit annotation** is a single Loki log line that the flow writes immediately after `evaluate_policy` returns. The `annotate_decision` task is what produces it — one annotation per alert payload, regardless of which path the policy took. Skips and proceeds and resolveds all get one. That's how you get a complete record of every decision the flow ever made.
+
+    The canonical query in Explore:
+
+    ```logql
+    {source="prefect", workflow="autocon5_quarantine_bgp"} | json
+    ```
+
+    Every line carries a `decision` label set to one of `proceed`, `skip`, `resolved`, `stop`, plus `device` and `peer_address` for correlation. The annotations land in the same Loki the workshop uses for every other log stream. Step 5 is where you'll write the LogQL that turns this label set into a "how many `proceed` vs `skip` decisions in the last hour?" breakdown.
+
+??? info "What's a maintenance window — and how does it differ from a silence?"
+
+    A **maintenance window** is intent expressed in the source of truth: `WorkshopDevice.maintenance = true` on a device in Infrahub. It says "we know this device is being worked on; alerts about it are expected and should be skipped." The policy reads this flag in stage 1 of the decision tree, *before* it ever looks at metrics, and short-circuits to `skip` if it's set.
+
+    A **silence** is a per-alert mute applied in Alertmanager after a decision is already made. When the policy decides `proceed` on a real mismatch, the flow's `quarantine` task asks Alertmanager to silence the matching alert for 20 minutes so the same page doesn't fire repeatedly while the situation is being investigated.
+
+    One is **upstream** of the decision (maintenance shapes which decision the policy returns); the other is **downstream** of it (a silence is one of the actions a `proceed` decision triggers). Conflating them is the most common confusion in this part of the workshop — Step 4 walks the maintenance path explicitly to drive the distinction home.
+
 ## The exercises
 
 ### 1. Inspect what's already firing
@@ -116,7 +171,7 @@ Annotations land in Loki under `{source="prefect", workflow="autocon5_quarantine
 nobs autocon5 alerts
 ```
 
-Two `BgpSessionNotUp` rows. Each has `device` and `peer_address` labels. **Stop and notice.** Those labels are how the flow correlates the alert back to source-of-truth: it asks Infrahub "is this peer expected up? is this device in maintenance?" using exactly those keys. The `suppressed` state on each row *is* the workflow's containment action visible in the alert plane — the flow decided `proceed` on each of these and silenced the alert for 20 minutes.
+Four rows. Two `BgpSessionNotUp` (the actionable ones — each has `device` and `peer_address` labels) and two `InterfaceAdminUpOperDown` (always-firing, steady-state). For the rest of this part, focus on the `BgpSessionNotUp` pair — those are the alerts the webhook flow acts on. **Stop and notice.** Those `device` and `peer_address` labels are how the flow correlates the alert back to source-of-truth: it asks Infrahub "is this peer expected up? is this device in maintenance?" using exactly those keys. The `suppressed` state on each row *is* the workflow's containment action visible in the alert plane — the flow decided `proceed` on each of these and silenced the alert for 20 minutes.
 
 ### 2. Walk all four paths in one shot
 
