@@ -26,6 +26,21 @@ from typing import Any
 
 import requests
 
+_BROKEN_PEER_VALUES: dict[tuple[str, str], dict[str, float]] = {
+    ("srl1", "10.1.99.2"): {
+        "srl_bgp_oper_state": 5.0,
+        "srl_bgp_neighbor_state": 4.0,
+        "srl_bgp_received_routes": 0.0,
+        "srl_bgp_prefixes_accepted": 0.0,
+    },
+    ("srl2", "10.1.11.1"): {
+        "cbgpPeerOperStatus": 5.0,
+        "bgpPeerState": 4.0,
+        "bgpPeerInPrefixes": 0.0,
+        "cbgpPeerAcceptedPrefixes": 0.0,
+    },
+}
+
 # Per-device baseline scenario shape, in the form sonda POSTs at lab boot.
 # Each entry uses `__INTERFACE__` / `__PEER_ADDRESS__` / `__PEER_ASN__`
 # placeholders that the cleanup substitutes before POSTing.
@@ -165,9 +180,7 @@ def _substitute(value: Any, mapping: dict[str, str]) -> Any:
     return value
 
 
-def _restore_body(
-    device: str, interface: str, peers: list[tuple[str, str]]
-) -> dict[str, Any] | None:
+def _restore_body(device: str, interface: str, peers: list[tuple[str, str]]) -> dict[str, Any] | None:
     template = _BASELINE_TEMPLATES.get(device)
     if template is None:
         return None
@@ -181,7 +194,9 @@ def _restore_body(
             template["bgp_label_template"],
             {"__PEER_ADDRESS__": peer_addr, "__PEER_ASN__": peer_asn},
         )
-        for metric_name, value in template["bgp_scenarios"]:
+        overrides = _BROKEN_PEER_VALUES.get((device, peer_addr), {})
+        for metric_name, default_value in template["bgp_scenarios"]:
+            value = overrides.get(metric_name, default_value)
             scenarios.append(
                 {
                     "signal_type": "metrics",

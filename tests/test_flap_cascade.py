@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 from autocon5_workshop.flap import _build_cascade
+from autocon5_workshop.flap_cleanup import _restore_body
 from autocon5_workshop.flap_topology import Peer
 
 
@@ -223,3 +224,70 @@ def test_log_entry_targets_loki_and_carries_interface_label(two_peers: list[Peer
     assert log_entry["labels"]["interface"] == "ethernet-1/1"
     assert log_entry["signal_type"] == "logs"
     assert log_entry["log_generator"]["type"] == "template"
+
+
+def _bgp_values_by_metric(body: dict, peer_addr: str, addr_label_key: str) -> dict[str, float]:
+    return {
+        e["name"]: e["generator"]["value"]
+        for e in body["scenarios"]
+        if e["signal_type"] == "metrics"
+        and e["labels"].get(addr_label_key) == peer_addr
+        and e["name"]
+        not in {
+            "srl_interface_oper_state",
+            "srl_interface_in_octets",
+            "srl_interface_out_octets",
+            "ifOperStatus",
+            "ifHCInOctets",
+            "ifHCOutOctets",
+        }
+    }
+
+
+def test_restore_body_srl1_broken_peer_carries_override_values() -> None:
+    body = _restore_body(
+        "srl1",
+        "ethernet-1/11",
+        [("10.1.99.2", "65102")],
+    )
+    assert body is not None
+    values = _bgp_values_by_metric(body, "10.1.99.2", "peer_address")
+    assert values["srl_bgp_oper_state"] == 5.0
+    assert values["srl_bgp_neighbor_state"] == 4.0
+    assert values["srl_bgp_received_routes"] == 0.0
+    assert values["srl_bgp_prefixes_accepted"] == 0.0
+    # Metrics with no override fall through to baseline defaults.
+    assert values["srl_bgp_sent_routes"] == 10.0
+    assert values["srl_bgp_active_routes"] == 10.0
+
+
+def test_restore_body_srl1_healthy_peer_keeps_default_values() -> None:
+    body = _restore_body(
+        "srl1",
+        "ethernet-1/1",
+        [("10.1.2.2", "65102")],
+    )
+    assert body is not None
+    values = _bgp_values_by_metric(body, "10.1.2.2", "peer_address")
+    assert values["srl_bgp_oper_state"] == 1.0
+    assert values["srl_bgp_neighbor_state"] == 1.0
+    assert values["srl_bgp_prefixes_accepted"] == 10.0
+    assert values["srl_bgp_received_routes"] == 10.0
+    assert values["srl_bgp_sent_routes"] == 10.0
+    assert values["srl_bgp_active_routes"] == 10.0
+
+
+def test_restore_body_srl2_broken_peer_carries_override_values() -> None:
+    body = _restore_body(
+        "srl2",
+        "ethernet-1/11",
+        [("10.1.11.1", "65101")],
+    )
+    assert body is not None
+    values = _bgp_values_by_metric(body, "10.1.11.1", "bgpPeerRemoteAddr")
+    assert values["cbgpPeerOperStatus"] == 5.0
+    assert values["bgpPeerState"] == 4.0
+    assert values["bgpPeerInPrefixes"] == 0.0
+    assert values["cbgpPeerAcceptedPrefixes"] == 0.0
+    assert values["bgpPeerOutPrefixes"] == 10.0
+    assert values["cbgpPeerActivePrefixes"] == 10.0
