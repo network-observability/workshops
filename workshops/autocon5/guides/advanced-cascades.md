@@ -4,7 +4,7 @@
 
 It's 02:14. Your phone just buzzed. By the end of this guide you'll have triaged the page with PromQL and LogQL, watched a real cascade unfold across the dashboards, built a panel that would have caught it sooner, contained the noise with the maintenance flow, simulated the fix, and written the top of your own runbook entry.
 
-This is the workshop's capstone. It assumes Parts 1, 2, and 3 are already behind you — every skill you built across the day is going to come out under time pressure here. Budget **60 to 90 minutes** of wall-clock — longer than the part-guides on purpose, because you're integrating everything.
+This is the workshop's capstone. It assumes Parts 1, 2, and 3 are already behind you — the metric names, the basic PromQL/LogQL patterns, the dashboard layouts, and what `nobs autocon5 alerts`, `flap-interface`, and `maintenance` do are all going to come out under time pressure here. If you haven't walked the three core guides yet, do those first; the pacing here will leave you behind otherwise. Budget **60 to 90 minutes** of wall-clock — longer than the part-guides on purpose, because you're integrating everything.
 
 ## Setup check
 
@@ -31,8 +31,6 @@ Two browser tabs ready:
 - **Workshop Lab 2026** at <http://localhost:3000/d/dfb5dpyjbh2wwa> — the dashboard you'll lean on in Act 4 as the incident unfolds.
 
 A scratch text file open on the side. The closing act has you write the top five lines of your own runbook entry, and you'll want somewhere to put them.
-
-This guide assumes you've walked Parts 1, 2, and 3 — you know the metric names, the basic PromQL/LogQL patterns, the dashboard layouts, and what `nobs autocon5 alerts`, `flap-interface`, and `maintenance` do. If you haven't, go back to the three core guides first; the pacing here will leave you behind otherwise.
 
 ## The exercises
 
@@ -232,4 +230,4 @@ Then re-read what you wrote.
 
 - The shape of an interface-degradation incident — primary fault → failover → backup pressure → latency — is universal. Latency is almost always a symptom; walk back through the cascade to find the cause.
 - Same labels on metrics and logs means correlation is one query change away. Metric tells you *what*; log tells you *why*. The metric-to-log bridge is the single most useful pattern under pressure.
-- Dashboards earn their keep *before* incidents, by being there when the page lands. Build during calm; read during fire. Runbooks are the durable artefact every observability investment funnels into — five good lines, written while the memory is fresh.
+- Dashboards are built in calm and read in fire; runbooks are the durable artefact every observability investment funnels into. Five good lines, written while the memory is fresh, are worth more than a polished page nobody can find at 02:14.
