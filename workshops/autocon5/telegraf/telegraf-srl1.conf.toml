@@ -5,16 +5,10 @@
 ###############################################################################
 #                            DATA COLLECTION                                  #
 ###############################################################################
-# Scrape sonda-server's aggregate /metrics endpoint, filtered to srl1 via
-# the `source` label (gNMI shape). Cascade samples land in the same
-# endpoint with the same raw names and labels — `flap-interface` DELETEs
-# the baseline scenarios for the flapped interface/peers and POSTs the
-# cascade as the sole emitter, so the scrape always sees one consistent
-# typed series per metric name.
+# Scrape sonda's aggregate /metrics, filtered to srl1 (gNMI shape).
 [[inputs.prometheus]]
   urls = ["http://sonda-server:8080/metrics?label=source:srl1"]
   metric_version = 2
-  # Strip Telegraf's default scrape-noise tags so they don't show up in Prom.
   tagexclude = ["url", "host"]
 
   [inputs.prometheus.tags]
@@ -24,8 +18,7 @@
 ###############################################################################
 #                            DATA NORMALIZATION                               #
 ###############################################################################
-# Strip the vendor `srl_` prefix to converge srl1 series with srl2's
-# canonical names.
+# Strip the `srl_` prefix to converge with srl2's canonical names.
 [[processors.regex]]
   order = 1
 
@@ -45,9 +38,7 @@
 ###############################################################################
 #                            DATA ENRICHMENT                                  #
 ###############################################################################
-# Derive `intf_role` from the `name` tag. The regex only matches
-# `ethernet*` / `mgmt*`, so BGP (`name="default"`) and system metrics
-# pass through unchanged.
+# Derive `intf_role` from `name`. Non-matching tags (BGP, system) pass through.
 [[processors.regex]]
   order = 3
 
@@ -75,9 +66,5 @@
 
 
 [[outputs.prometheus_client]]
-  # HTTP port to listen on — Prometheus scrapes this endpoint
   listen = ":9005"
-  # v2 emits `<field>{tags}` (e.g. `bgp_oper_state{...}`); v1 (default) emits
-  # `<measurement>_<field>{tags}`. The alert rules and dashboards query the
-  # raw metric names, so v2 is required.
   metric_version = 2

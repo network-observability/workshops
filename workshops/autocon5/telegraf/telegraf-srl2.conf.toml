@@ -5,16 +5,10 @@
 ###############################################################################
 #                            DATA COLLECTION                                  #
 ###############################################################################
-# Scrape sonda-server's aggregate /metrics endpoint, filtered to srl2 via
-# the `agent_host` label. sonda-srl2 emits the SNMP-raw shape (IF-MIB /
-# BGP4-MIB / CISCO-BGP4-MIB names and tags). Cascade samples land in the
-# same endpoint with the same raw names and labels — `flap-interface`
-# DELETEs the baseline scenarios for the flapped interface/peers and
-# POSTs the cascade as the sole emitter.
+# Scrape sonda's aggregate /metrics, filtered to srl2 (SNMP-raw shape).
 [[inputs.prometheus]]
   urls = ["http://sonda-server:8080/metrics?label=agent_host:srl2"]
   metric_version = 2
-  # Strip Telegraf's default scrape-noise tags so they don't show up in Prom.
   tagexclude = ["url", "host"]
 
   [inputs.prometheus.tags]
@@ -24,11 +18,7 @@
 ###############################################################################
 #                            DATA NORMALIZATION                               #
 ###############################################################################
-# IF-MIB / BGP4-MIB / CISCO-BGP4-MIB metric names → canonical schema.
-# The prometheus parser keeps measurement="prometheus" and uses the
-# metric name as the field; metric_version=2 below publishes the field
-# name as the Prometheus metric name. `field = ...` renames the metric
-# name, `tag = ...` renames label keys.
+# IF-MIB / BGP4-MIB / CISCO-BGP4-MIB names + tags → canonical schema.
 [[processors.rename]]
   order = 1
 
@@ -87,9 +77,7 @@
 ###############################################################################
 #                            DATA ENRICHMENT                                  #
 ###############################################################################
-# Derive `intf_role` from the `name` tag (post-rename). The regex only
-# matches `ethernet*` / `mgmt*`, so BGP (`name="default"`) and system
-# metrics pass through unchanged.
+# Derive `intf_role` from `name` (post-rename). Non-matching tags pass through.
 [[processors.regex]]
   order = 2
 
@@ -117,9 +105,5 @@
 
 
 [[outputs.prometheus_client]]
-  # HTTP port to listen on — Prometheus scrapes this endpoint
   listen = ":9005"
-  # v2 emits `<field>{tags}` (e.g. `bgp_oper_state{...}`); v1 (default) emits
-  # `<measurement>_<field>{tags}`. The alert rules and dashboards query the
-  # raw metric names, so v2 is required.
   metric_version = 2
