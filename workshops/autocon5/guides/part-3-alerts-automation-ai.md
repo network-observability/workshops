@@ -226,30 +226,14 @@ Annotations land in Loki under `{source="prefect", workflow="autocon5_quarantine
 
     Read it back to the concepts: `admin_state: 1` (enable) means the device intends this session up; `oper_state: 5` (active, not 1=established) means it isn't actually up; the prefix counters at zero confirm no routes are flowing. Combined with the SoT's `expected_state: established`, that's a clear intent-vs-reality mismatch — exactly what triggers the `proceed` path. The numeric-to-meaning decoding (`1=enable`, `5=active/retrying`) is what the `Decoded` column in `nobs autocon5 evidence`'s output shows; Step 3.B walks the full mapping table.
 
-??? info "What's a decision tree — and why deterministic?"
+??? info "Why deterministic, and not an LLM in the loop?"
 
-    A **decision tree** in this context is a small Python function (`DecisionPolicy.evaluate` in [`workshops/autocon5/automation/workshop_sdk.py`](https://github.com/network-observability/workshops/blob/main/workshops/autocon5/automation/workshop_sdk.py)) that takes the evidence bundle and walks a fixed set of `if / elif` branches to pick one of `proceed` / `skip` / `resolved` / `stop`. Two stages: first the source-of-truth gate (is the device in maintenance? is this peer even *supposed* to be up?), then — only if the SoT gate doesn't short-circuit — the metrics check.
-
-    "Deterministic" matters here for four reasons:
+    The policy is `DecisionPolicy.evaluate` in [`workshops/autocon5/automation/workshop_sdk.py`](https://github.com/network-observability/workshops/blob/main/workshops/autocon5/automation/workshop_sdk.py) — a two-stage `if / elif` chain. Four reasons that's the right shape here:
 
     - **Predictable.** Same evidence in, same decision out. No model temperature, no roll of the dice at 02:14.
     - **Replayable.** Six months from now, you can rerun the same alert payload through the same policy version and see the same outcome — the audit trail is meaningful.
     - **Version-controlled.** The policy is code. Changes go through a PR like everything else; a reviewer can read what changed before it ships to production.
     - **Reviewable in incident review.** When the on-call asks "why did the flow silence this?", the answer is a function call you can step through, not a model output to argue about.
-
-    The AI RCA step you'll turn on in Step 6 is the opposite end of this trade-off — a narrative-generating model that consumes the same evidence bundle but produces prose, not a decision. The deterministic policy acts; the AI annotates. They're separate jobs by design.
-
-??? info "What's an audit annotation — and where does it land?"
-
-    An **audit annotation** is a single Loki log line that the flow writes immediately after `evaluate_policy` returns. The `annotate_decision` task is what produces it — one annotation per alert payload, regardless of which path the policy took. Skips and proceeds and resolveds all get one. That's how you get a complete record of every decision the flow ever made.
-
-    The canonical query in Explore:
-
-    ```logql
-    {source="prefect", workflow="autocon5_quarantine_bgp"} | json
-    ```
-
-    Every line carries a `decision` label set to one of `proceed`, `skip`, `resolved`, `stop`, plus `device` and `peer_address` for correlation. The annotations land in the same Loki the workshop uses for every other log stream. Step 5 is where you'll write the LogQL that turns this label set into a "how many `proceed` vs `skip` decisions in the last hour?" breakdown.
 
 ??? info "What's a maintenance window — and how does it differ from a silence?"
 
