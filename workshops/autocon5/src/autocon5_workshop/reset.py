@@ -53,6 +53,14 @@ def reset(
             help="Loki base URL (used to detect a wedged sonda-logs sink).",
         ),
     ] = "http://localhost:3001",
+    infrahub_url: Annotated[
+        str,
+        typer.Option(
+            "--infrahub-url",
+            envvar="INFRAHUB_ADDRESS",
+            help="Infrahub base URL (used to ensure WorkshopDevice records are loaded).",
+        ),
+    ] = "http://localhost:8000",
     skip_sonda_logs: Annotated[
         bool,
         typer.Option(
@@ -64,6 +72,7 @@ def reset(
     """Return the lab to the workshop's known-good baseline."""
     note("Resetting lab to known-good state.")
 
+    _ensure_infrahub_loaded(infrahub_url)
     _clear_maintenance_flags()
     _reapply_sonda_baselines()
     _expire_workshop_silences(alertmanager_url)
@@ -72,6 +81,49 @@ def reset(
         _restart_sonda_logs_if_wedged(loki_url)
 
     ok("lab reset complete — both broken peers should be firing within ~60s")
+
+
+def _ensure_infrahub_loaded(infrahub_url: str) -> None:
+    """Ensure Infrahub's WorkshopDevice records exist; re-load via `nobs autocon5 load-infrahub` if missing."""
+    from nobs.lifecycle.env import host_address
+
+    host_url = host_address(infrahub_url) or infrahub_url
+    if host_url != infrahub_url:
+        note(f"INFRAHUB_ADDRESS rewritten to host-reachable {host_url}")
+    base = host_url.rstrip("/")
+    try:
+        response = requests.post(
+            f"{base}/graphql",
+            json={"query": "{ WorkshopDevice { edges { node { name { value } } } } }"},
+            timeout=5,
+        )
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        warn(f"Infrahub probe failed: {exc} — skipping load check")
+        return
+
+    edges = response.json().get("data", {}).get("WorkshopDevice", {}).get("edges", []) or []
+    if len(edges) >= len(_WORKSHOP_DEVICES):
+        console.print(f"  Infrahub already loaded ({len(edges)} devices)")
+        return
+
+    note(f"Infrahub has {len(edges)} WorkshopDevice record(s); re-loading schema + data")
+    import subprocess
+
+    try:
+        r = subprocess.run(
+            ["uv", "run", "nobs", "autocon5", "load-infrahub"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=_repo_root(),
+        )
+        if r.returncode == 0:
+            console.print(f"  re-loaded Infrahub schema + data ({len(_WORKSHOP_DEVICES)} device(s) seeded)")
+        else:
+            warn(f"load-infrahub failed: {r.stderr.splitlines()[-1] if r.stderr else 'unknown error'}")
+    except subprocess.TimeoutExpired:
+        warn("load-infrahub timed out")
 
 
 def _clear_maintenance_flags() -> None:
