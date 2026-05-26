@@ -331,6 +331,52 @@ Open Prefect at <http://localhost:4200/runs>. Sort by **Start Time** (newest fir
 
 **Stop and notice.** The Loki annotations are the audit *record*; the Prefect UI is the audit *workshop*. Annotations are searchable but flat; the UI lets you drill into a specific task's logs without writing a LogQL query.
 
+??? info "What does an audit annotation actually look like in Loki?"
+
+    The flow's `annotate_decision` task writes one Loki log line per evaluation — these are the "audit annotations" you've heard about since the [four-paths section](#the-four-paths). Here's exactly what one looks like.
+
+    In Grafana Explore on the Loki datasource, paste:
+
+    ```logql
+    {source="prefect", workflow="autocon5_quarantine_bgp", decision="proceed"} | json
+    ```
+
+    Click any line and Grafana shows the parsed JSON body in the right-hand panel. Two annotations side by side — `decision=proceed` (what `try-it` just walked) and `decision=stop` (the rare path where the device isn't in Infrahub at all):
+
+    ```json
+    // decision=proceed (the actionable mismatch path)
+    {
+      "timestamp": "2026-05-26T11:15:26.971Z",
+      "severity": "info",
+      "message": "SoT expects peer up, but metrics show mismatch",
+      "labels": {
+        "decision": "proceed",
+        "device": "srl2",
+        "peer_address": "10.1.11.1",
+        "source": "prefect",
+        "workflow": "autocon5_quarantine_bgp"
+      },
+      "fields": {}
+    }
+
+    // decision=stop (would only appear if Infrahub didn't have the device)
+    {
+      "timestamp": "2026-05-26T10:43:31.234Z",
+      "severity": "info",
+      "message": "device not found in Infrahub",
+      "labels": {
+        "decision": "stop",
+        "device": "srl2",
+        "peer_address": "10.1.11.1",
+        "source": "prefect",
+        "workflow": "autocon5_quarantine_bgp"
+      },
+      "fields": {}
+    }
+    ```
+
+    Read it back to the concepts: every annotation has the same five-label envelope (`source`, `workflow`, `decision`, `device`, `peer_address`) plus a free-form `message`. That label set is what makes Step 5's `sum by (decision) (count_over_time(...))` work — collapsing on the label that distinguishes paths is the whole game. The `message` field carries human-readable reasoning ("SoT expects peer up, but metrics show mismatch" vs "device not found in Infrahub") — Loki indexes the labels, not the message, so queries filter on the former and read the latter.
+
 ### 3. Incident drill — the page lands
 
 > *"Stop watching for a second. Imagine this is 2am. Your phone goes off. We're going to walk it like a real incident — page lands, you investigate, you decide, you watch the dust settle. Same four paths you saw in `try-it`, but you're driving and there's no commentary track."*
@@ -371,6 +417,64 @@ nobs autocon5 evidence srl1 10.1.2.2
 2. **BGP metrics snapshot (Prometheus)** — `admin_state=1` (enable), `oper_state=2` (down — the cascade is dragging it), `received_routes=0`.
 3. **Loki — last 20 relevant line(s)** — recent BGP traffic for this peer plus any prior Prefect annotations (the audit trail).
 4. **Policy hint** — what the deterministic policy *would* decide given the bundle (`proceed` / `skip` / `resolved`) and why.
+
+??? info "What does the evidence bundle actually print?"
+
+    Running `nobs autocon5 evidence srl1 10.1.99.2` against the broken peer produces four panels. Here's what each one actually looks like in the terminal, with the connecting thread between them called out.
+
+    ```text
+    ╭───────────────────── Source of truth (Infrahub) ─────────────────────╮
+    │ device          srl1   site=lab  role=edge                           │
+    │ maintenance     false                                                │
+    │ intended peer   yes                                                  │
+    │ expected state  established                                          │
+    │ reason          ip-mismatch-demo                                     │
+    │ remote_as       65102                                                │
+    ╰──────────────────────────────────────────────────────────────────────╯
+            ↑ Same fields the Prefect flow's `collect_evidence` task reads via GraphQL.
+              `maintenance=false` → stage 1 of the policy proceeds to the metrics check.
+              `expected_state=established` → SoT says this peer should be up.
+
+       BGP metrics snapshot (Prometheus)
+    ┏━━━━━━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━┓
+    ┃ Metric            ┃ Value ┃ Decoded ┃
+    ┡━━━━━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━┩
+    │ admin_state       │     1 │ enable  │
+    │ oper_state        │     5 │ active  │
+    │ received_routes   │     0 │ —       │
+    │ sent_routes       │    10 │ —       │
+    │ active_routes     │    10 │ —       │
+    │ suppressed_routes │     0 │ —       │
+    └───────────────────┴───────┴─────────┘
+            ↑ The `Decoded` column is the enum-to-text mapping — `oper_state=5`
+              decodes to `active` (retrying, not yet established). admin=1, oper=5
+              on a peer the SoT expects `established` is the intent-vs-reality mismatch.
+
+    ╭─────────────── Loki — last 20 relevant line(s) ──────────────────────╮
+    │ {"timestamp":"...","severity":"warn","message":"BGP neighbor         │
+    │  10.1.99.2: connection refused — peer not reachable on configured    │
+    │  subnet",...}                                                        │
+    │ {"timestamp":"...","severity":"warn","message":"BGP neighbor         │
+    │  10.1.99.2: configured remote-as 65102 but peer never responded;     │
+    │  FSM stuck in active",...}                                           │
+    │ {"timestamp":"...","severity":"info","message":"QUARANTINE applied   │
+    │  (silence_id=...)",...}                                              │
+    ╰──────────────────────────────────────────────────────────────────────╯
+            ↑ Mixed log streams: device-emitted BGP errors (the "why") and prior
+              Prefect annotations (the "what the flow did"). One bundle, multiple
+              sources.
+
+    ╭──────────────── Policy hint ────────────────╮
+    │ decision: proceed                           │
+    │ reason  : SoT expects peer up, but metrics  │
+    │           show mismatch                     │
+    ╰─────────────────────────────────────────────╯
+            ↑ The deterministic policy's verdict on this exact bundle. The Prefect
+              flow's `evaluate_policy` task computes the same answer and writes it
+              to Loki as the `decision=proceed` annotation you saw in [Step 2's audit-annotation fold](#2-walk-all-four-paths-in-one-shot).
+    ```
+
+    Read it back to the concepts: all four panels share one peer's worth of context — what the SoT believes, what the metrics measure, what the recent logs say, what the policy concluded. The `Policy hint` is the same answer the Prefect flow lands at in production; the difference is `nobs autocon5 evidence` shows it to you on the CLI before the flow runs, so you can predict the decision before triggering an alert.
 
 **Stop and notice.** This bundle is the input the flow's `collect_evidence` task pulls every time it runs. Same evidence, two downstream consumers — the deterministic policy decides mechanically, the AI RCA step (next exercise) writes a narrative. Neither sees more than what the other sees.
 
@@ -636,6 +740,41 @@ Watch the **Recent events** feed on Workshop Home. For each path you'll now see 
 ```
 
 The demo narrative is templated from the evidence bundle (it pulls `expected_state`, `reason`, `oper_state`, recent log labels, etc.), so it reads like a junior writeup rather than canned filler. Swap `AI_RCA_PROVIDER` to `openai` or `anthropic` with a real key and you'll get a full LLM response instead — same evidence, different model.
+
+??? info "What does the demo AI RCA annotation look like?"
+
+    With `AI_RCA_PROVIDER=demo`, the workshop ships a templated narrative that fills three sections (Most likely cause / Immediate actions / What to verify next) from the same evidence bundle the deterministic policy reads. Here's what the demo emits for the broken peer:
+
+    ```text
+    AI RCA:
+    (demo narrative — set AI_RCA_PROVIDER=openai|anthropic with an API key
+    for a real model response.)
+
+    ## Most likely cause
+    SoT expects peer 10.1.99.2 on srl1 to be established, with intent reason 'ip-mismatch-demo',
+    but oper_state=5 (active), admin_state=1 (enable), received_routes=0.
+
+    ## Immediate actions
+    - Inspect reachability and timers between srl1 and 10.1.99.2
+
+    ## What to verify next
+    - Tail Loki for device=srl1 around the alert window for BGP state transitions
+    - Check whether the SoT reason 'ip-mismatch-demo' matches a known fault class
+    - Compare received_routes=0 against expected_prefixes_received in the SoT
+    ```
+
+    This lands in Loki as one annotation with these labels:
+
+    ```
+    ai_rca=true
+    device=srl1
+    peer_address=10.1.99.2
+    source=prefect
+    workflow=autocon5_quarantine_bgp
+    severity=info
+    ```
+
+    Read it back to the concepts: the narrative is grounded in the *same* `EvidenceBundle` the deterministic policy used — the SoT's `expected_state`, `intent reason`, the metric values, the prefix counter. The template doesn't invent facts; it stitches the evidence into prose. When you flip `AI_RCA_PROVIDER` to `openai` or `anthropic` later, the model gets that same evidence dict and writes its own three-section response — different voice, identical inputs. The `ai_rca="true"` label is what distinguishes these annotations from the deterministic `decision=...` annotations in the same Loki stream.
 
 **Stop and notice.** The LLM (or the demo) gets the same evidence bundle the deterministic policy got. It can't see the network, the runbooks, or last week's incident. Its output is annotated *next to* the policy result, not in place of it. The policy decided what action to take; the narrative wrote a paragraph about why. Two different jobs, both grounded in the same evidence.
 
