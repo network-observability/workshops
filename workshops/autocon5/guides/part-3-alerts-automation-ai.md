@@ -76,7 +76,7 @@ nobs autocon5 reset
 Four alerts should be firing in the lab — two per category, one per device:
 
 - **`BgpSessionNotUp` × 2** — the deliberately broken peers from this morning (`srl1 → 10.1.99.2`, `srl2 → 10.1.11.1`). State cycles `firing` ↔ `suppressed` as the webhook flow runs and Alertmanager silences expire on a 20-minute window.
-- **`InterfaceAdminUpOperDown` × 2** — `ethernet-1/11` on each device is configured as `admin up` but its `oper` state is `down`. That's a permanent intent-vs-reality mismatch, so the rule fires continuously and never ages out.
+- **`InterfaceAdminUpOperDown` × 2** — `ethernet-1/11` on each device is configured as `admin up` but its `oper` state is `down`. That's a permanent intent-vs-reality mismatch (intent says "should be up", reality says "isn't" — the framing we use throughout Part 3, defined in [The four paths](#the-four-paths) below), so the rule fires continuously and never ages out.
 
 ```bash
 nobs autocon5 alerts
@@ -92,7 +92,7 @@ nobs autocon5 alerts
 
 `InterfaceAdminUpOperDown` is steady-state — the underlying mismatch is permanent, so the rule will never age out. Step 3.A revisits this when you flap an interface. The only alert that should ever move between `firing` and `suppressed` here is `BgpSessionNotUp`: it's `firing` immediately after the rule trips, then `suppressed` once the webhook flow applies its 20-minute `quarantine` silence, then `firing` again when the silence expires.
 
-If you see fewer than two `BgpSessionNotUp` rows, give the stack 60 seconds and try again — alert evaluation has a `for: 30s` clause and you might have caught it before promotion. If you ran Part 2 and see a `PeerInterfaceFlapping` row, that's residue from the flap cascade — it ages out within ~5 minutes of the last flap. None of these conditions block the four paths below.
+If you see fewer than two `BgpSessionNotUp` rows, give the stack 60 seconds and try again — alert evaluation has a `for: 30s` clause (the underlying condition must hold true for 30 seconds straight before the alert is `firing`; until then it sits in `pending` state), and you might have caught it before promotion. If you ran Part 2 and see a `PeerInterfaceFlapping` row, that's residue from the flap cascade — it ages out within ~5 minutes of the last flap. None of these conditions block the four paths below.
 
 Open **Workshop Home** at <http://localhost:3000/d/workshop-home>. The **Currently firing alerts** table at the bottom should show those same four rows. Keep this dashboard open in a tab — you'll watch it react to your CLI commands throughout this part.
 
@@ -131,6 +131,8 @@ Annotations land in Loki under `{source="prefect", workflow="autocon5_quarantine
 ??? info "What does intent actually look like in Infrahub?"
 
     The flow asks Infrahub two questions per alert payload — *is this peer expected to be up?* (`expected_state`) and *is the device in a maintenance window?* (`maintenance`). Both come from the same `WorkshopDevice` GraphQL query with its `bgp_sessions` relationship expanded.
+
+    (If GraphQL is new: it's a query language where you ask for the exact fields you want — including fields on related objects — and the server returns nested JSON in the same shape. The `WorkshopDevice { … bgp_sessions { … } }` block below reads as *"give me a `WorkshopDevice`, and for each one also include its `bgp_sessions` with these per-session fields."* The Infrahub Sandbox links the schema, so you can autocomplete the field names without memorising them.)
 
     Two paths to run it yourself — both valid, both worth knowing:
 
@@ -311,7 +313,7 @@ Open Prefect at <http://localhost:4200/runs>. Sort by **Start Time** (newest fir
 - The **task graph** — `collect_evidence` → `evaluate_policy` → `annotate_decision` → `ai_rca`, plus (if the path was `proceed`) `quarantine` → `annotate_action`. The same pipeline you read about earlier, drawn for you.
 - Per-task **state** and **duration** — which tasks ran, in what order, how long each took.
 - Per-task **logs** — every `print()` and `get_run_logger()` line, indexed by task. Same content as `nobs autocon5 logs prefect-flows`, but searchable per task.
-- **Tags** on each task: `device:srl1`, `peer_address:10.1.99.2`, `afi_safi:ipv4-unicast`, `action:quarantine`. These are how a future operator filters "all flows that touched this peer" without scrolling.
+- **Tags** on each task: `device:srl1`, `peer_address:10.1.99.2`, `afi_safi:ipv4-unicast` (BGP address-family identifier — IPv4-unicast is the bog-standard internet routing table), `action:quarantine`. These are how a future operator filters "all flows that touched this peer" without scrolling.
 
 **Stop and notice.** The Loki annotations are the audit *record*; the Prefect UI is the audit *workshop*. Annotations are searchable but flat; the UI lets you drill into a specific task's logs without writing a LogQL query.
 
@@ -446,7 +448,10 @@ nobs autocon5 evidence srl1 10.1.2.2
     ╰──────────────────────────────────────────────────────────────────────╯
             ↑ Mixed log streams: device-emitted BGP errors (the "why") and prior
               Prefect annotations (the "what the flow did"). One bundle, multiple
-              sources.
+              sources. ("FSM" in the sample is BGP's finite state machine — the
+              progression Idle → Active → Connect → OpenSent → Established;
+              "stuck in active" means the peer is retrying but never reaching
+              Established.)
 
     ╭──────────────── Policy hint ────────────────╮
     │ decision: proceed                           │
@@ -464,7 +469,7 @@ nobs autocon5 evidence srl1 10.1.2.2
 
 #### C. The flow has already decided — see what it did
 
-While you were reading the evidence bundle, the cascade-driven `BgpSessionNotUp(srl1 ↔ 10.1.2.2)` payload was racing through the webhook and into `quarantine_bgp_flow`. Whether it landed depends on scrape timing — the cascade flips the BGP session for ~50s, and the alert needs `for: 30s` to satisfy. On a fast scrape window it fires and the flow runs; on a slow one BGP recovers before the alert promotes from `pending` to `firing`.
+While you were reading the evidence bundle, the cascade-driven `BgpSessionNotUp(srl1 ↔ 10.1.2.2)` payload was racing through the webhook and into `quarantine_bgp_flow`. Whether it landed depends on timing — the cascade flips the BGP session down for ~50s, and the alert needs the underlying condition to hold for 30 straight seconds (the `for: 30s` clause from Setup) before it promotes from `pending` to `firing`. Prometheus checks the condition once per scrape (every 15s in this lab), so on a lucky cadence the alert fires and the flow runs; on an unlucky one BGP recovers before three consecutive scrapes have logged it down.
 
 Check **Recent events** on Workshop Home — if you see a fresh annotation for `peer_address=10.1.2.2` with `decision=proceed`, you caught the natural path. If not (the common case), use the direct trigger below — same flow, same decision, no waiting on scrape windows:
 

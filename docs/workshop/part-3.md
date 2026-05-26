@@ -9,13 +9,17 @@ description: Late morning. A real alert lands and your senior narrates how the w
 
 <h1 class="autocon5-section-hero__title">Alerts, automation, AI</h1>
 
-<p class="autocon5-section-hero__subtitle">An alert lands. Three tools decide together what to do with it.</p>
+<p class="autocon5-section-hero__subtitle">An alert lands. The loop between what should be true and what is true closes — and a workflow bridges the gap.</p>
 
-Part 3 puts three building blocks in the same room and watches them collaborate on a single alert payload. You won't be jumping between unrelated UIs — every step in the next hour is a move inside one of these three:
+Parts 1 and 2 only saw one half of the picture: the metrics and logs streaming out of the live system — *reality*. Part 3 is where the other half walks in. Every operational decision in production rides on the gap between two pieces of context: what the network is *supposed* to be doing (intent) and what it's *actually* doing (reality). When those two disagree, someone — or something — has to decide whether the gap is expected (a maintenance window, a decommissioned link, an intentional state) or actionable (page the on-call). Part 3 is where that decision happens, automatically, on every alert.
 
-- **[Alertmanager](tour.md#alertmanager-the-alert-router-and-silence-store)** is the alert plane. It receives `BgpSessionNotUp` from Prometheus, dispatches it to the webhook, and stores the silence the flow asks it to create once the decision lands. You watch state cycle here — `firing` to `suppressed` and back.
-- **[Prefect](tour.md#prefect-workflows-deployments-runs)** is the workflow orchestrator and the decision point. The webhook hands every alert payload to a Python flow (`quarantine_bgp_flow`) that walks a deterministic decision tree, picks one of four outcomes, writes an audit annotation, and — for the `proceed` outcome — asks Alertmanager to silence the alert for 20 minutes.
-- **[Infrahub](tour.md#infrahub-source-of-truth)** is the source of truth the flow consults at decision time. "Is this peer expected to be up? Is this device in a maintenance window?" The answer to those two questions decides which of the four paths the flow takes — before metrics ever come into the picture.
+Three operational concepts close the loop:
+
+- **Source of truth — what should be true.** The database where intent lives: configured peers, maintenance windows, ownership. The flow asks this *first*, before it ever looks at metrics. In this workshop the SoT is **[Infrahub](tour.md#infrahub-source-of-truth)**, but the loop is the same with any inventory or CMDB.
+- **Observability — what is true.** The metrics and logs the live system is emitting right now. You already used this in Parts 1 and 2: **[Prometheus](tour.md#prometheus-the-metrics-store)** for metrics, Loki for logs, **[Grafana](tour.md#grafana-dashboards-and-explore)** as the unified UI.
+- **Workflow orchestration — the bridge.** The deterministic decision engine that compares intent against reality and picks one of four outcomes per alert: proceed (page someone), skip (this gap is expected), resolved (it's already fixed itself), or stop (we can't tell — bail safely). In this workshop the bridge is **[Alertmanager](tour.md#alertmanager-the-alert-router-and-silence-store)** routing the alert and **[Prefect](tour.md#prefect-workflows-deployments-runs)** running the decision logic.
+
+The loop is two-way. Operations push intent *into* the SoT (flipping a `maintenance` flag before a planned change); the workflow reads intent *out* of the SoT at every alert. Reality flows the same way: the workflow records its decisions back as audit annotations that future runs (and future humans) can read. Part 3 closes the loop that Parts 1 and 2 only walked the metrics half of.
 
 A real alert lands while your senior narrates. Walk the four paths the workflow handles, toggle the AI RCA step, and decide which paths you'd trust the LLM narrative on at 02:14. Your senior signs off as the lunch break lands — you're ready to take primary on the rotation tomorrow.
 
