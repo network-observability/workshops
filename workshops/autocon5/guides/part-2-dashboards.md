@@ -180,7 +180,7 @@ This kicks off a 4-minute cascade with the interface cycling 30s up, 60s down. U
 ![Flap rate panel during a flap](../../../docs/assets/screenshots/flap-rate-flapping-light.png#only-light){ .screenshot loading=lazy }
 ![Flap rate panel during a flap](../../../docs/assets/screenshots/flap-rate-flapping-dark.png#only-dark){ .screenshot loading=lazy }
 
-<figcaption><strong>During a flap (~2 min in)</strong> — green line is <code>ethernet-1/1</code>, climbing fast past the orange threshold (1) and through the red threshold (3) on its way to 16+. The yellow line is <code>ethernet-1/11</code>'s baseline (always-broken interface, value 2 in the rolling window). The flapped interface is the obvious anomaly against an otherwise quiet panel.</figcaption>
+<figcaption><strong>During a flap (~2 min in)</strong> — green line is <code>ethernet-1/1</code>, climbing fast past the orange threshold (1) and through the red threshold (3) on its way to 16+. You may also see a faint yellow line for <code>ethernet-1/11</code> at 1–2 — the broken-interface log emitter is stochastic at ~1 event / 2 min, so it isn't always in the rolling window. Either way, the flapped interface is the obvious anomaly against an otherwise quiet panel.</figcaption>
 
 </figure>
 
@@ -224,13 +224,14 @@ Worth noting: `srl1` and `srl2` arrive through different upstream pipelines (gNM
 
 ### Extend the Interface Traffic panel with a per-device aggregate
 
-Open the existing **Interface Traffic** panel in edit mode. Add a second query (the **+ Query** button below the first one):
+Open the existing **Interface Traffic** panel in edit mode. The per-interface queries already in the panel multiply by `* 8` to convert bytes/s into bits/s — anything you add must do the same or it'll render 8× smaller than the existing lines. Add a second query (the **+ Query** button below the first one) for the in+out aggregate, with the same unit conversion and the same rate window as the existing queries:
 
 ```promql
-sum(rate(interface_in_octets{device="$device"}[1m]))
+sum(rate(interface_in_octets{device="$device"}[$__rate_interval])) * 8
+  + sum(rate(interface_out_octets{device="$device"}[$__rate_interval])) * 8
 ```
 
-In the right-hand options, find **Overrides** and add an override on the new series — set its line width to `3` and its colour to something that stands out. Now the panel shows per-interface lines plus a single thicker line for the device-wide total.
+In the right-hand options, find **Overrides** and add an override on the new series — set its line width to `3` and its colour to something that stands out. Now the panel shows per-interface lines plus a single thicker line for the device-wide total — same units, same scale, the aggregate sits naturally above the per-interface lines instead of looking like a flatline near zero.
 
 ### Write a panel description in the workshop's voice
 
