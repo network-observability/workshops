@@ -6,8 +6,13 @@
 #                            DATA COLLECTION                                  #
 ###############################################################################
 # Scrape sonda's aggregate /metrics, filtered to srl2 (SNMP-raw shape).
+# `include_state=running,unresolved` is the inversion-pattern filter:
+# baselines sit in `unresolved` (with `if_unresolved: open`) at rest and
+# the cascade signal flips them to `paused` while a cascade is running.
+# The filter keeps both running scenarios and unresolved-but-emitting
+# baselines visible, drops paused ones during cascade.
 [[inputs.prometheus]]
-  urls = ["http://sonda-server:8080/metrics?label=agent_host:srl2"]
+  urls = ["http://sonda-server:8080/metrics?label=agent_host:srl2&include_state=running,unresolved"]
   metric_version = 2
   tagexclude = ["url", "host"]
 
