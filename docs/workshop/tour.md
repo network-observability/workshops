@@ -127,7 +127,7 @@ Drop `--kind composable` to also list runnable scenarios in the catalog, or swap
 
 ### Where you'll see this in the workshop
 
-- **Part 1** — When you query Prometheus and see `bgp_oper_state{device="srl1"}` go from 6 to 5, that's a value Sonda is generating right now. `curl 'http://localhost:8085/metrics?label=source:srl1'` shows you the raw side of that same number.
+- **Part 1** — When you query Prometheus and see `bgp_oper_state{device="srl1"}` return three rows with one stuck at `5` instead of `1`, that's a value Sonda is generating right now. `curl 'http://localhost:8085/metrics?label=source:srl1'` shows you the raw side of that same number.
 - **Part 3** — `nobs autocon5 flap-interface` and `nobs autocon5 incident` both POST cascade scenarios to this server.
 - **Advanced** — When you write your own scenario, you'll POST it here.
 

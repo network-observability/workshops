@@ -21,7 +21,7 @@ nobs autocon5 reset
 nobs autocon5 status
 ```
 
-`reset` is safe to run repeatedly — it clears any leftover maintenance flags, expires any silences from a prior workshop run, removes any cascade scenarios still hanging around, and restarts the log shipper if it has gone quiet. Safe to run at the start of every part. `status` then confirms every row reports `ok`. If `prometheus`, `loki`, or `sonda` is anything else, flag it before continuing — your senior wants to know about a degraded stack before you lean on it.
+`reset` is safe to run repeatedly — it clears any leftover maintenance flags, expires any silences from a prior workshop run, removes any cascade scenarios still hanging around, and restarts the log shipper if it has gone quiet. Safe to run at the start of every part. `status` then confirms every row reports `ok`. If `prometheus`, `loki`, or `sonda` is anything else, flag it before continuing — your senior wants to know about a degraded stack before you lean on it. (Loki sometimes takes 30–60s after `nobs autocon5 up` to come up green — re-run `status` if it's the only red row.)
 
 Open Grafana at <http://localhost:3000> (login `admin` / `admin` unless you changed `.env`). Click the compass icon in the left rail to open **Explore**. The datasource picker at the top is how you switch between Prometheus and Loki. You'll bounce between them throughout this part.
 
@@ -150,8 +150,8 @@ bgp_prefixes_accepted{device="srl1", peer_address="10.1.2.2"}
 Switch all three to `Time series` view. Run `flap-interface` and watch each one in turn:
 
 - The interface metric flips between `1` (up) and `2` (down) on the 30s-up / 60s-down cadence.
-- About 10 seconds after the interface drops, `bgp_oper_state` follows from `1` down to `2`. It stays there until the interface comes back up.
-- Prefix counters drop to `0` on the same beat as `bgp_oper_state`.
+- `bgp_oper_state` follows from `1` to `2` after a ~10s hold-down. The lag is real (matches a hold-down timer), but Prometheus's 15s scrape interval sometimes lands the interface and BGP transitions in the same sample — so the gap is visible if you happen to catch a scrape mid-window, invisible otherwise.
+- Prefix counters drop to `0` shortly after `bgp_oper_state` — same cascade signal drives both, but Telegraf's 10s scrape of sonda plus Prom's 15s scrape of Telegraf can put them in adjacent samples (so don't be surprised if `bgp_oper` flips one scrape before the prefix counters).
 - The moment the interface returns to up, every gated series snaps back: `bgp_oper_state` goes to `1`, prefix counters go to `10`. Dashboards go green within seconds.
 
 Then briefly switch one tab to the `loki` datasource:
@@ -322,7 +322,7 @@ Aggregating logs over time turns a log query into a metric:
 sum by (device) (count_over_time({vendor_facility_process="UPDOWN"}[5m]))
 ```
 
-Switch the panel to `Time series`. You should see two flat lines (one per device) sitting around **two or three events per 5-minute window**. That floor is the always-broken `ethernet-1/11` on each device — the only interface that's actually flapping at rest. Healthy interfaces don't contribute because they don't emit anything when nothing's happening to them; that's the honest answer to "is anything flapping right now?".
+Switch the panel to `Time series`. You should see two flat lines (one per device) sitting around **1–3 events per 5-minute window** (the broken-interface emitter is stochastic at ~1 event / 2 min). That floor is the always-broken `ethernet-1/11` on each device — the only interface that's actually flapping at rest. Healthy interfaces don't contribute because they don't emit anything when nothing's happening to them; that's the honest answer to "is anything flapping right now?".
 
 Trigger a flap on a previously-silent healthy interface and watch the line jump:
 
