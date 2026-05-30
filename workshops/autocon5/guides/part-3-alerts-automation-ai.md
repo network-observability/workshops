@@ -83,7 +83,7 @@ Annotations land in Loki under `{source="prefect", workflow="autocon5_quarantine
 
     Two paths to run it yourself — both valid, both worth knowing:
 
-    1. **Via the Infrahub UI** at <http://localhost:8000>. Login `admin` / `infrahub`. Navigate **Object Management → WorkshopDevice → srl1**. The `maintenance` boolean, `site_name`, `role` are on the detail panel; the BGP sessions list is below. Click any peer (e.g., `10.1.99.2`) to see its `expected_state` and `reason`.
+    1. **Via the Infrahub UI** at <http://localhost:8000>. Login `admin` / `infrahub`. Click **Network Device** in the left nav, then click **srl1** in the list. The `maintenance` boolean, `site_name`, `role` show in the detail panel; the BGP sessions are on the **Bgp Sessions** tab. Click any peer (e.g., `10.1.99.2`) to see its `expected_state` and `reason`. (Infrahub's UI label for the schema is "Network Device" — the underlying GraphQL type is still `WorkshopDevice`, which is what the query below uses.)
     2. **Via the GraphQL Sandbox** at <http://localhost:8000/graphql>. Paste the query below and hit run. This is the same query the Prefect flow makes from `automation/workshop_sdk.py` — Step 4A's "See the exact query the flow runs" fold (in [#a-set-maintenance-and-see-the-source-of-truth-flip](#a-set-maintenance-and-see-the-source-of-truth-flip)) covers the verbatim version.
 
     ```graphql
@@ -257,7 +257,7 @@ Returns the audit trail for every payload the flow handled. Each line carries a 
 
 > Your senior nods at the Loki feed. *"That's the audit trail. The flow itself has a UI on top of it — go look."*
 
-Open Prefect at <http://localhost:4200/runs>. Sort by **Start Time** (newest first) and you'll see four `quarantine_bgp | …` (or `resolved_bgp | …`) flow runs from the `try-it` you just ran. Click the most recent `quarantine_bgp` run. You'll see:
+Open Prefect at <http://localhost:4200/runs>. If a "Join the Prefect Community" pop-up appears, click **Skip** to dismiss it — it's a sign-up prompt, unrelated to the lab. Sort by **Start Time** (newest first) and you'll see four `quarantine_bgp | …` (or `resolved_bgp | …`) flow runs from the `try-it` you just ran. Click the most recent `quarantine_bgp` run. You'll see:
 
 - The **task graph** — `collect_evidence` → `evaluate_policy` → `annotate_decision` → `ai_rca`, plus (if the path was `proceed`) `quarantine` → `annotate_action`. The same pipeline you read about earlier, drawn for you.
 - Per-task **state** and **duration** — which tasks ran, in what order, how long each took.
@@ -563,7 +563,7 @@ The CLI flipped `srl1.maintenance=true` in Infrahub and dropped a `Configured fr
 
     Two labels are worth highlighting. `source="workshop-trigger"` distinguishes lines this CLI wrote from the `source="prefect"` lines the flow writes — both are audit annotations, both are queryable with the same LogQL grammar, but they describe different actors. `event="config-push"` is the action type — every change `nobs autocon5 maintenance` makes carries this label, so an operator can ask Loki "show me every config push in the last 24h" with `{source="workshop-trigger", event="config-push"}`. Same correlation pattern as the alert pipeline, just with the CLI as the actor instead of the flow.
 
-Then open the Infrahub UI at <http://localhost:8000> and navigate to **Object Management → WorkshopDevice → srl1**. `maintenance` just flipped to `true`. The surrounding attributes (`intended_peer`, `expected_state`, `reason`, `asn`, `role`, `site_name`) are the schema fields the flow's policy reads when deciding `proceed` vs `skip`. From the device page, click any row in the **bgp_sessions** list — for example `10.1.99.2`:
+Then open the Infrahub UI at <http://localhost:8000> (login `admin` / `infrahub`) and click **Network Device** in the left nav, then **srl1** in the list. `maintenance` just flipped to `true`. The surrounding attributes (`intended_peer`, `expected_state`, `reason`, `asn`, `role`, `site_name`) are the schema fields the flow's policy reads when deciding `proceed` vs `skip`. Click the **Bgp Sessions** tab on the device detail and pick a row — for example `10.1.99.2`:
 
 ![Infrahub WorkshopBgpSession detail for the broken peer 10.1.99.2](../../../docs/assets/screenshots/infrahub-bgp-session-broken.png#only-light){ .screenshot loading=lazy }
 ![Infrahub WorkshopBgpSession detail for the broken peer 10.1.99.2](../../../docs/assets/screenshots/infrahub-bgp-session-broken.png#only-dark){ .screenshot loading=lazy }
@@ -799,21 +799,22 @@ The demo narrative is templated from the evidence bundle (it pulls `expected_sta
 
 > *"Same intent → match → action pattern as the alert pipeline, one layer up. The flow ran. Now you want something to happen *when* the flow ran — a notification, a follow-up workflow, a webhook to your incident tooling. Prefect's `Automations` are that hook."*
 
-Open the Prefect UI's Automations page: <http://localhost:4200/automations>. (New to Prefect? The [Prefect section of the Tour](../../../docs/workshop/tour.md#prefect-workflows-deployments-runs) explains workflows, deployments, and runs.)
+Open the Prefect UI's Automations page: <http://localhost:4200/automations>. (New to Prefect? The [Prefect section of the Tour](../../../docs/workshop/tour.md#prefect-workflows-deployments-runs) explains workflows, deployments, and runs.) If a "Join the Prefect Community" pop-up appears, click **Skip** to dismiss it — it's a sign-up prompt, unrelated to the lab.
 
-1. Click **New automation**.
-2. **Trigger** → **Flow run state changed**. Pick the flow `quarantine-bgp-flow`. Target state: `Completed`.
-3. **Action** → choose one:
-    - **Run a deployment** (simplest, no setup) — chain to another flow. Pick the `alert-receiver` deployment. The UI generates a form with one input per parameter the deployment expects. Fill it from the snippet below:
-        - **`alertname`**: `automation-fired`
-        - **`status`**: `firing`
-        - **`alert_group`**: paste this JSON object as-is (everything from `{` to `}`):
-            ```json
-            {"alerts": [{"labels": {"device": "srl1", "peer_address": "10.1.2.2", "afi_safi_name": "ipv4-unicast"}}], "groupLabels": {"alertname": "automation-fired"}, "status": "firing"}
-            ```
-        This is the same payload shape Step 4B used as a direct trigger — the automation will kick `alert-receiver` with a synthesised alert each time `quarantine_bgp_flow` completes.
-    - **Send a notification** — needs a notification block (Slack, Discord, Mattermost, PagerDuty, email, etc.) configured with credentials first. None ship pre-wired in the lab. Skip unless you have a target system you want to wire up live.
-4. Save the automation.
+The Prefect 3.x Automations form is a three-step wizard: **01 Trigger → 02 Actions → 03 Details**. The exact template names and form layout may shift slightly between Prefect releases — what stays the same is the shape: "when X happens, do Y."
+
+1. Click **Add Automation**.
+2. **01 Trigger** — pick a **Trigger Template** from the dropdown. Look for one along the lines of "Flow run state changed". Configure it to fire when the flow `quarantine-bgp-flow` reaches state `Completed`, then click **Next**.
+3. **02 Actions** — pick **Run a deployment** (simplest, no setup) and choose the `alert-receiver` deployment. The form generates one input per parameter the deployment expects. Fill it from the snippet below:
+    - **`alertname`**: `automation-fired`
+    - **`status`**: `firing`
+    - **`alert_group`**: paste this JSON object as-is (everything from `{` to `}`):
+        ```json
+        {"alerts": [{"labels": {"device": "srl1", "peer_address": "10.1.2.2", "afi_safi_name": "ipv4-unicast"}}], "groupLabels": {"alertname": "automation-fired"}, "status": "firing"}
+        ```
+    This is the same payload shape Step 4B used as a direct trigger — the automation will kick `alert-receiver` with a synthesised alert each time `quarantine_bgp_flow` completes. Click **Next**.
+    *Other action options exist* — **Send a notification** for example — but those need a notification block (Slack, Discord, Mattermost, PagerDuty, email, etc.) configured with credentials first. None ship pre-wired in the lab. Skip unless you have a target system you want to wire up live.
+4. **03 Details** — give the automation a name like `chain-after-quarantine` and click **Save**.
 
 ??? info "What does the automation look like once configured?"
 
