@@ -611,7 +611,7 @@ docker compose --project-name autocon5 exec prefect-flows \
   --param 'alert_group={"alerts":[{"labels":{"device":"srl1","peer_address":"10.1.99.2","afi_safi_name":"ipv4-unicast"}}],"groupLabels":{"alertname":"BgpSessionNotUp"},"status":"firing"}'
 ```
 
-Wait ~10 seconds — the Prefect flow doesn't fire instantly, it's scheduled and then a worker picks it up. Then in Loki:
+Wait ~10 seconds — the Prefect flow doesn't fire instantly. The trigger queues the flow, then Prefect's worker process (a background runner that watches the queue) picks it up and executes it. The whole loop is usually a few seconds. Then in Loki:
 
 ```logql
 {source="prefect", workflow="autocon5_quarantine_bgp", device="srl1"} | json
@@ -816,8 +816,8 @@ The Prefect 3.x Automations form is a three-step wizard: **01 Trigger → 02 Act
         ```json
         {"alerts": [{"labels": {"device": "srl1", "peer_address": "10.1.2.2", "afi_safi_name": "ipv4-unicast"}}], "groupLabels": {"alertname": "automation-fired"}, "status": "firing"}
         ```
-    This is the same payload shape Step 4B used as a direct trigger — the automation will kick `alert-receiver` with a synthesised alert each time `quarantine_bgp_flow` completes. Click **Next**.
-    *Other action options exist* — **Send a notification** for example — but those need a notification block (Slack, Discord, Mattermost, PagerDuty, email, etc.) configured with credentials first. None ship pre-wired in the lab. Skip unless you have a target system you want to wire up live.
+    This is the same alert format Step 4.B used as a direct trigger — the automation will trigger `alert-receiver` with a synthesised alert each time `quarantine_bgp_flow` completes. Click **Next**.
+    *Other action options exist* — **Send a notification** for example — but those need a notification block (Prefect's term for a stored credential bundle for an external system: Slack, Discord, Mattermost, PagerDuty, email, etc.) configured first. None are pre-configured in this workshop. Skip unless you have a target system you want to wire up live.
 4. **03 Details** — give the automation a name like `chain-after-quarantine` and click **Save**.
 
 ??? info "What does the automation look like once configured?"
