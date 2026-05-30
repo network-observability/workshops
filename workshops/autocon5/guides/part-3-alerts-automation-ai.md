@@ -611,13 +611,17 @@ docker compose --project-name autocon5 exec prefect-flows \
   --param 'alert_group={"alerts":[{"labels":{"device":"srl1","peer_address":"10.1.99.2","afi_safi_name":"ipv4-unicast"}}],"groupLabels":{"alertname":"BgpSessionNotUp"},"status":"firing"}'
 ```
 
-Wait ~10 seconds, then in Loki:
+Wait ~10 seconds — the Prefect flow doesn't fire instantly, it's scheduled and then a worker picks it up. Then in Loki:
 
 ```logql
 {source="prefect", workflow="autocon5_quarantine_bgp", device="srl1"} | json
 ```
 
 The most recent annotation carries `decision=skip` with message *"device under maintenance"*. The flow consulted the source of truth, saw `maintenance=true`, and skipped before metrics even came into the picture.
+
+!!! warning "Don't clear maintenance until you've seen the `skip` annotation"
+
+    Step 4.C below clears the maintenance flag. If you race ahead and clear before the flow has actually executed, the flow will re-read `maintenance=False` and return `proceed` instead of `skip`. Confirm the Loki annotation has landed first — then continue.
 
 **Stop and notice.** Same alert payload, same SoT schema, same metrics in the lab — completely different decision, because the operator's intent was different. This is what context-aware alerting actually means in production: the alert isn't the decision, it's the *trigger* to fetch context and decide.
 
