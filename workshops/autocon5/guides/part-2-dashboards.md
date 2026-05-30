@@ -239,7 +239,7 @@ Worth noting: `srl1` and `srl2` arrive through different upstream pipelines (gNM
 
 ### Group the dashboard into tabs
 
-Grafana 13 added a new layout primitive — **Group into tabs** — that turns a single stacked dashboard into a tabbed one. The eight panels on **Workshop Lab 2026** are a lot to scroll past when you're triaging at 2am; tabs reduce visual noise by showing only the panels relevant to the question you're asking.
+Grafana 13 added a new feature called **Group into tabs** — same idea as tabs in a web browser. Instead of one long page with all eight panels stacked vertically, you split the dashboard into a few tabs at the top, and only the panels for the active tab show up. The eight panels on **Workshop Lab 2026** are a lot to scroll past when you're triaging at 2am; tabs make the page lighter by showing only what you need for the question you're asking.
 
 In **Edit** mode, click **`+`** in the right sidebar, then **Group into tabs**. Drag panels into each tab using the layout below — a useful split for a real on-call:
 
