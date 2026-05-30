@@ -443,7 +443,7 @@ In this workshop, Infrahub at <http://localhost:8000> (login `admin` / `infrahub
 
 | Where | URL | What it tells you |
 |-------|-----|-------------------|
-| WorkshopDevice list | <http://localhost:8000/objects/WorkshopDevice> | Browse `srl1` and `srl2`, click into the per-device attribute view. |
+| Network Device list | <http://localhost:8000/objects/WorkshopDevice> | Browse `srl1` and `srl2`, click into the per-device attribute view. ("Network Device" is the UI label; `WorkshopDevice` is the underlying schema name, which is what the URL uses.) |
 | GraphQL Sandbox | <http://localhost:8000/graphql> | Run the exact query the Prefect flow runs. Edit it, see what changes. |
 | Branch indicator | top-right of every page | Infrahub is branch-aware. `main` is the live branch the flow reads. |
 
@@ -457,7 +457,7 @@ In this workshop, Infrahub at <http://localhost:8000> (login `admin` / `infrahub
 
 </figure>
 
-Navigate via **Object Management → WorkshopDevice → srl1**. The **bgp_sessions** tab shows every BGP session relationship — click a row (e.g., `10.1.99.2`) and you'll see `Expected State = Established`, `Reason = ip-mismatch-demo`. That's the per-peer intent the flow's policy compares against the live `bgp_oper_state` metric in Prometheus.
+Click **Network Device** in Infrahub's left nav (that's the UI label for the schema — the underlying GraphQL type is still `WorkshopDevice`), then click **srl1**. Open the **Bgp Sessions** tab on the device detail and click a row (e.g., `10.1.99.2`) — you'll see `Expected State = Established`, `Reason = ip-mismatch-demo`. That's the per-peer intent the flow's policy compares against the live `bgp_oper_state` metric in Prometheus.
 
 ### GraphQL Sandbox
 
