@@ -108,7 +108,9 @@ Choose **`loki`** in the datasource picker. Flap rate is a *log-derived metric* 
 
 > *"Same shape as the LogQL aggregation we wrote together earlier. UPDOWN log events, grouped per interface, counted in a 1-minute window. Use the dashboard variable so this panel works for both devices."*
 
-In the Loki query box, paste:
+The query box defaults to **Builder** mode — a click-to-build form with Label filters and Operations. To paste a raw LogQL query, toggle to **Code** mode using the `Builder | Code` switch on the right side of the query toolbar.
+
+In the Loki query box (now in Code mode), paste:
 
 ```logql
 sum by (interface)(count_over_time({device="$device", vendor_facility_process="UPDOWN"}[2m]))
@@ -142,7 +144,7 @@ Click **Run query**. **Before you trigger any flap, you'll sometimes see a singl
 
 > *"Time series for this. Aggregations over time always read better as a line graph than a table."*
 
-In the right-hand options panel, panel-type dropdown at the top: choose **Time series**. (It usually defaults to time series for Loki aggregation queries — confirm it.)
+The right-hand sidebar has two tabs at the top: **Suggestions** (a curated short list based on your query shape) and **All visualizations** (the full set). Click **All visualizations** and pick **Time series**. (It usually shows up in Suggestions too — either path works.)
 
 ### 5. Title and description
 
@@ -313,6 +315,8 @@ Back on the **Workshop Lab 2026** dashboard: click **Edit**, click the **`+`** i
 
 #### 2. Write the query
 
+Toggle the query box to **Code** mode (the `Builder | Code` switch on the right of the query toolbar). Paste:
+
 ```logql
 sum by (device, interface) (count_over_time({vendor_facility_process="UPDOWN"}[1h]))
 ```
@@ -321,14 +325,14 @@ A 1-hour window is "what's been flapping today" — wider than the 2-minute aler
 
 #### 3. Switch the panel type
 
-Right-hand options, panel-type dropdown at the top: choose **Table**. The result lands as a single-row table with a value column and the labels mashed into one cell — that's because Loki returns time-series-shaped data and the table needs help turning labels into proper columns.
+On the right-hand sidebar, click the **All visualizations** tab and pick **Table**. The result lands as a single-row table with a value column and the labels mashed into one cell — that's because Loki returns time-series-shaped data and the table needs help turning labels into proper columns.
 
 #### 4. Reshape with transformations
 
-Below the query box, click the **Transformations** tab → **+ Add transformation**.
+Below the query box, click the **Transformations** tab → **Add transformation**. A search dialog opens with every available transformation as a tile.
 
 - Pick **Labels to fields**. Each Loki label (`device`, `interface`) becomes its own column.
-- Add a second transformation: **Organize fields**. Hide `Time` (the table doesn't need it), reorder so `device` is first and `interface` second, and rename the value column to `Total flaps`.
+- Add a second transformation (click **Add another transformation**): **Organize fields by name**. Hide `Time` (the table doesn't need it), reorder so `device` is first and `interface` second, and rename the value column to `Total flaps`.
 
 You should now see one row per `device + interface` pair, with three clean columns: `device`, `interface`, `Total flaps`.
 
