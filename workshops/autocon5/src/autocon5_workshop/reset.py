@@ -102,7 +102,13 @@ def _ensure_infrahub_loaded(infrahub_url: str) -> None:
         warn(f"Infrahub probe failed: {exc} — skipping load check")
         return
 
-    edges = response.json().get("data", {}).get("WorkshopDevice", {}).get("edges", []) or []
+    # When the WorkshopDevice schema isn't loaded yet, Infrahub returns
+    # `{"data": null, "errors": [...]}` — `.get("data", {})` returns None
+    # (the explicit null), so we have to coalesce before chaining `.get()`.
+    payload = response.json()
+    data = payload.get("data") or {}
+    workshop_device = data.get("WorkshopDevice") or {}
+    edges = workshop_device.get("edges") or []
     if len(edges) >= len(_WORKSHOP_DEVICES):
         console.print(f"  Infrahub already loaded ({len(edges)} devices)")
         return
@@ -237,13 +243,17 @@ def _restart_sonda_logs_if_wedged(loki_url: str) -> None:
 
     The wedge is specific to sonda's `loki` sink — the `srl1_*` log scenarios
     stop delivering events while sonda-logs' UDP path (srl2 → Vector) keeps
-    working. Detect by querying Loki for any srl1 log activity in the last
-    minute that ISN'T a Prefect annotation.
+    working. Detect by querying Loki for sonda-direct srl1 log activity in
+    the last minute. `pipeline="direct"` is the workshop's normalization
+    label for that specific path, so the filter matches a real sonda log
+    but not Prefect annotations or workshop-trigger config-push markers —
+    those would otherwise mask a genuine wedge (workshop-trigger fires
+    from inside this same `reset` flow).
     """
     base = loki_url.rstrip("/")
     end = int(time.time())
     start = end - 60
-    query = '{device="srl1", source!="prefect"}'
+    query = '{device="srl1", pipeline="direct"}'
     try:
         response = requests.get(
             f"{base}/loki/api/v1/query_range",
