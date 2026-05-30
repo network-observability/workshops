@@ -6,7 +6,7 @@ Late morning. The clock is creeping toward lunch. The flap-rate panel you built 
 
 > *"Watch what happens automatically. The flow's going to handle this without us. Then I'll walk you through the four cases it covers, and you can drive each one yourself. By the end of the hour you'll know exactly what the automation can and can't do for you — and which calls still belong to a human."*
 
-Drive each of the four alert paths by hand, watch the Prefect workflow decide what to do with each, then optionally turn on the AI RCA step and compare its narrative against the deterministic policy. By the end you'll have seen all four decisions land in the audit log and know which calls still belong to a human.
+Drive each of the four alert paths by hand, watch the Prefect workflow decide what to do with each, then optionally turn on the AI RCA step and compare its narrative against the rule-based decision the workflow already made. (Rule-based here means the workflow uses a fixed set of if/else rules — same alert payload in, same decision out every time. We unpack what that means a little further down in "The four paths".) By the end you'll have seen all four decisions land in the audit log and know which calls still belong to a human.
 
 ## Setup check
 
@@ -83,7 +83,7 @@ Annotations land in Loki under `{source="prefect", workflow="autocon5_quarantine
 
     Two paths to run it yourself — both valid, both worth knowing:
 
-    1. **Via the Infrahub UI** at <http://localhost:8000>. Login `admin` / `infrahub`. Navigate **Object Management → WorkshopDevice → srl1**. The `maintenance` boolean, `site_name`, `role` are on the detail panel; the BGP sessions list is below. Click any peer (e.g., `10.1.99.2`) to see its `expected_state` and `reason`.
+    1. **Via the Infrahub UI** at <http://localhost:8000>. Login `admin` / `infrahub`. Click **Network Device** in the left nav, then click **srl1** in the list. The `maintenance` boolean, `site_name`, `role` show in the detail panel; the BGP sessions are on the **Bgp Sessions** tab. Click any peer (e.g., `10.1.99.2`) to see its `expected_state` and `reason`. (Infrahub's UI label for the schema is "Network Device" — the underlying GraphQL type is still `WorkshopDevice`, which is what the query below uses.)
     2. **Via the GraphQL Sandbox** at <http://localhost:8000/graphql>. Paste the query below and hit run. This is the same query the Prefect flow makes from `automation/workshop_sdk.py` — Step 4A's "See the exact query the flow runs" fold (in [#a-set-maintenance-and-see-the-source-of-truth-flip](#a-set-maintenance-and-see-the-source-of-truth-flip)) covers the verbatim version.
 
     ```graphql
@@ -257,7 +257,7 @@ Returns the audit trail for every payload the flow handled. Each line carries a 
 
 > Your senior nods at the Loki feed. *"That's the audit trail. The flow itself has a UI on top of it — go look."*
 
-Open Prefect at <http://localhost:4200/runs>. Sort by **Start Time** (newest first) and you'll see four `quarantine_bgp | …` (or `resolved_bgp | …`) flow runs from the `try-it` you just ran. Click the most recent `quarantine_bgp` run. You'll see:
+Open Prefect at <http://localhost:4200/runs>. If a "Join the Prefect Community" pop-up appears, click **Skip** to dismiss it — it's a sign-up prompt, unrelated to the lab. Sort by **Start Time** (newest first) and you'll see four `quarantine_bgp | …` (or `resolved_bgp | …`) flow runs from the `try-it` you just ran. Click the most recent `quarantine_bgp` run. You'll see:
 
 - The **task graph** — `collect_evidence` → `evaluate_policy` → `annotate_decision` → `ai_rca`, plus (if the path was `proceed`) `quarantine` → `annotate_action`. The same pipeline you read about earlier, drawn for you.
 - Per-task **state** and **duration** — which tasks ran, in what order, how long each took.
@@ -563,7 +563,7 @@ The CLI flipped `srl1.maintenance=true` in Infrahub and dropped a `Configured fr
 
     Two labels are worth highlighting. `source="workshop-trigger"` distinguishes lines this CLI wrote from the `source="prefect"` lines the flow writes — both are audit annotations, both are queryable with the same LogQL grammar, but they describe different actors. `event="config-push"` is the action type — every change `nobs autocon5 maintenance` makes carries this label, so an operator can ask Loki "show me every config push in the last 24h" with `{source="workshop-trigger", event="config-push"}`. Same correlation pattern as the alert pipeline, just with the CLI as the actor instead of the flow.
 
-Then open the Infrahub UI at <http://localhost:8000> and navigate to **Object Management → WorkshopDevice → srl1**. `maintenance` just flipped to `true`. The surrounding attributes (`intended_peer`, `expected_state`, `reason`, `asn`, `role`, `site_name`) are the schema fields the flow's policy reads when deciding `proceed` vs `skip`. From the device page, click any row in the **bgp_sessions** list — for example `10.1.99.2`:
+Then open the Infrahub UI at <http://localhost:8000> (login `admin` / `infrahub`) and click **Network Device** in the left nav, then **srl1** in the list. `maintenance` just flipped to `true`. The surrounding attributes (`intended_peer`, `expected_state`, `reason`, `asn`, `role`, `site_name`) are the schema fields the flow's policy reads when deciding `proceed` vs `skip`. Click the **Bgp Sessions** tab on the device detail and pick a row — for example `10.1.99.2`:
 
 ![Infrahub WorkshopBgpSession detail for the broken peer 10.1.99.2](../../../docs/assets/screenshots/infrahub-bgp-session-broken.png#only-light){ .screenshot loading=lazy }
 ![Infrahub WorkshopBgpSession detail for the broken peer 10.1.99.2](../../../docs/assets/screenshots/infrahub-bgp-session-broken.png#only-dark){ .screenshot loading=lazy }
@@ -611,13 +611,17 @@ docker compose --project-name autocon5 exec prefect-flows \
   --param 'alert_group={"alerts":[{"labels":{"device":"srl1","peer_address":"10.1.99.2","afi_safi_name":"ipv4-unicast"}}],"groupLabels":{"alertname":"BgpSessionNotUp"},"status":"firing"}'
 ```
 
-Wait ~10 seconds, then in Loki:
+Wait ~10 seconds — the Prefect flow doesn't fire instantly. The trigger queues the flow, then Prefect's worker process (a background runner that watches the queue) picks it up and executes it. The whole loop is usually a few seconds. Then in Loki:
 
 ```logql
 {source="prefect", workflow="autocon5_quarantine_bgp", device="srl1"} | json
 ```
 
 The most recent annotation carries `decision=skip` with message *"device under maintenance"*. The flow consulted the source of truth, saw `maintenance=true`, and skipped before metrics even came into the picture.
+
+!!! warning "Don't clear maintenance until you've seen the `skip` annotation"
+
+    Step 4.C below clears the maintenance flag. If you race ahead and clear before the flow has actually executed, the flow will re-read `maintenance=False` and return `proceed` instead of `skip`. Confirm the Loki annotation has landed first — then continue.
 
 **Stop and notice.** Same alert payload, same SoT schema, same metrics in the lab — completely different decision, because the operator's intent was different. This is what context-aware alerting actually means in production: the alert isn't the decision, it's the *trigger* to fetch context and decide.
 
@@ -799,21 +803,22 @@ The demo narrative is templated from the evidence bundle (it pulls `expected_sta
 
 > *"Same intent → match → action pattern as the alert pipeline, one layer up. The flow ran. Now you want something to happen *when* the flow ran — a notification, a follow-up workflow, a webhook to your incident tooling. Prefect's `Automations` are that hook."*
 
-Open the Prefect UI's Automations page: <http://localhost:4200/automations>. (New to Prefect? The [Prefect section of the Tour](../../../docs/workshop/tour.md#prefect-workflows-deployments-runs) explains workflows, deployments, and runs.)
+Open the Prefect UI's Automations page: <http://localhost:4200/automations>. (New to Prefect? The [Prefect section of the Tour](../../../docs/workshop/tour.md#prefect-workflows-deployments-runs) explains workflows, deployments, and runs.) If a "Join the Prefect Community" pop-up appears, click **Skip** to dismiss it — it's a sign-up prompt, unrelated to the lab.
 
-1. Click **New automation**.
-2. **Trigger** → **Flow run state changed**. Pick the flow `quarantine-bgp-flow`. Target state: `Completed`.
-3. **Action** → choose one:
-    - **Run a deployment** (simplest, no setup) — chain to another flow. Pick the `alert-receiver` deployment. The UI generates a form with one input per parameter the deployment expects. Fill it from the snippet below:
-        - **`alertname`**: `automation-fired`
-        - **`status`**: `firing`
-        - **`alert_group`**: paste this JSON object as-is (everything from `{` to `}`):
-            ```json
-            {"alerts": [{"labels": {"device": "srl1", "peer_address": "10.1.2.2", "afi_safi_name": "ipv4-unicast"}}], "groupLabels": {"alertname": "automation-fired"}, "status": "firing"}
-            ```
-        This is the same payload shape Step 4B used as a direct trigger — the automation will kick `alert-receiver` with a synthesised alert each time `quarantine_bgp_flow` completes.
-    - **Send a notification** — needs a notification block (Slack, Discord, Mattermost, PagerDuty, email, etc.) configured with credentials first. None ship pre-wired in the lab. Skip unless you have a target system you want to wire up live.
-4. Save the automation.
+The Prefect 3.x Automations form is a three-step wizard: **01 Trigger → 02 Actions → 03 Details**. The exact template names and form layout may shift slightly between Prefect releases — what stays the same is the shape: "when X happens, do Y."
+
+1. Click **Add Automation**.
+2. **01 Trigger** — pick a **Trigger Template** from the dropdown. Look for one along the lines of "Flow run state changed". Configure it to fire when the flow `quarantine-bgp-flow` reaches state `Completed`, then click **Next**.
+3. **02 Actions** — pick **Run a deployment** (simplest, no setup) and choose the `alert-receiver` deployment. The form generates one input per parameter the deployment expects. Fill it from the snippet below:
+    - **`alertname`**: `automation-fired`
+    - **`status`**: `firing`
+    - **`alert_group`**: paste this JSON object as-is (everything from `{` to `}`):
+        ```json
+        {"alerts": [{"labels": {"device": "srl1", "peer_address": "10.1.2.2", "afi_safi_name": "ipv4-unicast"}}], "groupLabels": {"alertname": "automation-fired"}, "status": "firing"}
+        ```
+    This is the same alert format Step 4.B used as a direct trigger — the automation will trigger `alert-receiver` with a synthesised alert each time `quarantine_bgp_flow` completes. Click **Next**.
+    *Other action options exist* — **Send a notification** for example — but those need a notification block (Prefect's term for a stored credential bundle for an external system: Slack, Discord, Mattermost, PagerDuty, email, etc.) configured first. None are pre-configured in this workshop. Skip unless you have a target system you want to wire up live.
+4. **03 Details** — give the automation a name like `chain-after-quarantine` and click **Save**.
 
 ??? info "What does the automation look like once configured?"
 
@@ -919,10 +924,105 @@ There's no single right answer. The point is that the same tool isn't equally va
 ## Stretch goals (optional — pick one if you have time)
 
 - **Tail the Prefect flow logs in real time.** `nobs autocon5 logs prefect-flows`. Re-run `try-it --auto` and watch the flow narrate each path from the inside.
+
+    ??? success "Solution — what you'll see in the log stream"
+
+        Each `try-it --auto` cycle produces a burst of log lines, one per task as the flow runs through it. For a `proceed` path:
+
+        ```text
+        [collect] device=srl1 peer=10.1.99.2 afi=ipv4-unicast instance=default
+        [collect] sot.found=True maintenance=False intended=True expected_state=established reason='ip-mismatch-demo'
+           metrics={'admin_state': 1.0, 'oper_state': 5.0, 'received_routes': 0.0, ...}
+           logs collected: 50 lines
+        [policy] srl1:10.1.99.2
+           stage1 SoT-only → ok (intended, not in maintenance)
+           stage2 SoT + metrics → proceed (mismatch)
+        [annotate] decision=proceed reason=SoT expects peer up, but metrics show mismatch
+        [ai_rca] annotated: AI RCA disabled ...
+        [quarantine] silencing srl1:10.1.99.2 for 20m
+        [flow] action=quarantine silence_id=...
+        ```
+
+        The `[collect]` lines show the exact SoT + metric values the policy will see. The `[policy]` lines show which stage matched and why. The `[annotate]` line carries the same `decision` and `reason` you find in Loki under `{source="prefect"}`. Tailing the logs is the fastest debug loop when the flow returns an unexpected decision — every intermediate value is visible without a single LogQL query.
+
 - **Compare evidence between a healthy peer and a broken one.** `nobs autocon5 evidence srl1 10.1.2.2` (a healthy peer) vs `nobs autocon5 evidence srl1 10.1.99.2` (a broken one). Pay attention to which fields differ — that's the signal the deterministic policy keys on.
+
+    ??? success "Solution — what differs between the two"
+
+        Both peers share the same *intent* in the SoT (`expected_state: established`) — the SoT can't tell which one is broken on its own. What separates them is **reality**, in the metrics:
+
+        | Row | Healthy `10.1.2.2` | Broken `10.1.99.2` |
+        |---|---|---|
+        | SoT `expected_state` | `established` | `established` ← same |
+        | SoT `reason` | empty | `ip-mismatch-demo` |
+        | Metric `admin_state` | `1 (enable)` | `1 (enable)` ← same |
+        | Metric `oper_state` | `1 (established)` | `5 (active)` |
+        | Metric `received_routes` | `10` | `0` |
+        | Policy hint | `skip — peer matches SoT intent` | `proceed — SoT vs metrics mismatch` |
+
+        The policy fires `proceed` when `expected_state=established` AND `oper_state ≠ 1`. Both peers have the same SoT intent — the *gap* between intent and reality is what the policy keys on.
+
 - **Toggle maintenance on srl2 instead of srl1.** Re-run `try-it --auto` after toggling. Confirm the maintenance-skip path swaps which device gets skipped. (Reset with `--clear` afterwards.)
+
+    ??? success "Solution — verify in Loki that the skip swapped device"
+
+        After `nobs autocon5 maintenance --device srl2 --state` and re-running `try-it --auto`, run this in Grafana Explore on the Loki datasource:
+
+        ```logql
+        {source="prefect", workflow="autocon5_quarantine_bgp", decision="skip"} | json
+        ```
+
+        The most recent `skip` annotation should now show `device="srl2"` instead of `srl1`. The `message` is still `"device under maintenance"` — only which device was being evaluated changed.
+
+        The point of the exercise: the policy is **device-agnostic**. It consults the SoT for whichever device the alert payload names. Flipping maintenance on any device routes that device's alerts to skip, automatically. The decision logic isn't hard-coded to a particular device.
+
+        Don't forget `nobs autocon5 maintenance --device srl2 --clear` afterwards (or run `nobs autocon5 reset` — it clears both devices).
+
 - **Watch a path's annotations in Loki directly.** `{source="prefect"} | json` in Explore. Filter by `workflow="autocon5_quarantine_bgp"` and watch annotations land while you trigger paths.
+
+    ??? success "Solution — the audit-trail shape"
+
+        Each annotation has this shape (Grafana parses the JSON into a side panel when you click a row):
+
+        ```json
+        {
+          "timestamp": "...",
+          "severity": "info",
+          "message": "SoT expects peer up, but metrics show mismatch",
+          "labels": {
+            "decision": "proceed",
+            "device": "srl1",
+            "peer_address": "10.1.99.2",
+            "source": "prefect",
+            "workflow": "autocon5_quarantine_bgp"
+          }
+        }
+        ```
+
+        Add `| decision="proceed"` (or `decision="skip"` / `decision="resolved"`) to filter to one path. Triggering a flap or running `try-it --auto` in another tab produces fresh annotations in real time — flip the time picker's **Live** mode on to watch them stream in.
+
+        Step 5's unguided LogQL query (`sum by (decision) (count_over_time({source="prefect"}[1h]))`) rolls these annotations up by `decision` label — the same audit-trail data, just aggregated.
+
 - **Swap the AI RCA provider.** If you have an OpenAI or Anthropic key, change `AI_RCA_PROVIDER` to `openai` or `anthropic` and re-run a path. Compare the real LLM narrative against the demo provider's templated one — what does the LLM add that the template can't?
+
+    ??? success "Solution — guidance on the comparison"
+
+        The demo provider produces a templated narrative — it stitches evidence-bundle fields into the same paragraph structure every time:
+
+        ```text
+        ## Most likely cause
+        SoT expects peer 10.1.99.2 on srl1 to be established, with intent reason
+        'ip-mismatch-demo', but oper_state=5 (active), admin_state=1 (enable),
+        received_routes=0.
+        ```
+
+        A real LLM (OpenAI or Anthropic) typically adds:
+
+        - **Domain inference** — translates the raw numbers into operational hypotheses ("`oper_state=5` with `received_routes=0` is consistent with a TCP-level reachability failure or AS-number mismatch — the FSM is trying but not authenticating").
+        - **Wider context** — references the BGP state machine, common causes for "stuck in active", suggested next debug steps (traceroute, configured remote-as check).
+        - **Calibrated uncertainty** — phrases like "most likely" or "consistent with" rather than confident pronouncements.
+
+        The template can't do any of this — it can only fill slots. But the template is **deterministic** and **free**; the LLM is **inference-richer** but **non-deterministic** and costs per call. The trade-off is the lesson: the policy *decides what to act on*; the narrative — template or LLM — *explains why for a human reader*. Pick the right narrative tool for the audience and the budget.
 
 ## What you took away
 

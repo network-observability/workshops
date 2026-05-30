@@ -71,7 +71,7 @@ nobs autocon5 scenarios
 You'll see two states in the **Status** column — `running` and `unresolved`. **Both are healthy at rest:**
 
 - **`running`** — the scenario is actively emitting samples right now (this is the obvious one).
-- **`unresolved`** — the scenario is in *standby*, waiting for another scenario to be posted before it switches mode. Most of these are the workshop's baseline scenarios for the cascade-affected interfaces and BGP peers — **they're still emitting their normal up-and-healthy values**, but lifecycle-wise they're parked, waiting on a `flap-interface` to kick things off. When you eventually run `nobs autocon5 flap-interface` in a later part, sonda posts a matching scenario that takes over for the duration of the flap; when it ends, these baselines automatically resume.
+- **`unresolved`** — the scenario is in *standby*, waiting for another scenario to be posted before it switches mode. Most of these are the workshop's baseline scenarios for the cascade-affected interfaces and BGP peers — **they're still emitting their normal up-and-healthy values** — they're just labeled `unresolved` instead of `running` because they're waiting on a `flap-interface` cascade to one day trigger. When you eventually run `nobs autocon5 flap-interface` in a later part, sonda posts a matching scenario that takes over for the duration of the flap; when it ends, these baselines automatically resume.
 
 The short version: **if every row says `running` or `unresolved`, the lab is healthy.** A `paused`, `held`, or `finished` row will only show up during or right after a flap — that's covered in Part 1. The `held` state is what an interface byte counter looks like during an outage: it doesn't tick (no traffic is flowing through a downed link), but it doesn't disappear either — you keep seeing the same value that was there right before the link went down, the same way a real device would behave.
 
@@ -443,7 +443,7 @@ In this workshop, Infrahub at <http://localhost:8000> (login `admin` / `infrahub
 
 | Where | URL | What it tells you |
 |-------|-----|-------------------|
-| WorkshopDevice list | <http://localhost:8000/objects/WorkshopDevice> | Browse `srl1` and `srl2`, click into the per-device attribute view. |
+| Network Device list | <http://localhost:8000/objects/WorkshopDevice> | Browse `srl1` and `srl2`, click into the per-device attribute view. ("Network Device" is the UI label; `WorkshopDevice` is the underlying schema name, which is what the URL uses.) |
 | GraphQL Sandbox | <http://localhost:8000/graphql> | Run the exact query the Prefect flow runs. Edit it, see what changes. |
 | Branch indicator | top-right of every page | Infrahub is branch-aware. `main` is the live branch the flow reads. |
 
@@ -457,7 +457,7 @@ In this workshop, Infrahub at <http://localhost:8000> (login `admin` / `infrahub
 
 </figure>
 
-Navigate via **Object Management → WorkshopDevice → srl1**. The **bgp_sessions** tab shows every BGP session relationship — click a row (e.g., `10.1.99.2`) and you'll see `Expected State = Established`, `Reason = ip-mismatch-demo`. That's the per-peer intent the flow's policy compares against the live `bgp_oper_state` metric in Prometheus.
+Click **Network Device** in Infrahub's left nav (that's the UI label for the schema — the underlying GraphQL type is still `WorkshopDevice`), then click **srl1**. Open the **Bgp Sessions** tab on the device detail and click a row (e.g., `10.1.99.2`) — you'll see `Expected State = Established`, `Reason = ip-mismatch-demo`. That's the per-peer intent the flow's policy compares against the live `bgp_oper_state` metric in Prometheus.
 
 ### GraphQL Sandbox
 
