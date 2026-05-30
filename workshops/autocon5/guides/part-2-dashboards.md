@@ -44,7 +44,11 @@ At the top of the dashboard there's a **Device** dropdown — that's the `$devic
 
 > Your senior glances at the screen. *"Notice the dashboard didn't break when you toggled. That's the variable doing its job. Every panel here uses `$device` — same panel, two subjects."*
 
-The Workshop Lab 2026 dashboard is *provisioned* — Grafana reads its definition from a YAML file in this repo at startup, rather than from its own database. The provisioning file sets `editable: true, allowUiUpdates: true`, so UI edits do save back to Grafana for the workshop session. **They don't persist past `nobs autocon5 restart grafana`** — on restart, Grafana re-reads the YAML and wipes any UI edits. Treat the dashboard as a scratchpad, not a deliverable.
+When you save changes to this dashboard, they stick for the rest of your workshop session — but they don't survive a full restart. If you run `nobs autocon5 restart grafana`, anything you customised resets back to the original layout the workshop ships with. Treat this dashboard as a scratchpad: experiment freely, but don't expect your changes to be permanent.
+
+??? info "Why your changes reset on restart — the provisioning details"
+
+    The Workshop Lab 2026 dashboard is *provisioned*: Grafana reads its definition from a YAML file (`grafana/dashboards/workshop-lab-1.json`) at startup rather than from its own database. The provisioning file sets `editable: true, allowUiUpdates: true`, which lets UI edits save back to Grafana for the session — but on every restart, Grafana re-reads the YAML and replaces whatever the UI saved. This is a common pattern for production dashboards: the YAML file is the source of truth, and the UI is just a convenience layer for trying things out.
 
 ## The exercise
 
@@ -116,7 +120,7 @@ Two things to notice:
 - `{device="$device", vendor_facility_process="UPDOWN"}` is a *stream selector* — Loki uses these to pick which log streams to count. The label `vendor_facility_process="UPDOWN"` matches every interface state-change log line both pipelines (`direct` and `vector`) emit.
 - `count_over_time(...[2m])` counts UPDOWN log lines in a rolling 2-minute window — the same window the `PeerInterfaceFlapping` alert rule uses. `sum by (interface)` groups so each interface gets its own line.
 
-Click **Run query**. **At rest you'll sometimes see a single line for `ethernet-1/11`, the always-broken interface, at 1 — well below the alert threshold of 3.** The broken-interface log emitter only fires one event every ~2 minutes, so the panel may show `1` right after one of those events and then go empty until the next one lands. Healthy interfaces don't show up at all; if nothing is flapping, the panel is honest about that:
+Click **Run query**. **Before you trigger any flap, you'll sometimes see a single line for `ethernet-1/11`, the always-broken interface, at the value `1` — well below the alert threshold of 3.** The lab generates one log line for that broken interface roughly every 2 minutes, so the panel briefly shows `1` right after a log lands and then drops back to empty until the next one. Healthy interfaces don't show up at all — if nothing is flapping, the panel stays empty, which is what you want to see:
 
 <figure class="section-preview" markdown>
 
