@@ -6,64 +6,7 @@ Late morning. The clock is creeping toward lunch. The flap-rate panel you built 
 
 > *"Watch what happens automatically. The flow's going to handle this without us. Then I'll walk you through the four cases it covers, and you can drive each one yourself. By the end of the hour you'll know exactly what the automation can and can't do for you — and which calls still belong to a human."*
 
-Drive each of the four alert paths by hand, watch the Prefect workflow decide what to do with each, then optionally turn on the AI RCA step and compare its narrative against the deterministic policy.
-
-??? info "Visual — the full arc, Steps 1 through 8"
-
-    ```text
-                              Setup
-                                │
-                                ▼
-                          ┌─────────────┐
-                          │  Step 1     │  inspect what's firing
-                          └──────┬──────┘  (2 suppressed rows)
-                                 │
-                                 ▼
-                          ┌─────────────┐
-                          │  Step 2     │  try-it --auto
-                          └──────┬──────┘  (4 paths in 30s)
-                                 │
-                                 ▼
-                          ┌─────────────┐
-                          │  Step 3     │  incident drill:
-                          │  flap →     │   A. page lands
-                          │  proceed    │   B. investigate (evidence)
-                          └──────┬──────┘   C. flow decided
-                                 │           D. recovery
-                                 ▼
-                          ┌─────────────┐
-                          │  Step 4     │  same drill,
-                          │  maintenance│  maintenance=true
-                          │  → skip     │  → opposite decision
-                          └──────┬──────┘
-                                 │
-                                 ▼
-                          ┌─────────────┐
-                          │  Step 5     │  unguided LogQL
-                          │  what did   │  sum by (decision)
-                          │  the flow do│   (count_over_time …)
-                          └──────┬──────┘
-                                 │
-                                 ▼
-                          ┌─────────────┐
-                          │  Step 6     │  AI RCA on (demo provider)
-                          │  same       │  same evidence →
-                          │  evidence,  │   two annotations
-                          │  two voices │
-                          └──────┬──────┘
-                                 │
-                                 ▼
-                          ┌─────────────┐
-                          │  Step 7     │  compose another
-                          │  Prefect    │  trigger → match → action
-                          │  automation │  (one layer up)
-                          └──────┬──────┘
-                                 │
-                                 ▼
-                          ┌─────────────┐
-                          │  Step 8     │  reflection
-                          └─────────────┘
-    ```
+Drive each of the four alert paths by hand, watch the Prefect workflow decide what to do with each, then optionally turn on the AI RCA step and compare its narrative against the deterministic policy. By the end you'll have seen all four decisions land in the audit log and know which calls still belong to a human.
 
 ## Setup check
 
@@ -75,7 +18,7 @@ nobs autocon5 reset
 
 Four alerts should be firing in the lab — two per category, one per device:
 
-- **`BgpSessionNotUp` × 2** — the deliberately broken peers from this morning (`srl1 → 10.1.99.2`, `srl2 → 10.1.11.1`). State cycles `firing` ↔ `suppressed` as the webhook flow runs and Alertmanager silences expire on a 20-minute window.
+- **`BgpSessionNotUp` × 2** — the deliberately broken peers from this morning (`srl1 → 10.1.99.2`, `srl2 → 10.1.11.1`). All four start `firing` after the reset above (it cleared any silences left from earlier exercises). Once you walk Step 3, you'll see `BgpSessionNotUp` cycle `firing` ↔ `suppressed` as the webhook flow silences each for 20 minutes and the silence then expires.
 - **`InterfaceAdminUpOperDown` × 2** — `ethernet-1/11` on each device is configured as `admin up` but its `oper` state is `down`. That's a permanent intent-vs-reality mismatch (intent says "should be up", reality says "isn't" — the framing we use throughout Part 3, defined in [The four paths](#the-four-paths) below), so the rule fires continuously and never ages out.
 
 ```bash
@@ -84,19 +27,23 @@ nobs autocon5 alerts
 
 ```
 | Alertname                | Severity | Device / target  |      State | Age |
-| BgpSessionNotUp          | warning  | srl1 → 10.1.99.2 | suppressed | ... |
-| BgpSessionNotUp          | warning  | srl2 → 10.1.11.1 | suppressed | ... |
+| BgpSessionNotUp          | warning  | srl1 → 10.1.99.2 |     firing | ... |
+| BgpSessionNotUp          | warning  | srl2 → 10.1.11.1 |     firing | ... |
 | InterfaceAdminUpOperDown | warning  | srl1             |     firing | ... |
 | InterfaceAdminUpOperDown | warning  | srl2             |     firing | ... |
 ```
 
-`InterfaceAdminUpOperDown` is steady-state — the underlying mismatch is permanent, so the rule will never age out. Step 3.A revisits this when you flap an interface. The only alert that should ever move between `firing` and `suppressed` here is `BgpSessionNotUp`: it's `firing` immediately after the rule trips, then `suppressed` once the webhook flow applies its 20-minute `quarantine` silence, then `firing` again when the silence expires.
+`InterfaceAdminUpOperDown` is steady-state — the underlying mismatch is permanent, so the rule will never age out. Step 3 (the incident drill below) revisits this row when you flap an interface alongside it. The only alert that should ever move between `firing` and `suppressed` here is `BgpSessionNotUp`: it's `firing` immediately after the rule trips, then `suppressed` once the webhook flow applies its 20-minute `quarantine` silence, then `firing` again when the silence expires.
 
 If you see fewer than two `BgpSessionNotUp` rows, give the stack 60 seconds and try again — alert evaluation has a `for: 30s` clause (the underlying condition must hold true for 30 seconds straight before the alert is `firing`; until then it sits in `pending` state), and you might have caught it before promotion. If you ran Part 2 and see a `PeerInterfaceFlapping` row, that's residue from the flap cascade — it ages out within ~5 minutes of the last flap. None of these conditions block the four paths below.
 
-Open **Workshop Home** at <http://localhost:3000/d/workshop-home>. The **Currently firing alerts** table at the bottom should show those same four rows. Keep this dashboard open in a tab — you'll watch it react to your CLI commands throughout this part.
+> Tip: you'll bounce between query languages from Part 1 throughout this part — **PromQL** for metrics (`bgp_oper_state{device="srl1", ...}`) and **LogQL** for logs and audit annotations (`{source="prefect", ...}`). Both query the same Grafana Explore tab; you switch by changing the datasource picker at the top.
+
+Open **Workshop Home** at <http://localhost:3000/d/workshop-home>. The **Currently firing alerts** table at the bottom should show those same four rows. Keep this dashboard open in a tab — you'll watch it react to your CLI commands throughout this part. (New to Grafana? The [Grafana section of the Tour](../../../docs/workshop/tour.md#grafana-dashboards-and-explore) walks the dashboards and Explore mode.)
 
 ## The four paths
+
+> Reading material — skim once, then jump to the exercises below. The folds in this section are deep dives you can come back to when something feels unclear during the exercises.
 
 Every `BgpSessionNotUp` payload that lands on the webhook gets fed through the same **decision tree**: a deterministic Python function that pulls **intent** (from Infrahub) and **reality** (from Prometheus metrics) for the affected peer, compares them, and returns one of a fixed set of outcomes. "Deterministic" here means the same inputs always produce the same decision — no probabilistic step, no LLM judgment in the path. You can replay any historical alert and get bit-identical reasoning, which is what makes the flow reviewable in code review and replayable in a post-mortem. The AI RCA step you'll turn on in Step 6 sits *alongside* this decision, not inside it.
 
@@ -261,6 +208,8 @@ Four rows. Two `BgpSessionNotUp` (the actionable ones — each has `device` and 
 
 > *"This walks every path in one shot. Don't worry about following each one — just watch what fires and what gets annotated. We'll go slowly the second time around."*
 
+`try-it --auto` is the workshop's pre-built rehearsal command — it walks every path with synthetic payloads so you see the whole arc in 30 seconds before driving each path by hand.
+
 ```bash
 nobs autocon5 try-it --auto
 ```
@@ -391,7 +340,7 @@ Open **Workshop Home** at <http://localhost:3000/d/workshop-home> in a tab and k
 
 #### B. Investigate — pull the evidence bundle
 
-Before the flow's decision lands, look at the same evidence the flow is about to see:
+Before the flow's decision lands, look at the same evidence the flow is about to see. `nobs autocon5 evidence` is the workshop's CLI shortcut that bundles up the SoT lookup + metric snapshot + recent logs in one go — exactly what the flow's `collect_evidence` task pulls.
 
 ```bash
 nobs autocon5 evidence srl1 10.1.2.2
@@ -521,7 +470,7 @@ Now switch to the Prefect UI to inspect *this specific* run. Open <http://localh
 ![Prefect flow run for the cascade-driven quarantine_bgp on srl1:10.1.2.2](../../../docs/assets/screenshots/prefect-flow-run-cascade-peer-dark.png#only-dark){ .screenshot loading=lazy }
 
 - The full six-task graph for the `proceed` path: `collect_evidence → evaluate_policy → annotate_decision → ai_rca → quarantine → annotate_action`.
-- Per-task logs for *this* run: `collect_evidence` shows the SoT lookup + metrics snapshot the flow pulled — the same shape you just saw at the CLI. `evaluate_policy` shows the two-stage decision. `quarantine` shows the `silence_id` Alertmanager returned.
+- Per-task logs for *this* run: `collect_evidence` shows the SoT lookup + metrics snapshot the flow pulled — the same shape you just saw at the CLI. `evaluate_policy` shows the two-stage decision. `quarantine` shows the `silence_id` (the unique handle Alertmanager assigns to a silence — you can use it later to expire the silence early; see the [Alertmanager section of the Tour](../../../docs/workshop/tour.md#alertmanager-the-alert-router-and-silence-store)) returned by Alertmanager.
 - Task tags on the task nodes: `device:srl1`, `peer_address:10.1.2.2`, `afi_safi:ipv4-unicast`, `action:quarantine`. Tags live on tasks (not the parent flow run), so the natural way to find a specific flow run in the list is by name (`quarantine_bgp | srl1:10.1.2.2`) rather than by tag filter. Step 2's UI tour used the synthetic `try-it` runs; this is the same view on *your* live event.
 
 #### D. Recovery beat
@@ -739,12 +688,12 @@ Take a minute on it before you scroll. Two hints if you're stuck:
 **You should land on a query that returns a small handful of rows** — something like:
 
 ```
-| decision  | count |
-| proceed   |   1-3 |
-| skip      |   1-2 |
-| resolved  |   1-2 |
-| (empty)   |   1-3 |  ← AI RCA annotations, which carry an `ai_rca` label, not `decision`
-| stop      |   0-1 |  ← only present if an alert beat Infrahub schema load (see "four paths" above)
+| decision  | count                                                            |
+| proceed   | a few                                                            |
+| skip      | a few                                                            |
+| resolved  | a few                                                            |
+| (empty)   | several — grows with every `try-it` run (AI RCA annotations, which carry an `ai_rca` label, not `decision`) |
+| stop      | 0 (would only appear if an alert beat Infrahub schema load — see "four paths" above) |
 ```
 
 The exact counts depend on how many paths you've driven by hand on top of `try-it`. The `stop` row may or may not be there — both states are valid. If you get a single row total, you've collapsed too aggressively. If you get dozens of rows, you've left a high-cardinality label unaggregated.
@@ -753,7 +702,7 @@ The exact counts depend on how many paths you've driven by hand on top of `try-i
 
 > *"Would an LLM narrative have helped at 2am? Let's see one. We ship a demo provider that returns a canned, evidence-grounded narrative — no API key needed. If you have one, swap to `openai` or `anthropic` instead."*
 
-By default the AI step runs but writes the disabled-fallback annotation you've been seeing since Step 1. Flip three lines in `.env` to enable the **demo** provider:
+By default the AI step runs but writes the disabled-fallback annotation you've been seeing since Step 1. Flip two lines in `.env` to enable the **demo** provider (the third line below is a no-op reminder, only relevant if you're using a real provider):
 
 ```bash
 ENABLE_AI_RCA=true
@@ -761,7 +710,7 @@ AI_RCA_PROVIDER=demo            # or `openai` / `anthropic` if you have a key
 # AI_RCA_MODEL, OPENAI_API_KEY, ANTHROPIC_API_KEY — only needed for the real providers
 ```
 
-Container env is baked at create-time, so `docker compose restart` won't pick up the change — `prefect-flows` needs to be re-created:
+Docker reads `.env` only when a container is first created, not on every restart — so a plain restart won't pick up your change. The `nobs autocon5 up` command below recreates `prefect-flows` so the new settings take effect:
 
 ```bash
 nobs autocon5 up
@@ -850,19 +799,18 @@ The demo narrative is templated from the evidence bundle (it pulls `expected_sta
 
 > *"Same intent → match → action pattern as the alert pipeline, one layer up. The flow ran. Now you want something to happen *when* the flow ran — a notification, a follow-up workflow, a webhook to your incident tooling. Prefect's `Automations` are that hook."*
 
-Open the Prefect UI's Automations page: <http://localhost:4200/automations>.
+Open the Prefect UI's Automations page: <http://localhost:4200/automations>. (New to Prefect? The [Prefect section of the Tour](../../../docs/workshop/tour.md#prefect-workflows-deployments-runs) explains workflows, deployments, and runs.)
 
 1. Click **New automation**.
 2. **Trigger** → **Flow run state changed**. Pick the flow `quarantine-bgp-flow`. Target state: `Completed`.
 3. **Action** → choose one:
-    - **Run a deployment** (simplest, no setup) — chain to another flow. Pick the `alert-receiver` deployment and paste this into the parameters form (the UI pre-fills the schema from the deployment; you fill the values):
-        ```json
-        {
-          "alertname": "automation-fired",
-          "status": "firing",
-          "alert_group": {"alerts": [{"labels": {"device": "srl1", "peer_address": "10.1.2.2", "afi_safi_name": "ipv4-unicast"}}], "groupLabels": {"alertname": "automation-fired"}, "status": "firing"}
-        }
-        ```
+    - **Run a deployment** (simplest, no setup) — chain to another flow. Pick the `alert-receiver` deployment. The UI generates a form with one input per parameter the deployment expects. Fill it from the snippet below:
+        - **`alertname`**: `automation-fired`
+        - **`status`**: `firing`
+        - **`alert_group`**: paste this JSON object as-is (everything from `{` to `}`):
+            ```json
+            {"alerts": [{"labels": {"device": "srl1", "peer_address": "10.1.2.2", "afi_safi_name": "ipv4-unicast"}}], "groupLabels": {"alertname": "automation-fired"}, "status": "firing"}
+            ```
         This is the same payload shape Step 4B used as a direct trigger — the automation will kick `alert-receiver` with a synthesised alert each time `quarantine_bgp_flow` completes.
     - **Send a notification** — needs a notification block (Slack, Discord, Mattermost, PagerDuty, email, etc.) configured with credentials first. None ship pre-wired in the lab. Skip unless you have a target system you want to wire up live.
 4. Save the automation.
