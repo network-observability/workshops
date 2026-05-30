@@ -1,7 +1,14 @@
 # srl1 telemetry — RAW gNMI shape (`srl_*` names + `source` tag).
-# Registered on sonda-server; telegraf-srl1 scrapes the per-scenario
-# /metrics endpoints and normalizes the shapes to the canonical schema.
+# Registered on sonda-server; telegraf-srl1 scrapes the aggregate /metrics
+# endpoint and normalizes the shapes to the canonical schema.
 # Broken-on-purpose: BGP peer 10.1.99.2 and interface ethernet-1/11.
+#
+# Cascade-affected entries (healthy peers + healthy interfaces) carry a
+# `while:` clause that pauses them while a matching cascade scenario is
+# running. `if_unresolved: open` keeps them emitting at rest (no cascade
+# POSTed). Telegraf scrapes with `?include_state=running,unresolved` so
+# paused entries fall out of the aggregate during a cascade — sonda's
+# inversion pattern (see davidban77/sonda PR #438 docs, Pattern B).
 ---
 version: 2
 kind: runnable
@@ -12,6 +19,8 @@ description: "AutoCon5 srl1 telemetry — raw gNMI shape, normalized by telegraf
 
 defaults:
   rate: 0.1
+  # Required by sonda when an entry has `while:`. Effectively forever.
+  duration: 8760h
 
 scenarios:
   # BGP peers
@@ -22,6 +31,12 @@ scenarios:
       source: srl1
       peer_address: "10.1.2.2"
       neighbor_asn: "65102"
+    while:
+      scenario_name: autocon5-cascade-srl1-bgp-10-1-2-2
+      ref: cascade_active
+      op: "<"
+      value: 1
+      if_unresolved: open
 
   - id: bgp_peer_10_1_7_2
     signal_type: metrics
@@ -30,6 +45,12 @@ scenarios:
       source: srl1
       peer_address: "10.1.7.2"
       neighbor_asn: "65102"
+    while:
+      scenario_name: autocon5-cascade-srl1-bgp-10-1-7-2
+      ref: cascade_active
+      op: "<"
+      value: 1
+      if_unresolved: open
 
   - id: bgp_peer_10_1_99_2_broken
     signal_type: metrics
@@ -63,6 +84,12 @@ scenarios:
     labels:
       source: srl1
       name: "ethernet-1/1"
+    while:
+      scenario_name: autocon5-cascade-srl1-intf-ethernet-1-1
+      ref: cascade_active
+      op: "<"
+      value: 1
+      if_unresolved: open
 
   - id: intf_ethernet_1_10
     signal_type: metrics
@@ -70,6 +97,12 @@ scenarios:
     labels:
       source: srl1
       name: "ethernet-1/10"
+    while:
+      scenario_name: autocon5-cascade-srl1-intf-ethernet-1-10
+      ref: cascade_active
+      op: "<"
+      value: 1
+      if_unresolved: open
 
   - id: intf_ethernet_1_11_broken
     signal_type: metrics

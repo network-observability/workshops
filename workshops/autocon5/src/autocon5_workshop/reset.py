@@ -20,10 +20,15 @@ import typer
 from nobs._console import console, note, ok, warn
 
 _WORKSHOP_DEVICES = ("srl1", "srl2")
+# Cascade signal scenarios — DELETEing these triggers sonda to mark the
+# gated cascade overrides as `unresolved` (their `while:` ref disappears).
+# With no `if_unresolved` set on the override entries, they stop emitting,
+# and matching baselines transition back to running. See flap.py +
+# sonda/catalog/srl{1,2}-metrics.yaml for the inversion-pattern wiring.
 _CASCADE_NAMES = (
+    "cascade_active",
     "incident_backup_link_utilization",
     "incident_latency_ms",
-    "interface_oper_state",
 )
 _WORKSHOP_SILENCE_HINTS = ("Workshop", "workshop", "autocon")
 

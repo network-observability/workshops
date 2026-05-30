@@ -4,6 +4,10 @@
 # everything to the canonical schema and re-exposes them as a Prometheus
 # scrape target. Broken-on-purpose: BGP peer 10.1.11.1 and interface
 # ethernet-1/11.
+#
+# Cascade-affected entries carry a `while:` clause that pauses them while
+# a matching cascade scenario is running. See srl1-metrics.yaml header
+# for the inversion-pattern rationale.
 ---
 version: 2
 kind: runnable
@@ -14,6 +18,8 @@ description: "AutoCon5 srl2 telemetry — raw SNMP shape, normalized by telegraf
 
 defaults:
   rate: 0.1
+  # Required by sonda when an entry has `while:`. Effectively forever.
+  duration: 8760h
 
 scenarios:
   # BGP peers
@@ -24,6 +30,12 @@ scenarios:
       agent_host: srl2
       bgpPeerRemoteAddr: "10.1.2.1"
       bgpPeerRemoteAs: "65101"
+    while:
+      scenario_name: autocon5-cascade-srl2-bgp-10-1-2-1
+      ref: cascade_active
+      op: "<"
+      value: 1
+      if_unresolved: open
 
   - id: bgp_peer_10_1_7_1
     signal_type: metrics
@@ -32,6 +44,12 @@ scenarios:
       agent_host: srl2
       bgpPeerRemoteAddr: "10.1.7.1"
       bgpPeerRemoteAs: "65101"
+    while:
+      scenario_name: autocon5-cascade-srl2-bgp-10-1-7-1
+      ref: cascade_active
+      op: "<"
+      value: 1
+      if_unresolved: open
 
   - id: bgp_peer_10_1_11_1_broken
     signal_type: metrics
@@ -65,6 +83,12 @@ scenarios:
     labels:
       agent_host: srl2
       ifDescr: "ethernet-1/1"
+    while:
+      scenario_name: autocon5-cascade-srl2-intf-ethernet-1-1
+      ref: cascade_active
+      op: "<"
+      value: 1
+      if_unresolved: open
 
   - id: intf_ethernet_1_10
     signal_type: metrics
@@ -72,6 +96,12 @@ scenarios:
     labels:
       agent_host: srl2
       ifDescr: "ethernet-1/10"
+    while:
+      scenario_name: autocon5-cascade-srl2-intf-ethernet-1-10
+      ref: cascade_active
+      op: "<"
+      value: 1
+      if_unresolved: open
 
   - id: intf_ethernet_1_11_broken
     signal_type: metrics
