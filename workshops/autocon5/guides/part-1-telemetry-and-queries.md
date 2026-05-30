@@ -127,7 +127,12 @@ Six lines now. srl2's healthy interfaces hit **~12,500 bytes/sec**, the broken `
 nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1
 ```
 
-One run of the command posts a single declarative cascade to sonda — interface flaps for 4 minutes on a 30s-up / 60s-down cadence, BGP follows after a 10s hold-down (real flaps don't take BGP down instantly), and every gated metric snaps back the moment the interface returns. The bullet list further down spells out the per-signal beats; you don't drive the recovery, the cascade does.
+One run of this command kicks off a single flap event on `ethernet-1/1`. Here's what's about to happen:
+
+- **Interface bounces** — 30 seconds up, 60 seconds down, repeat. Runs for 4 minutes total.
+- **BGP follows ~10 seconds after each drop** — real flaps don't take BGP down instantly; routers wait briefly before declaring a peer dead.
+- **Interface traffic stops while the link is down** — no packets flow through a downed interface, so the byte counter stops climbing.
+- **Everything recovers on its own** — you don't have to clear anything. The moment the interface comes back up, BGP reconnects, traffic resumes, and the dashboards go green.
 
 ??? tip "Trip just the flap, not BGP"
 
@@ -147,11 +152,20 @@ bgp_oper_state{device="srl1", peer_address="10.1.2.2"}
 bgp_prefixes_accepted{device="srl1", peer_address="10.1.2.2"}
 ```
 
-Switch all three to `Time series` view. Run `flap-interface` and watch each one in turn:
+```promql
+rate(interface_in_octets{device="srl1", name="ethernet-1/1"}[1m]) * 8 / 1000
+```
+
+Switch all four to `Time series` view. Run `flap-interface` and watch each one in turn:
 
 - The interface metric flips between `1` (up) and `2` (down) on the 30s-up / 60s-down cadence.
 - `bgp_oper_state` follows from `1` to `2` after a ~10s hold-down. The lag is real (matches a hold-down timer), but Prometheus's 15s scrape interval sometimes lands the interface and BGP transitions in the same sample — so the gap is visible if you happen to catch a scrape mid-window, invisible otherwise.
 - Prefix counters drop to `0` shortly after `bgp_oper_state` — same cascade signal drives both, but Telegraf's 10s scrape of sonda plus Prom's 15s scrape of Telegraf can put them in adjacent samples (so don't be surprised if `bgp_oper` flips one scrape before the prefix counters).
+- Interface traffic drops to `0 kb/s` during each DOWN phase. Here's the chain of cause and effect:
+    - `rate()` measures how fast the byte counter is going up.
+    - During DOWN, no traffic is flowing through the interface, so no bytes get added to the counter.
+    - The counter itself doesn't disappear — it just sits at whatever number it had reached when the interface went down.
+    - When the interface comes back up, traffic starts flowing again and the counter picks up where it left off — no fake spike, no false alarm.
 - The moment the interface returns to up, every gated series snaps back: `bgp_oper_state` goes to `1`, prefix counters go to `10`. Dashboards go green within seconds.
 
 Then briefly switch one tab to the `loki` datasource:

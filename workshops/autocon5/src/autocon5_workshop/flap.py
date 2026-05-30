@@ -43,8 +43,6 @@ _DEVICE_CONFIG: dict[str, dict[str, Any]] = {
         "asn_label": "neighbor_asn",
         "collection_type": "gnmi",
         "oper_state_metric": "srl_interface_oper_state",
-        "in_octets_metric": "srl_interface_in_octets",
-        "out_octets_metric": "srl_interface_out_octets",
         "bgp_metrics": {
             "srl_bgp_oper_state": 2.0,
             "srl_bgp_neighbor_state": 2.0,
@@ -61,8 +59,6 @@ _DEVICE_CONFIG: dict[str, dict[str, Any]] = {
         "asn_label": "bgpPeerRemoteAs",
         "collection_type": "snmp",
         "oper_state_metric": "ifOperStatus",
-        "in_octets_metric": "ifHCInOctets",
-        "out_octets_metric": "ifHCOutOctets",
         "bgp_metrics": {
             "cbgpPeerOperStatus": 2.0,
             "bgpPeerState": 2.0,
@@ -162,14 +158,6 @@ def flap_interface(
             help="Bearer token if sonda-server has SONDA_API_KEY set; empty otherwise.",
         ),
     ] = "",
-    prom_query_url: Annotated[
-        str,
-        typer.Option(
-            "--prom-query-url",
-            envvar="SONDA_PROM_QUERY_URL",
-            help="Prometheus query API — seeds the cascade's frozen octet counter from the canonical series.",
-        ),
-    ] = "http://localhost:9090",
     follow: Annotated[
         bool,
         typer.Option(
@@ -193,10 +181,6 @@ def flap_interface(
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
 
-    # Seed the cascade's frozen octet values from Prom so the counter doesn't
-    # rewind when the cascade takes over during the DOWN phase.
-    in_octet_start, out_octet_start = _query_baseline_octet_values(prom_query_url, device, interface)
-
     posts: list[tuple[str, str, dict[str, Any]]] = [
         (
             "interface",
@@ -209,8 +193,6 @@ def flap_interface(
                 down_duration=down_duration,
                 cascade_delay=cascade_delay,
                 loki_url=loki_url,
-                in_octet_start=in_octet_start,
-                out_octet_start=out_octet_start,
             ),
         ),
     ]
@@ -287,16 +269,17 @@ def _build_interface_cascade(
     down_duration: str,
     cascade_delay: str,
     loki_url: str,
-    in_octet_start: float,
-    out_octet_start: float,
 ) -> dict[str, Any]:
     cfg = _DEVICE_CONFIG[device]
     intf_label = cfg["interface_label"]
     interface_labels = {intf_label: interface, "collection_type": cfg["collection_type"]}
 
     scenarios: list[dict[str, Any]] = [
-        # The cascade signal — drives both cascade emitters' gate and the
-        # baseline's `while:` clause (cross-POST resolution via scenario_name).
+        # The cascade signal — drives the cascade's oper_state override and
+        # the baseline's `while:` clause (cross-POST resolution via scenario_name).
+        # Octet counters use Pattern C (`delay.close.snap_to` on baseline
+        # pack overrides) — they freeze at last value during DOWN via the
+        # `held` lifecycle, no cascade-side emitter needed.
         {
             "id": "cascade_active",
             "signal_type": "metrics",
@@ -309,33 +292,13 @@ def _build_interface_cascade(
                 "down_value": 1,
             },
         },
-        # oper_state=DOWN while cascade_active>0. Baseline emits=UP while
-        # cascade_active<1; the two never overlap.
+        # oper_state=DOWN while cascade_active>0. Baseline goes to paused
+        # (no snap_to) so cascade's value takes over cleanly.
         {
             "id": "cascade_oper_state",
             "signal_type": "metrics",
             "name": cfg["oper_state_metric"],
             "generator": {"type": "constant", "value": 2.0},
-            "while": {"ref": "cascade_active", "op": ">", "value": 0},
-            "labels": dict(interface_labels),
-        },
-        # Frozen octet values during DOWN phase. Seeded from Prom so the
-        # canonical counter doesn't rewind at the up→down transition.
-        {
-            "id": "cascade_in_octets",
-            "signal_type": "metrics",
-            "name": cfg["in_octets_metric"],
-            "metric_type": "counter",
-            "generator": {"type": "constant", "value": in_octet_start},
-            "while": {"ref": "cascade_active", "op": ">", "value": 0},
-            "labels": dict(interface_labels),
-        },
-        {
-            "id": "cascade_out_octets",
-            "signal_type": "metrics",
-            "name": cfg["out_octets_metric"],
-            "metric_type": "counter",
-            "generator": {"type": "constant", "value": out_octet_start},
             "while": {"ref": "cascade_active", "op": ">", "value": 0},
             "labels": dict(interface_labels),
         },
@@ -479,34 +442,6 @@ def _flatten_created(payload: dict) -> list[dict]:
     if "id" in payload:
         return [payload]
     return []
-
-
-def _query_baseline_octet_values(prom_query_url: str, device: str, interface: str) -> tuple[float, float]:
-    """Return current `interface_in/out_octets` values from Prometheus.
-
-    Seeds the cascade's frozen octet counter so it picks up where the
-    baseline left off when the cascade enters its DOWN phase.
-    """
-    base = prom_query_url.rstrip("/")
-    queries = {
-        "in": f'interface_in_octets{{device="{device}",name="{interface}"}}',
-        "out": f'interface_out_octets{{device="{device}",name="{interface}"}}',
-    }
-    values: dict[str, float] = {"in": 0.0, "out": 0.0}
-    for direction, query in queries.items():
-        try:
-            r = requests.get(f"{base}/api/v1/query", params={"query": query}, timeout=5)
-            r.raise_for_status()
-            results = r.json().get("data", {}).get("result", [])
-        except requests.RequestException:
-            continue
-        if not results:
-            continue
-        try:
-            values[direction] = float(results[0]["value"][1])
-        except (KeyError, IndexError, ValueError, TypeError):
-            continue
-    return values["in"], values["out"]
 
 
 def _follow_until_done(sonda_url: str, ids: list[str], headers: dict[str, str]) -> None:
