@@ -197,7 +197,7 @@ services:
 
   grafana:
     container_name: grafana
-    image: ${GRAFANA_IMAGE:-docker.io/grafana/grafana:13.0.1}
+    image: ${GRAFANA_IMAGE:-docker.io/grafana/grafana:13.0.1-security-01}
     ports:
       - "3000:3000"
     volumes:
