@@ -275,14 +275,29 @@ In **Edit** mode, click **`+`** in the right sidebar, then **Group into tabs**. 
 
 ### Extend the Interface Traffic panel with a per-device aggregate
 
-Open the existing **Interface Traffic** panel in edit mode. The per-interface queries already in the panel multiply by `* 8` to convert bytes/s into bits/s — anything you add must do the same or it'll render 8× smaller than the existing lines. Add a second query (the **+ Query** button below the first one) for the in+out aggregate, with the same unit conversion and the same rate window as the existing queries:
+Open the existing **Interface Traffic** panel in edit mode. The per-interface queries already in the panel multiply by `* 8` to convert bytes/s into bits/s — anything you add must do the same or it'll render 8× smaller than the existing lines.
+
+#### 1. Add the aggregate query
+
+Click **+ Add query** below the first query. Paste the in+out aggregate, with the same unit conversion and the same rate window as the existing queries:
 
 ```promql
 sum(rate(interface_in_octets{device="$device"}[$__rate_interval])) * 8
   + sum(rate(interface_out_octets{device="$device"}[$__rate_interval])) * 8
 ```
 
-In the right-hand options, find **Overrides** and add an override on the new series — set its line width to `3` and its colour to something that stands out. Now the panel shows per-interface lines plus a single thicker line for the device-wide total — same units, same scale, the aggregate sits naturally above the per-interface lines instead of looking like a flatline near zero.
+#### 2. Name the new series so the override can target it
+
+Below the query, in the per-query **Options** row, set **Legend** to **Custom** and type `Summary` in the field next to it. Without this step Grafana auto-names the series from its labels, which makes the next step harder — you'd have to target a label-based name like `{}` instead of a stable, friendly one.
+
+#### 3. Make it visually stand out
+
+In the right-hand options panel, scroll to **Overrides** → **+ Add field override** → **Fields with name** → pick `Summary` from the dropdown. Then click **+ Add override property** (once per property) and add:
+
+- **Graph styles → Line width**: `3` (thicker than the per-interface lines)
+- **Graph styles → Line style**: `Dash` (or pick a distinct colour instead — whichever reads more cleanly on your screen)
+
+Now the panel shows per-interface lines plus a single thicker, dashed `Summary` line for the device-wide total — same units, same scale, the aggregate sits naturally above the per-interface lines instead of looking like a flatline near zero.
 
 ### Build a flap-history table with drill-through
 
