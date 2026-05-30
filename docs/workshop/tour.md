@@ -106,7 +106,7 @@ Note the metric name (`srl_bgp_oper_state`) and the `source="srl1"` tag — that
 srl2 uses the SNMP shape, where the device tag is `agent_host`:
 
 ```bash
-curl -s 'http://localhost:8085/metrics?label=agent_host:srl2' | grep '^bgpPeerState' | head -1
+curl -s 'http://localhost:8085/metrics?label=agent_host:srl2' | grep '^bgpPeerState{' | grep '10.1.2.1' | head -1
 ```
 
 ```text
