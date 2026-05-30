@@ -83,9 +83,14 @@ You're adding a **flap rate** panel: how many UPDOWN log events per minute, brok
 
 ### 1. Enter edit mode
 
-> *"Click Edit, top right. Then Add panel → Add visualization."*
+> *"Click Edit, top right of the dashboard. The floating sidebar on the right is where you add things."*
 
-You should land in Grafana's panel editor — query box at the bottom, panel preview at the top, options on the right.
+Grafana 13's edit flow is a two-step add:
+
+1. Click **Edit** (top-right corner of the dashboard). A floating sidebar appears on the right with icons: `+ ⚙ 💬 {} ↓ ≡ ⇄`.
+2. Click the **`+`** icon (top one — Add). A side panel slides in with **Panel**, **Group layouts** (Group into rows, Group into tabs), and **Dashboard controls** (Variable, Annotation query, Link).
+3. Click **Panel**. An empty panel lands on the dashboard, and the right sidebar replaces with a **pre-config** view: Title, Description, Transparent background, Repeat options.
+4. Click **Configure** (the big blue button at the top of the pre-config) to enter the full panel editor — query box at the bottom, panel preview at the top, visualization options on the right.
 
 > New to Grafana? The [Grafana section of the Tour](../../../docs/workshop/tour.md#grafana-dashboards-and-explore) walks you through the dashboards, the Explore mode, and what the UI is for — keep it open in another tab while you build.
 
@@ -139,7 +144,12 @@ In the right-hand options panel, panel-type dropdown at the top: choose **Time s
 
 > *"Title and description matter. The panel needs to tell the next on-call what they're looking at without you being there to explain it."*
 
-Scroll the right-hand options to **Panel options**:
+You can set these in two places — pick whichever is in front of you:
+
+- **In the pre-config sidebar** before you clicked Configure (the Title and Description fields are right at the top).
+- **In the full editor**, scroll the right-hand options to **Panel options** → Title / Description.
+
+Either way, use:
 
 - **Title**: `Flap rate (per 2 minutes)`
 - **Description**: `UPDOWN log events per interface in a rolling 2-minute window. Above 3, the PeerInterfaceFlapping alert fires — the panel uses the same window so the red threshold line is the alert condition.`
@@ -166,7 +176,7 @@ Then under **Graph styles** → **Show thresholds**, pick `As lines`. **You shou
 
 ### 7. Save
 
-Top right, **Apply** to drop back to the dashboard, then **Save dashboard** (disk icon, top right of the dashboard). Grafana confirms `Dashboard saved`. The new panel is now part of `Workshop Lab 2026`.
+Top right of the panel editor, click **Save** to return to the dashboard. Then click **Save** (the blue button, top-right of the dashboard) to persist the change. Grafana confirms `Dashboard saved`. The new panel is now part of `Workshop Lab 2026`. Use **Exit edit** next to it when you're done editing for the session.
 
 ### 8. Drive a flap
 
@@ -227,6 +237,22 @@ Worth noting: `srl1` and `srl2` arrive through different upstream pipelines (gNM
 
 ## Stretch goals (optional — pick one if you have time)
 
+### Group the dashboard into tabs
+
+Grafana 13 added a new layout primitive — **Group into tabs** — that turns a single stacked dashboard into a tabbed one. The eight panels on **Workshop Lab 2026** are a lot to scroll past when you're triaging at 2am; tabs reduce visual noise by showing only the panels relevant to the question you're asking.
+
+In **Edit** mode, click **`+`** in the right sidebar, then **Group into tabs**. Drag panels into each tab using the layout below — a useful split for a real on-call:
+
+| Tab | Panels to include | What this tab answers |
+|---|---|---|
+| **Overview** | Devices · Interfaces · Firing alerts · Log lines (5m) | "Is anything wrong right now?" |
+| **Interfaces** | Interface Admin State · Interface Operational Status · Interface Traffic · Interface Logs | "What's the state of the device's interfaces?" |
+| **Flap** | Flap rate (per 2 minutes) · Flap history (the table you built above, if you did the table stretch goal) | "Which interface is flapping and how badly?" |
+
+**Save** the dashboard. Click between the tabs — each one only renders the panels in scope, so the page feels lighter and the query bar reacts faster. Drive a flap (`nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1`) and click into the **Flap** tab — the view is exactly what an on-call would open on a `PeerInterfaceFlapping` page.
+
+**Stop and notice.** Tabs are an organizational tool, not a functional one. The underlying queries don't change; what changes is *which questions the dashboard answers when you open it*. The Overview tab is for "is anything wrong"; the Flap tab is for "show me the symptom" — different operational questions, same dashboard, same data. Building this split before an incident means the page lands and the right view is already there.
+
 ### Extend the Interface Traffic panel with a per-device aggregate
 
 Open the existing **Interface Traffic** panel in edit mode. The per-interface queries already in the panel multiply by `* 8` to convert bytes/s into bits/s — anything you add must do the same or it'll render 8× smaller than the existing lines. Add a second query (the **+ Query** button below the first one) for the in+out aggregate, with the same unit conversion and the same rate window as the existing queries:
@@ -252,7 +278,7 @@ This is the densest stretch goal — budget ~20 minutes if you're new to Grafana
 
 #### 1. Add the panel
 
-Back on the **Workshop Lab 2026** dashboard, **Edit** → **Add panel → Add visualization**. Pick the **`loki`** datasource.
+Back on the **Workshop Lab 2026** dashboard: click **Edit**, click the **`+`** in the right floating sidebar, click **Panel**, then click **Configure** in the pre-config that appears. Pick the **`loki`** datasource.
 
 #### 2. Write the query
 
