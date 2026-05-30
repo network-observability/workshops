@@ -77,6 +77,9 @@ scenarios:
           value: 0.0
 
   # Interfaces
+  #
+  # Pattern C on the octet metrics — see srl1-metrics.yaml header for
+  # the inversion-pattern + held-counter rationale.
   - id: intf_ethernet_1_1
     signal_type: metrics
     pack: cisco_snmp_interface_raw
@@ -89,6 +92,11 @@ scenarios:
       op: "<"
       value: 1
       if_unresolved: open
+    overrides:
+      ifHCInOctets:
+        delay: {close: {duration: 0s, snap_to: 0}}
+      ifHCOutOctets:
+        delay: {close: {duration: 0s, snap_to: 0}}
 
   - id: intf_ethernet_1_10
     signal_type: metrics
@@ -102,6 +110,11 @@ scenarios:
       op: "<"
       value: 1
       if_unresolved: open
+    overrides:
+      ifHCInOctets:
+        delay: {close: {duration: 0s, snap_to: 0}}
+      ifHCOutOctets:
+        delay: {close: {duration: 0s, snap_to: 0}}
 
   - id: intf_ethernet_1_11_broken
     signal_type: metrics

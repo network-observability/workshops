@@ -11,6 +11,30 @@ signal at the right phase offset.
 Unlike `flap-interface` (which times the cascade in CLI code with
 `time.sleep` between `/events` POSTs), this command hands the entire
 cascade to sonda once and lets the server schedule emission.
+
+This command emits via `encoder/sink: remote_write` directly to
+Prometheus, NOT through the telegraf scrape path the rest of the
+workshop uses. This is intentional and load-bearing for the Advanced
+guide's Act 3:
+
+- The cascade uses `source=incident-cascade` as a scoping label that
+  the student queries with (`{source="incident-cascade"}`) to keep
+  incident signals visually separable from the lab's baseline noise.
+  The Advanced guide's "Stop and notice" callout teaches this label
+  as a scoping handle.
+- The remote_write path preserves the `source` label end-to-end.
+  Routing through telegraf-srl1 would have rewritten `source` →
+  `device`, collapsing the scoping handle the Advanced guide depends
+  on.
+- The label set differs from baselines (`pipeline=direct,
+  source=incident-cascade` vs the baseline's `pipeline=telegraf,
+  source=srl1`), so the two paths produce distinct Prom series with
+  no race condition — different label set = different timeseries.
+
+If you're considering "fixing" this to match flap.py's pull-path
+design, see workshops/autocon5/docs/data-pipelines.md "Why incident.py
+uses remote_write" — and plan for an Advanced-guide rewrite as part
+of the change.
 """
 
 from __future__ import annotations

@@ -87,11 +87,13 @@ You're adding a **flap rate** panel: how many UPDOWN log events per minute, brok
 
 You should land in Grafana's panel editor — query box at the bottom, panel preview at the top, options on the right.
 
+> New to Grafana? The [Grafana section of the Tour](../../../docs/workshop/tour.md#grafana-dashboards-and-explore) walks you through the dashboards, the Explore mode, and what the UI is for — keep it open in another tab while you build.
+
 ### 2. Pick the datasource
 
 > *"What datasource? Think about the data shape — flap rate is a count of log events, not a metric Prometheus is scraping for us."*
 
-Choose **`loki`** in the datasource picker. Flap rate is a *log-derived metric*, not a Prometheus counter — same pattern you saw in Part 1 exercise 10.
+Choose **`loki`** in the datasource picker. Flap rate is a *log-derived metric* — Loki counts log lines, not Prometheus samples. (Part 1 exercise 10 walks the same pattern if you want a refresher.)
 
 ### 3. Write the query
 
@@ -106,10 +108,10 @@ sum by (interface)(count_over_time({device="$device", vendor_facility_process="U
 Two things to notice:
 
 - `$device` is the dashboard variable. Grafana substitutes it before sending the query, so this panel becomes `srl1`-aware or `srl2`-aware automatically.
-- `{device="$device", vendor_facility_process="UPDOWN"}` is the same stream selector you used in Part 1 exercise 10 — `vendor_facility_process` is the normalized label both pipelines (`direct` and `vector`) emit on every interface UPDOWN log.
+- `{device="$device", vendor_facility_process="UPDOWN"}` is a *stream selector* — Loki uses these to pick which log streams to count. The label `vendor_facility_process="UPDOWN"` matches every interface state-change log line both pipelines (`direct` and `vector`) emit.
 - `count_over_time(...[2m])` counts UPDOWN log lines in a rolling 2-minute window — the same window the `PeerInterfaceFlapping` alert rule uses. `sum by (interface)` groups so each interface gets its own line.
 
-Click **Run query**. **At rest you'll see at most one line — `ethernet-1/11`, the always-broken interface — hovering at 1**, well below the alert threshold of 3. Healthy interfaces don't show up at all; if nothing is flapping, the panel is honest about that:
+Click **Run query**. **At rest you'll sometimes see a single line for `ethernet-1/11`, the always-broken interface, at 1 — well below the alert threshold of 3.** The broken-interface log emitter only fires one event every ~2 minutes, so the panel may show `1` right after one of those events and then go empty until the next one lands. Healthy interfaces don't show up at all; if nothing is flapping, the panel is honest about that:
 
 <figure class="section-preview" markdown>
 
@@ -122,7 +124,10 @@ Click **Run query**. **At rest you'll see at most one line — `ethernet-1/11`, 
 
 !!! tip "Empty panel?"
 
-    If you see "No data" instead of the expected lines, check the `Device` dropdown above the dashboard is set to a real device.
+    Two reasons the panel might look empty:
+
+    - The `Device` dropdown above the dashboard isn't set to a real device. Toggle it to `srl1` or `srl2`.
+    - The broken-interface log emitter fires only every ~2 minutes — the panel goes back to empty between events. Wait a minute or two for the next one to land.
 
 ### 4. Pick the panel type
 
@@ -147,17 +152,17 @@ Description shows up as a small `i` icon on the panel — students hovering it l
 
 The `PeerInterfaceFlapping` alert fires when `count_over_time({vendor_facility_process="UPDOWN"}[2m]) > 3`. Mirror that on the panel so the threshold line *is* the alert condition:
 
-In the right-hand options, scroll to **Thresholds**. Set:
+In the right-hand options pane, scroll down to find the **Thresholds** section — it's usually about eight sections down, past Panel options, Tooltip, Legend, Axis, and Graph styles. Set:
 
-| Color | Value |
-|-------|-------|
-| Green | base (default — keep it) |
-| Orange | `1` |
-| Red | `3` |
+| Color | Value | What it means |
+|-------|-------|---------------|
+| Green | base (default — keep it) | "everything's quiet" |
+| Orange | `1` | "early heads-up — at least one interface logged a state change in the last 2 minutes" |
+| Red | `3` | "alert firing — the `PeerInterfaceFlapping` rule's `> 3` condition has been crossed" |
 
 Then under **Graph styles** → **Show thresholds**, pick `As lines`. **You should now see two horizontal lines on the panel preview — orange at 1, red at 3.** A flap rate above the red line means an alert is firing.
 
-> Your senior glances over. *"Thresholds matching the alert rule? Good. When the line crosses the orange one, the alert is firing. The panel should make the alert visible, not duplicate it."*
+> Your senior glances over. *"Thresholds matching the alert rule? Good. When the line crosses the orange one, an interface just logged a state change — that's your early heads-up. When it crosses the red one, the alert is firing and someone's pager goes off. The panel makes both moments visible without a separate alerts pane."*
 
 ### 7. Save
 
@@ -180,7 +185,7 @@ This kicks off a 4-minute cascade with the interface cycling 30s up, 60s down. U
 ![Flap rate panel during a flap](../../../docs/assets/screenshots/flap-rate-flapping-light.png#only-light){ .screenshot loading=lazy }
 ![Flap rate panel during a flap](../../../docs/assets/screenshots/flap-rate-flapping-dark.png#only-dark){ .screenshot loading=lazy }
 
-<figcaption><strong>During a flap (~2 min in)</strong> — green line is <code>ethernet-1/1</code>, climbing fast past the orange threshold (1) and through the red threshold (3) on its way to 16+. You may also see a faint yellow line for <code>ethernet-1/11</code> at 1–2 — the broken-interface log emitter is stochastic at ~1 event / 2 min, so it isn't always in the rolling window. Either way, the flapped interface is the obvious anomaly against an otherwise quiet panel.</figcaption>
+<figcaption><strong>During a flap (~2 min in)</strong> — green line is <code>ethernet-1/1</code>, climbing fast past the orange threshold (1) and through the red threshold (3) on its way to 16+. You may also see a faint yellow series line for <code>ethernet-1/11</code> at 1–2 (that's the Grafana-assigned color for that interface, not a threshold) — the broken-interface log emitter is stochastic at ~1 event / 2 min, so it isn't always in the rolling window. Either way, the flapped interface is the obvious anomaly against an otherwise quiet panel.</figcaption>
 
 </figure>
 
@@ -192,7 +197,7 @@ This kicks off a 4-minute cascade with the interface cycling 30s up, 60s down. U
 - **Between cycles 1 and 2**: the line **plateaus** around `25` rather than dropping. The rolling 2-minute window still contains the events from cycle 1's down phase — they haven't aged out yet.
 - **Cycle 2 around t+120s**: cycle 2's down-phase events stack onto the still-in-window events from cycle 1, so the count climbs higher — typically `40–60`. The plateau-then-climb shape is what real flap-rate dashboards look like during an active flap.
 
-> Your senior taps the screen. *"Watch the orange line — that's where the alert is starting to fire. Watch the red line — that's where someone's pager goes off. The panel makes both moments visible without a separate alerts pane."*
+> Your senior taps the screen. *"Watch the orange line — that's the early heads-up, an interface just logged a state change. Watch the red line — that's where someone's pager goes off because the alert rule fired. The panel makes both moments visible without a separate alerts pane."*
 
 **Stop and notice.** This is the same query pattern that drives the `PeerInterfaceFlapping` alert in Part 3. The panel isn't decoration — it's a visual representation of the rule that's about to fire. When the on-call gets paged, this panel is what they look at first.
 
@@ -242,6 +247,8 @@ Pick any panel that doesn't already have one. Click edit, scroll to **Panel opti
 > Your senior leans back in. *"Time-series tells you the shape. A table tells you the list — which device, which interface, how many flaps, click here to investigate. Build the second one. Make the device column a link into Device Health so a click takes you straight to the right view."*
 
 You're adding a second panel: a table that summarises flap activity per device + interface over the last hour, with the **device** column as a clickable link into the **Device Health** dashboard, preserving the time window.
+
+This is the densest stretch goal — budget ~20 minutes if you're new to Grafana table panels, transformations, and data links. The [Grafana section of the Tour](../../../docs/workshop/tour.md#grafana-dashboards-and-explore) is a good companion tab while you work through it.
 
 #### 1. Add the panel
 

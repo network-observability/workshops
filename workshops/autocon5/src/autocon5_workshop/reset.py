@@ -29,6 +29,7 @@ _CASCADE_NAMES = (
     "cascade_active",
     "incident_backup_link_utilization",
     "incident_latency_ms",
+    "updown_logs_down",
 )
 _WORKSHOP_SILENCE_HINTS = ("Workshop", "workshop", "autocon")
 
@@ -82,6 +83,7 @@ def reset(
     _reapply_sonda_baselines()
     _expire_workshop_silences(alertmanager_url)
     _delete_cascade_scenarios(sonda_url)
+    _restart_sonda_server_if_cascade_wedged(sonda_url)
     if not skip_sonda_logs:
         _restart_sonda_logs_if_wedged(loki_url)
 
@@ -241,6 +243,65 @@ def _delete_cascade_scenarios(sonda_url: str) -> None:
 
     if deleted:
         console.print(f"  deleted {deleted} lingering cascade scenario(s)")
+
+
+def _restart_sonda_server_if_cascade_wedged(sonda_url: str) -> None:
+    """Detect baselines stuck in `paused` after a cascade-active DELETE.
+
+    Cross-POST `while:` downstreams should transition to `unresolved` (with
+    `if_unresolved: open` → resume emitting) when the upstream cascade is
+    deleted. In practice sonda sometimes leaves them in `paused`. Detect
+    that wedge by scanning for paused scenarios whose `pending_ref.scenario_name`
+    points at a workshop cascade prefix, and restart sonda-server + re-run
+    sonda-setup to reset state.
+    """
+    base = sonda_url.rstrip("/")
+    try:
+        scenarios = requests.get(f"{base}/scenarios", timeout=5).json().get("scenarios", [])
+    except requests.RequestException as exc:
+        warn(f"Sonda /scenarios fetch failed: {exc} — skipping wedge check")
+        return
+
+    wedged = 0
+    for scenario in scenarios:
+        if scenario.get("state") != "paused":
+            continue
+        sid = scenario.get("id")
+        if not sid:
+            continue
+        try:
+            detail = requests.get(f"{base}/scenarios/{sid}", timeout=3).json()
+        except requests.RequestException:
+            continue
+        scen_name = (detail.get("pending_ref") or {}).get("scenario_name", "")
+        if scen_name.startswith("autocon5-cascade-") or scen_name.startswith("incident-link-failover-"):
+            wedged += 1
+
+    if wedged == 0:
+        return
+
+    note(f"detected {wedged} wedged baseline(s) after cascade delete; restarting sonda-server")
+    import subprocess
+
+    try:
+        subprocess.run(
+            ["docker", "compose", "--project-name", "autocon5", "restart", "sonda-server"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd=_repo_root() / "workshops" / "autocon5",
+        )
+        time.sleep(5)
+        subprocess.run(
+            ["docker", "compose", "--project-name", "autocon5", "up", "sonda-setup"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd=_repo_root() / "workshops" / "autocon5",
+        )
+        console.print("  restarted sonda-server and re-applied baselines")
+    except subprocess.TimeoutExpired:
+        warn("sonda-server restart timed out")
 
 
 def _restart_sonda_logs_if_wedged(loki_url: str) -> None:

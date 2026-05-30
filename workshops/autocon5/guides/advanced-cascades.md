@@ -135,7 +135,7 @@ Empty for the first ~60 seconds — you'll see "no data" or a flat panel. Once t
 incident_latency_ms{source="incident-cascade"}
 ```
 
-Empty even longer. Only starts climbing once backup utilisation crosses ~70%. From there it ramps from ~5ms toward 150ms over three minutes.
+Empty even longer — latency only starts emitting once the backup has saturated past its baseline, so for the first couple of minutes the panel is silent. Once it lights up, it ramps from ~5ms toward 150ms over three minutes. The chain effect is a feature, not a bug: latency-as-a-symptom typically arrives a few minutes after the root cause is already in motion.
 
 **Stop and notice.** By the time latency is the visible problem, the actual root cause — the primary uplink fault — happened minutes ago. This is why incident timelines matter. The latency spike is a *symptom*. The flapping interface was the *cause*. If your alert fires on latency, your runbook needs to walk back through the cascade to find the real failure. The cascade is the story; the metrics are the chapters. Operators read incidents this way every day.
 

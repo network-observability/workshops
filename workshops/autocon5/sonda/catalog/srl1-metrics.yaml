@@ -78,6 +78,12 @@ scenarios:
           value: 0.0
 
   # Interfaces
+  #
+  # Pattern C on the octet metrics: `delay.close.snap_to` opts the octet
+  # step counters into `held` lifecycle on gate close, so `current_values`
+  # retains the last running value during cascade DOWN (sonda PR #440).
+  # `oper_state` deliberately has NO override — it should go to `paused`
+  # so the cascade's `cascade_oper_state=2` takes over during DOWN.
   - id: intf_ethernet_1_1
     signal_type: metrics
     pack: srlinux_gnmi_interface_raw
@@ -90,6 +96,11 @@ scenarios:
       op: "<"
       value: 1
       if_unresolved: open
+    overrides:
+      srl_interface_in_octets:
+        delay: {close: {duration: 0s, snap_to: 0}}
+      srl_interface_out_octets:
+        delay: {close: {duration: 0s, snap_to: 0}}
 
   - id: intf_ethernet_1_10
     signal_type: metrics
@@ -103,6 +114,11 @@ scenarios:
       op: "<"
       value: 1
       if_unresolved: open
+    overrides:
+      srl_interface_in_octets:
+        delay: {close: {duration: 0s, snap_to: 0}}
+      srl_interface_out_octets:
+        delay: {close: {duration: 0s, snap_to: 0}}
 
   - id: intf_ethernet_1_11_broken
     signal_type: metrics

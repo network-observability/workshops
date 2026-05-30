@@ -53,17 +53,27 @@ nobs autocon5 scenarios
 
 ```text
                                 Sonda scenarios
-┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━┓
-┃ ID                                   ┃ Name         ┃  Status ┃      Elapsed ┃
-┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━━┩
-│ 43ce9ec6-69e6-4399-b391-658aef80ab9e │ srl_interfa… │ running │ 46.807211768 │
-│ 89e1545f-fbd7-4697-8c91-eea2525676a1 │ bgpPeerInPr… │ running │ 46.792552712 │
-│ bfb5cb1e-9347-4dae-beea-f4b96f157c9f │ srl_interfa… │ running │ 46.807401224 │
-│ 113cbb45-a5b8-4ad8-8e37-48d6817688fc │ bgpPeerOutP… │ running │ 46.793196957 │
-│ bc393eea-4aa0-49dd-8310-7cdd924812ae │ bgpPeerState │ running │  46.79315354 │
-│ …                                    │ …            │ …       │ …            │
-└──────────────────────────────────────┴──────────────┴─────────┴──────────────┘
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━━━┓
+┃ ID                                   ┃ Name         ┃     Status ┃      Elapsed ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━━━┩
+│ e3c9b721-52ca-4d3b-ae78-56521e05600d │ ifOperStat…  │    running │ 317.78118…   │
+│ a588c688-fbd3-490a-aa11-0357c3f5b75d │ ping_resul…  │    running │ 317.78112…   │
+│ 4fa9f0b6-0452-48bb-817a-84f6ba3b188c │ cpu_used     │    running │ 317.80367…   │
+│ 0f1fac93-b0cb-406b-b5a1-80bb74619be0 │ srl_bgp_ad…  │    running │ 317.80353…   │
+│ d047315f-c34d-47f4-851c-b22bc63eefd2 │ ifOperStat…  │ unresolved │ 317.78128…   │
+│ 17363c1a-795d-4b86-837b-c8df891a3023 │ srl_interf…  │ unresolved │ 317.80277…   │
+│ cb568101-c33e-43ca-bf60-72a01b2808a6 │ bgpPeerInP…  │ unresolved │ 317.78173…   │
+│ 374c81cb-6c95-45cb-b03c-b24953fed282 │ srl_bgp_ne…  │ unresolved │ 317.80389…   │
+│ …                                    │ …            │ …          │ …            │
+└──────────────────────────────────────┴──────────────┴────────────┴──────────────┘
 ```
+
+You'll see two states in the **Status** column — `running` and `unresolved`. **Both are healthy at rest:**
+
+- **`running`** — the scenario is actively emitting samples right now (this is the obvious one).
+- **`unresolved`** — the scenario is in *standby*, waiting for another scenario to be posted before it switches mode. Most of these are the workshop's baseline scenarios for the cascade-affected interfaces and BGP peers — **they're still emitting their normal up-and-healthy values**, but lifecycle-wise they're parked, waiting on a `flap-interface` to kick things off. When you eventually run `nobs autocon5 flap-interface` in a later part, sonda posts a matching scenario that takes over for the duration of the flap; when it ends, these baselines automatically resume.
+
+The short version: **if every row says `running` or `unresolved`, the lab is healthy.** A `paused`, `held`, or `finished` row will only show up during or right after a flap — that's covered in Part 1. The `held` state is what an interface byte counter looks like during an outage: it doesn't tick (no traffic is flowing through a downed link), but it doesn't disappear either — you keep seeing the same value that was there right before the link went down, the same way a real device would behave.
 
 The raw version — same data, just `curl`:
 
@@ -96,7 +106,7 @@ Note the metric name (`srl_bgp_oper_state`) and the `source="srl1"` tag — that
 srl2 uses the SNMP shape, where the device tag is `agent_host`:
 
 ```bash
-curl -s 'http://localhost:8085/metrics?label=agent_host:srl2' | grep '^bgpPeerState' | head -1
+curl -s 'http://localhost:8085/metrics?label=agent_host:srl2' | grep '^bgpPeerState{' | grep '10.1.2.1' | head -1
 ```
 
 ```text
