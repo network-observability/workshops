@@ -106,14 +106,6 @@ The raw telemetry Sonda emits is shaped like what a real device puts on the wire
 
 Six UIs, one URL each. **[Tour the stack](tour.md)** is the single reference for how to reach Sonda server, Prometheus, Alertmanager, Grafana, Prefect, and Infrahub — what to click in each one, and where it shows up across the four parts. Keep it open in a second tab.
 
-## Driving an incident — `nobs autocon5 flap-interface`
-
-The lab ships with one main incident: a BGP cascade triggered by an interface flap. Run `nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1` and over four minutes you'll watch the interface go down, the BGP session collapse on the hold-down timer, dashboards turn red, alerts fire, and the automation pick it up. Use `--no-cascade` for a flap that only trips `PeerInterfaceFlapping` without bringing a BGP session down — that's the variant Part 1 uses while you're still building the mental model.
-
-??? info "How the cascade is wired (operator detail)"
-
-    The cascade is one declarative sonda scenario. `interface_oper_state` is driven by a `flap` generator; BGP per-peer metrics and the UPDOWN log stream are gated on the interface state with a `while:` clause and a 10-second hold-down. When the gate closes, each gated entry writes one literal recovery sample so dashboards snap green within a scrape cycle. Default duration: 4 minutes (30s up / 60s down). The reference YAML lives at [`sonda/scenarios/cascade-incident.yaml`](https://github.com/network-observability/workshops/blob/main/workshops/autocon5/sonda/scenarios/cascade-incident.yaml); the CLI rebuilds the body in memory for any `--device` / `--interface` you pass.
-
 ## The four parts
 
 <div class="grid cards" markdown>
