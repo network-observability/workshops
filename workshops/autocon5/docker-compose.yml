@@ -171,6 +171,9 @@ services:
     command:
       - --storage.tsdb.retention.size=512MB
       - --config.file=/etc/prometheus/prometheus.yml
+      # `nobs autocon5 incident` pushes via remote_write (intentional — preserves
+      # source=incident-cascade label end-to-end for the Advanced guide's Act 3).
+      # See docs/data-pipelines.md "Why incident.py uses remote_write".
       - --web.enable-remote-write-receiver
     tty: true
     volumes:

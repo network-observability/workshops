@@ -316,6 +316,32 @@ Re-kick sonda-setup explicitly if that happens:
 docker compose --project-name autocon5 restart sonda-setup
 ```
 
+## Why `incident.py` uses remote_write
+
+Every other workshop metric flows through the pull path — **sonda emits → Telegraf scrapes `/metrics` → Prometheus scrapes Telegraf**. `nobs autocon5 incident` is the exception: its cascade body uses `encoder/sink: remote_write` and pushes directly to Prometheus, bypassing Telegraf. This is intentional, not legacy.
+
+### Why the exception exists
+
+The Advanced guide's Act 3 teaches `source="incident-cascade"` as a scoping label — a query the student writes to filter incident signals away from the lab's baseline noise:
+
+```promql
+interface_oper_state{device="srl1", source="incident-cascade"}
+```
+
+The label is load-bearing for the lesson. But Telegraf-srl1's pipeline rewrites the `source` tag to `device` (per its `[[processors.rename]]` config), which would clobber `source=incident-cascade` → `device=incident-cascade` and lose the scoping handle the Advanced guide depends on. Pushing via `remote_write` keeps the `source` label intact end-to-end.
+
+### Why this doesn't cause a race
+
+The cascade emits with `{pipeline=direct, source=incident-cascade, device=srl1, ...}`. Baselines emit (after Telegraf normalization) with `{pipeline=telegraf, device=srl1, ...}`. The label sets are disjoint in two label keys (`source`, `pipeline`), so the two paths produce **distinct Prometheus time series** for the same metric name. There's no merge conflict, no last-write-wins race — same metric name, two different series.
+
+This is different from the dual-emitter design that PR #85 fixed in `flap-interface`, where baseline and cascade emitted with **the same** label set for the same metric. That genuinely raced; this doesn't.
+
+### Operational implications
+
+- The `--web.enable-remote-write-receiver` flag on Prometheus must stay enabled while `nobs autocon5 incident` exists.
+- `incident.py` is the only writer that uses this path. The flag is not load-bearing for anything else.
+- If a future PR rewrites the Advanced guide's Act 3 to not depend on `source="incident-cascade"`, this command can be migrated to the pull path and the receiver flag dropped. The header docstring in `src/autocon5_workshop/incident.py` flags this as a known refactor.
+
 ## Why two pipelines
 
 The pattern shows up in real networks:
