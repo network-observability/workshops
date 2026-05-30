@@ -336,7 +336,7 @@ On the right-hand sidebar, click the **All visualizations** tab and pick **Table
 Below the query box, click the **Transformations** tab → **Add transformation**. A search dialog opens with every available transformation as a tile.
 
 - Pick **Labels to fields**. Each Loki label (`device`, `interface`) becomes its own column.
-- Add a second transformation (click **Add another transformation**): **Organize fields by name**. Hide `Time` (the table doesn't need it), reorder so `device` is first and `interface` second, and rename the value column to `Total flaps`.
+- Add a second transformation (click **Add another transformation**): **Organize fields by name**. Hide `Time` (click the eye icon next to it — the table doesn't need it), reorder so `device` is first and `interface` second, and rename `Value #A` to `Total flaps` in the rename input next to that row.
 
 You should now see one row per `device + interface` pair, with three clean columns: `device`, `interface`, `Total flaps`.
 
