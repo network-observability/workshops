@@ -85,12 +85,12 @@ You're adding a **flap rate** panel: how many UPDOWN log events per minute, brok
 
 > *"Click Edit, top right of the dashboard. The floating sidebar on the right is where you add things."*
 
-Grafana 13's edit flow is a two-step add:
+Adding a panel in Grafana 13 takes a few clicks:
 
-1. Click **Edit** (top-right corner of the dashboard). A floating sidebar appears on the right with icons: `+ ⚙ 💬 {} ↓ ≡ ⇄`.
-2. Click the **`+`** icon (top one — Add). A side panel slides in with **Panel**, **Group layouts** (Group into rows, Group into tabs), and **Dashboard controls** (Variable, Annotation query, Link).
-3. Click **Panel**. An empty panel lands on the dashboard, and the right sidebar replaces with a **pre-config** view: Title, Description, Transparent background, Repeat options.
-4. Click **Configure** (the big blue button at the top of the pre-config) to enter the full panel editor — query box at the bottom, panel preview at the top, visualization options on the right.
+1. Click **Edit** (top-right corner of the dashboard). A right sidebar appears with several icons: `+ ⚙ 💬 {} ↓ ≡ ⇄` (the top one, `+`, is what we want).
+2. Click the **`+`** icon. An **Add** menu opens with **Panel**, **Group layouts** (Group into rows, Group into tabs), and **Dashboard controls** (Variable, Annotation query, Link).
+3. Click **Panel**. An empty panel lands on the dashboard, and the right sidebar changes to show the new panel's settings — Title, Description, Transparent background, Repeat options.
+4. Click the big blue **Configure** button at the top of those settings to open the panel editor — query box at the bottom, panel preview at the top, visualization options on the right.
 
 > New to Grafana? The [Grafana section of the Tour](../../../docs/workshop/tour.md#grafana-dashboards-and-explore) walks you through the dashboards, the Explore mode, and what the UI is for — keep it open in another tab while you build.
 
@@ -146,8 +146,8 @@ In the right-hand options panel, panel-type dropdown at the top: choose **Time s
 
 You can set these in two places — pick whichever is in front of you:
 
-- **In the pre-config sidebar** before you clicked Configure (the Title and Description fields are right at the top).
-- **In the full editor**, scroll the right-hand options to **Panel options** → Title / Description.
+- **In the panel settings sidebar** before you clicked Configure (the Title and Description fields are right at the top).
+- **In the panel editor**, scroll the right-hand options to **Panel options** → Title / Description.
 
 Either way, use:
 
@@ -176,7 +176,7 @@ Then under **Graph styles** → **Show thresholds**, pick `As lines`. **You shou
 
 ### 7. Save
 
-Top right of the panel editor, click **Save** to return to the dashboard. Then click **Save** (the blue button, top-right of the dashboard) to persist the change. Grafana confirms `Dashboard saved`. The new panel is now part of `Workshop Lab 2026`. Use **Exit edit** next to it when you're done editing for the session.
+Top right of the panel editor, click **Save** to return to the dashboard. Then click **Save** (the blue button, top-right of the dashboard) to save your work. Grafana confirms `Dashboard saved`. The new panel is now part of `Workshop Lab 2026`. Use **Exit edit** next to it when you're done editing for the session.
 
 ### 8. Drive a flap
 
@@ -249,9 +249,9 @@ In **Edit** mode, click **`+`** in the right sidebar, then **Group into tabs**. 
 | **Interfaces** | Interface Admin State · Interface Operational Status · Interface Traffic · Interface Logs | "What's the state of the device's interfaces?" |
 | **Flap** | Flap rate (per 2 minutes) · Flap history (the table you built above, if you did the table stretch goal) | "Which interface is flapping and how badly?" |
 
-**Save** the dashboard. Click between the tabs — each one only renders the panels in scope, so the page feels lighter and the query bar reacts faster. Drive a flap (`nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1`) and click into the **Flap** tab — the view is exactly what an on-call would open on a `PeerInterfaceFlapping` page.
+**Save** the dashboard. Click between the tabs — Grafana only loads the panels for the tab you're on, so the page feels lighter and the queries run faster. Drive a flap (`nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1`) and click into the **Flap** tab — the view is exactly what an on-call would open on a `PeerInterfaceFlapping` page.
 
-**Stop and notice.** Tabs are an organizational tool, not a functional one. The underlying queries don't change; what changes is *which questions the dashboard answers when you open it*. The Overview tab is for "is anything wrong"; the Flap tab is for "show me the symptom" — different operational questions, same dashboard, same data. Building this split before an incident means the page lands and the right view is already there.
+**Stop and notice.** Tabs only change how the dashboard is laid out — the panels and queries themselves don't change. What changes is *which questions the dashboard answers when you open it*. The Overview tab is for "is anything wrong"; the Flap tab is for "show me the symptom" — different operational questions, same dashboard, same data. Building this split before an incident means the page lands and the right view is already there.
 
 ### Extend the Interface Traffic panel with a per-device aggregate
 
@@ -278,7 +278,7 @@ This is the densest stretch goal — budget ~20 minutes if you're new to Grafana
 
 #### 1. Add the panel
 
-Back on the **Workshop Lab 2026** dashboard: click **Edit**, click the **`+`** in the right floating sidebar, click **Panel**, then click **Configure** in the pre-config that appears. Pick the **`loki`** datasource.
+Back on the **Workshop Lab 2026** dashboard: click **Edit**, click the **`+`** in the right sidebar, click **Panel**, then click **Configure** in the panel settings that appear. Pick the **`loki`** datasource.
 
 #### 2. Write the query
 
