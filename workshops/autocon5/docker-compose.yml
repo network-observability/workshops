@@ -101,8 +101,12 @@ services:
     tty: true
     volumes:
       - ./telegraf/telegraf-srl1.conf.toml:/etc/telegraf/telegraf.conf
-    expose:
-      - "9005"
+    # Expose the normalized /metrics endpoint to the host so the Part 2
+    # bonus tip can link directly. Prometheus still scrapes via the
+    # Docker network address `telegraf-srl1:9005`; this just adds a
+    # parallel host-side entry point at localhost:9005.
+    ports:
+      - "9005:9005"
     depends_on:
       sonda-setup:
         condition: service_completed_successfully
@@ -121,8 +125,10 @@ services:
     tty: true
     volumes:
       - ./telegraf/telegraf-srl2.conf.toml:/etc/telegraf/telegraf.conf
-    expose:
-      - "9005"
+    # Same host-port exposure as telegraf-srl1. Mapped to host port 9006
+    # to avoid colliding with telegraf-srl1's 9005.
+    ports:
+      - "9006:9005"
     depends_on:
       sonda-setup:
         condition: service_completed_successfully

@@ -245,13 +245,13 @@ Worth noting: `srl1` and `srl2` arrive through different upstream pipelines (gNM
 
     `srl1`'s metrics emit as raw gNMI shapes (`srl_*` field names) and Telegraf-srl1 normalizes them; `srl2`'s metrics emit as raw SNMP shapes (`ifHC*`, `bgpPeer*`) and Telegraf-srl2 normalizes them. By the time your panel queries them, both look identical — same metric names, same label keys. Hover the **Collection Type** panel on the Device Health dashboard to see which raw shape each device came in as.
 
-    **See it yourself — three URLs walk the three layers:**
+    **See it yourself — five URLs walk the three layers of each pipeline:**
 
-    1. **Raw gNMI shape from srl1** (sonda-server, before Telegraf): <http://localhost:8085/metrics?label=source:srl1>. Look for `srl_*` metric names (e.g. `srl_interface_oper_state`, `srl_bgp_oper_state`) and the `source="srl1"` tag — this is what an SR Linux device would emit on its gNMI stream.
-    2. **Raw SNMP shape from srl2** (sonda-server, before Telegraf): <http://localhost:8085/metrics?label=agent_host:srl2>. Look for the IF-MIB / BGP4-MIB names (`ifHCInOctets`, `bgpPeerState`, `cbgpPeerOperStatus`) and the `agent_host="srl2"` tag — the classic SNMP shape.
-    3. **Normalized view (after Telegraf, in Prometheus)**: <http://localhost:9090/graph?g0.expr=interface_oper_state%7Bdevice%3D~%22srl1%7Csrl2%22%7D&g0.tab=1>. A single query for `interface_oper_state{device=~"srl1|srl2"}` — both pipelines now produce identical series with the same metric name (`interface_oper_state`) and the same label keys (`device`, `name`, ...). The vendor difference is gone at this layer.
-
-    Telegraf's own output — the intermediate step between sonda and Prometheus — isn't exposed to the host (it only listens on the Docker network for Prometheus to scrape). If you want to peek at it directly, run `docker compose --project-name autocon5 exec telegraf-srl1 wget -qO- http://localhost:9005/metrics | head`.
+    1. **Raw gNMI from srl1** (sonda-server, before Telegraf): <http://localhost:8085/metrics?label=source:srl1>. Look for `srl_*` metric names (`srl_interface_oper_state`, `srl_bgp_oper_state`) and the `source="srl1"` tag — what an SR Linux device emits on its gNMI stream.
+    2. **Raw SNMP from srl2** (sonda-server, before Telegraf): <http://localhost:8085/metrics?label=agent_host:srl2>. Look for the IF-MIB / BGP4-MIB names (`ifHCInOctets`, `bgpPeerState`, `cbgpPeerOperStatus`) and the `agent_host="srl2"` tag — the classic SNMP shape.
+    3. **Telegraf-srl1's normalized output**: <http://localhost:9005/metrics>. The `srl_*` names are now plain `interface_*` / `bgp_*`, and the `source` tag has been renamed to `device`. Same data, canonical shape.
+    4. **Telegraf-srl2's normalized output**: <http://localhost:9006/metrics>. The SNMP names (`ifHCInOctets`, etc.) are now also `interface_*` / `bgp_*`, and `agent_host` is now `device`. Identical to telegraf-srl1's output above — except for one label we keep on purpose: `collection_type=gnmi` vs `collection_type=snmp`, so you can debug which pipeline a sample came from.
+    5. **Final view in Prometheus**: <http://localhost:9090/graph?g0.expr=interface_oper_state%7Bdevice%3D~%22srl1%7Csrl2%22%7D&g0.tab=1>. A single query for `interface_oper_state{device=~"srl1|srl2"}` returns rows from both devices in the same shape — the vendor difference is invisible at this layer.
 
 > Your senior nods at the screen. *"That's the panel. Six hours from now when somebody on the rotation gets paged on a similar shape, this view is on screen the moment they open the dashboard. Ten minutes saved off the next triage. That's the work."*
 
@@ -283,10 +283,6 @@ sum(rate(interface_in_octets{device="$device"}[$__rate_interval])) * 8
 ```
 
 In the right-hand options, find **Overrides** and add an override on the new series — set its line width to `3` and its colour to something that stands out. Now the panel shows per-interface lines plus a single thicker line for the device-wide total — same units, same scale, the aggregate sits naturally above the per-interface lines instead of looking like a flatline near zero.
-
-### Write a panel description in the workshop's voice
-
-Pick any panel that doesn't already have one. Click edit, scroll to **Panel options** → **Description**. Write one or two sentences in the same student-facing prose style — what to look for, when to worry. Save. Hover the `i` icon to confirm.
 
 ### Build a flap-history table with drill-through
 
