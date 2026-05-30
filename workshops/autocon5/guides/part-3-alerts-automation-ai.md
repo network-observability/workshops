@@ -924,10 +924,105 @@ There's no single right answer. The point is that the same tool isn't equally va
 ## Stretch goals (optional — pick one if you have time)
 
 - **Tail the Prefect flow logs in real time.** `nobs autocon5 logs prefect-flows`. Re-run `try-it --auto` and watch the flow narrate each path from the inside.
+
+    ??? success "Solution — what you'll see in the log stream"
+
+        Each `try-it --auto` cycle produces a burst of log lines, one per task as the flow runs through it. For a `proceed` path:
+
+        ```text
+        [collect] device=srl1 peer=10.1.99.2 afi=ipv4-unicast instance=default
+        [collect] sot.found=True maintenance=False intended=True expected_state=established reason='ip-mismatch-demo'
+           metrics={'admin_state': 1.0, 'oper_state': 5.0, 'received_routes': 0.0, ...}
+           logs collected: 50 lines
+        [policy] srl1:10.1.99.2
+           stage1 SoT-only → ok (intended, not in maintenance)
+           stage2 SoT + metrics → proceed (mismatch)
+        [annotate] decision=proceed reason=SoT expects peer up, but metrics show mismatch
+        [ai_rca] annotated: AI RCA disabled ...
+        [quarantine] silencing srl1:10.1.99.2 for 20m
+        [flow] action=quarantine silence_id=...
+        ```
+
+        The `[collect]` lines show the exact SoT + metric values the policy will see. The `[policy]` lines show which stage matched and why. The `[annotate]` line carries the same `decision` and `reason` you find in Loki under `{source="prefect"}`. Tailing the logs is the fastest debug loop when the flow returns an unexpected decision — every intermediate value is visible without a single LogQL query.
+
 - **Compare evidence between a healthy peer and a broken one.** `nobs autocon5 evidence srl1 10.1.2.2` (a healthy peer) vs `nobs autocon5 evidence srl1 10.1.99.2` (a broken one). Pay attention to which fields differ — that's the signal the deterministic policy keys on.
+
+    ??? success "Solution — what differs between the two"
+
+        Both peers share the same *intent* in the SoT (`expected_state: established`) — the SoT can't tell which one is broken on its own. What separates them is **reality**, in the metrics:
+
+        | Row | Healthy `10.1.2.2` | Broken `10.1.99.2` |
+        |---|---|---|
+        | SoT `expected_state` | `established` | `established` ← same |
+        | SoT `reason` | empty | `ip-mismatch-demo` |
+        | Metric `admin_state` | `1 (enable)` | `1 (enable)` ← same |
+        | Metric `oper_state` | `1 (established)` | `5 (active)` |
+        | Metric `received_routes` | `10` | `0` |
+        | Policy hint | `skip — peer matches SoT intent` | `proceed — SoT vs metrics mismatch` |
+
+        The policy fires `proceed` when `expected_state=established` AND `oper_state ≠ 1`. Both peers have the same SoT intent — the *gap* between intent and reality is what the policy keys on.
+
 - **Toggle maintenance on srl2 instead of srl1.** Re-run `try-it --auto` after toggling. Confirm the maintenance-skip path swaps which device gets skipped. (Reset with `--clear` afterwards.)
+
+    ??? success "Solution — verify in Loki that the skip swapped device"
+
+        After `nobs autocon5 maintenance --device srl2 --state` and re-running `try-it --auto`, run this in Grafana Explore on the Loki datasource:
+
+        ```logql
+        {source="prefect", workflow="autocon5_quarantine_bgp", decision="skip"} | json
+        ```
+
+        The most recent `skip` annotation should now show `device="srl2"` instead of `srl1`. The `message` is still `"device under maintenance"` — only which device was being evaluated changed.
+
+        The point of the exercise: the policy is **device-agnostic**. It consults the SoT for whichever device the alert payload names. Flipping maintenance on any device routes that device's alerts to skip, automatically. The decision logic isn't hard-coded to a particular device.
+
+        Don't forget `nobs autocon5 maintenance --device srl2 --clear` afterwards (or run `nobs autocon5 reset` — it clears both devices).
+
 - **Watch a path's annotations in Loki directly.** `{source="prefect"} | json` in Explore. Filter by `workflow="autocon5_quarantine_bgp"` and watch annotations land while you trigger paths.
+
+    ??? success "Solution — the audit-trail shape"
+
+        Each annotation has this shape (Grafana parses the JSON into a side panel when you click a row):
+
+        ```json
+        {
+          "timestamp": "...",
+          "severity": "info",
+          "message": "SoT expects peer up, but metrics show mismatch",
+          "labels": {
+            "decision": "proceed",
+            "device": "srl1",
+            "peer_address": "10.1.99.2",
+            "source": "prefect",
+            "workflow": "autocon5_quarantine_bgp"
+          }
+        }
+        ```
+
+        Add `| decision="proceed"` (or `decision="skip"` / `decision="resolved"`) to filter to one path. Triggering a flap or running `try-it --auto` in another tab produces fresh annotations in real time — flip the time picker's **Live** mode on to watch them stream in.
+
+        Step 5's unguided LogQL query (`sum by (decision) (count_over_time({source="prefect"}[1h]))`) rolls these annotations up by `decision` label — the same audit-trail data, just aggregated.
+
 - **Swap the AI RCA provider.** If you have an OpenAI or Anthropic key, change `AI_RCA_PROVIDER` to `openai` or `anthropic` and re-run a path. Compare the real LLM narrative against the demo provider's templated one — what does the LLM add that the template can't?
+
+    ??? success "Solution — guidance on the comparison"
+
+        The demo provider produces a templated narrative — it stitches evidence-bundle fields into the same paragraph structure every time:
+
+        ```text
+        ## Most likely cause
+        SoT expects peer 10.1.99.2 on srl1 to be established, with intent reason
+        'ip-mismatch-demo', but oper_state=5 (active), admin_state=1 (enable),
+        received_routes=0.
+        ```
+
+        A real LLM (OpenAI or Anthropic) typically adds:
+
+        - **Domain inference** — translates the raw numbers into operational hypotheses ("`oper_state=5` with `received_routes=0` is consistent with a TCP-level reachability failure or AS-number mismatch — the FSM is trying but not authenticating").
+        - **Wider context** — references the BGP state machine, common causes for "stuck in active", suggested next debug steps (traceroute, configured remote-as check).
+        - **Calibrated uncertainty** — phrases like "most likely" or "consistent with" rather than confident pronouncements.
+
+        The template can't do any of this — it can only fill slots. But the template is **deterministic** and **free**; the LLM is **inference-richer** but **non-deterministic** and costs per call. The trade-off is the lesson: the policy *decides what to act on*; the narrative — template or LLM — *explains why for a human reader*. Pick the right narrative tool for the audience and the budget.
 
 ## What you took away
 

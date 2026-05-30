@@ -275,6 +275,16 @@ In **Edit** mode, click **`+`** in the right sidebar, then **Group into tabs**. 
 
 **Stop and notice.** Tabs only change how the dashboard is laid out — the panels and queries themselves don't change. What changes is *which questions the dashboard answers when you open it*. The Overview tab is for "is anything wrong"; the Flap tab is for "show me the symptom" — different operational questions, same dashboard, same data. Building this split before an incident means the page lands and the right view is already there.
 
+??? success "Solution — what your dashboard looks like after the change"
+
+    The dashboard top should now show three tabs across the top — `Overview`, `Interfaces`, `Flap` — with only the active tab's panels rendering below. Click between them and check:
+
+    - **Overview** shows the four stat panels (Devices · Interfaces · Firing alerts · Log lines).
+    - **Interfaces** shows Interface Admin State · Interface Operational Status · Interface Traffic · Interface Logs.
+    - **Flap** shows your Flap rate panel (and Flap history if you also did the table stretch goal).
+
+    If a panel ended up in the wrong tab, drag it between tabs while in Edit mode. The provisioned YAML resets the layout on `nobs autocon5 restart grafana`, so don't worry about breaking anything permanently.
+
 ### Extend the Interface Traffic panel with a per-device aggregate
 
 Open the existing **Interface Traffic** panel in edit mode. The per-interface queries already in the panel multiply by `* 8` to convert bytes/s into bits/s — anything you add must do the same or it'll render 8× smaller than the existing lines.
@@ -300,6 +310,23 @@ In the right-hand options panel, scroll to **Overrides** → **+ Add field overr
 - **Graph styles → Line style**: `Dash` (or pick a distinct colour instead — whichever reads more cleanly on your screen)
 
 Now the panel shows per-interface lines plus a single thicker, dashed `Summary` line for the device-wide total — same units, same scale, the aggregate sits naturally above the per-interface lines instead of looking like a flatline near zero.
+
+??? success "Solution — what the panel looks like after the change"
+
+    Two queries in the panel, both multiplied by `* 8` (bits/s):
+
+    | Query | Expression | Legend |
+    |---|---|---|
+    | A (existing — in) | `rate(interface_in_octets{device="$device"}[$__rate_interval]) * 8` | (auto) |
+    | A (existing — out) | `rate(interface_out_octets{device="$device"}[$__rate_interval]) * 8` | (auto) |
+    | B (new) | `sum(rate(interface_in_octets{device="$device"}[$__rate_interval])) * 8 + sum(rate(interface_out_octets{device="$device"}[$__rate_interval])) * 8` | `Summary` (custom) |
+
+    Plus one **Override** on `Fields with name = Summary`:
+
+    - Graph styles → Line width: `3`
+    - Graph styles → Line style: `Dash` (or a distinct colour)
+
+    Result on screen: per-interface in/out lines tracking around ±50–100 kb/s, plus one thicker dashed `Summary` line sitting above them at roughly the absolute sum of the others.
 
 ### Build a flap-history table with drill-through
 
@@ -383,6 +410,22 @@ nobs autocon5 flap-interface --device srl1 --interface ethernet-1/10
 Within a minute, a row for `srl1 / ethernet-1/10` shows up with a climbing `Total flaps` count. Click the `srl1` cell. Grafana jumps to **Device Health**, scoped to `srl1`, on the same time range you were on.
 
 **Stop and notice.** Tables are the dashboard equivalent of "a list of things to investigate, each row a one-click entry into deeper context". The time-series panel above tells you *something is flapping*. The table tells you *which one, how badly, and here's the next dashboard*. The data-link override is what binds the two dashboards into one navigation flow — no copy-pasting device names, no losing the time range.
+
+??? success "Solution — what the table looks like after the change"
+
+    Three clean columns (no `Time`, no `Value #A` — those got hidden / renamed by the Organize-fields transformation), four rows at rest:
+
+    | device  | interface     | Total flaps                         |
+    |---------|---------------|-------------------------------------|
+    | srl1    | ethernet-1/1  | (number with horizontal LCD bar)    |
+    | srl1    | ethernet-1/11 | ~28 (mostly green bar)              |
+    | srl2    | ethernet-1/10 | (number with horizontal LCD bar)    |
+    | srl2    | ethernet-1/11 | ~28 (mostly green bar)              |
+
+    Visual cues:
+
+    - The `device` cells are blue underlined links. Clicking `srl1` takes you to **Device Health** with `var-device=srl1` and the dashboard's current time range carried forward.
+    - The `Total flaps` cells render as horizontal LCD gauges that fill green → orange → red as the count grows. Background noise (always-broken interfaces) sits around 28 (mostly green). An actively-flapping interface climbs past 60 in a few minutes and goes mostly red.
 
 ## What you took away
 

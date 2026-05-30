@@ -223,8 +223,55 @@ Then re-read what you wrote.
 ??? tip "Stretch goals — if you have time before lunch"
 
     - **Drive the same investigation on srl2.** Re-run the cascade with `--device srl2`. Notice that the existing `BgpSessionNotUp` alert was for srl1's broken peer; on srl2 the broken peer is `10.1.11.1`. The triage decision tree from Act 2 works the same; only the device label changes. Confirm your runbook stub still applies — if it doesn't, either it was too device-specific or you've found a real shape difference worth writing down.
+
+        ??? success "Solution — what to expect on srl2"
+
+            Running `nobs autocon5 incident --device srl2` produces the same cascade shape on srl2. The pre-existing `BgpSessionNotUp` alert for `srl2 → 10.1.11.1` (the deliberately-broken peer on the SNMP-shape device) was visible in Act 1 already.
+
+            Act 2's triage queries all work the same way — just change the device label and adjust the peer:
+
+            ```promql
+            bgp_oper_state{device="srl2", peer_address="10.1.11.1"}
+            ```
+
+            You'll see the same shape: `oper_state=5` (stuck in active) on a peer whose SoT says `expected_state=established`. The triage decision tree doesn't care about the device label — it's the same intent-vs-reality pattern.
+
+            If your runbook stub *didn't* apply when you swapped to srl2, it was either too device-specific ("check srl1's config") or accidentally encoded a vendor-shape assumption that doesn't survive the SNMP path.
+
     - **Predict the customer-impact window.** Given the timing you observed (backup utilisation crossing 70% around t=2½ min, latency ramping from there toward 150ms over the next three minutes), at what point would a customer's response-time SLO break? Use the queries from Act 3 to back the answer with data, not feel.
+
+        ??? success "Solution — the math"
+
+            Linear interpolation on latency:
+
+            - At t ≈ 2:30, latency starts at 5 ms.
+            - At t ≈ 5:30, latency hits 150 ms (3 min of ramp).
+            - `latency ≈ 5 + (t − 2:30) × (150 − 5) / 3` ms.
+
+            A typical web-service SLO target is **p99 < 200 ms total**, with maybe 30–50 ms of that budget allowed for backend round-trips. So latency above ~50 ms consumes the SLO budget; above ~100 ms breaks it.
+
+            - **50 ms reached at t ≈ 3:25** (start eating SLO budget — about 55 seconds after the primary's first DOWN edge).
+            - **100 ms reached at t ≈ 4:30** (SLO breach — about 2 minutes after the primary's first DOWN edge).
+
+            The lesson: by the time customers complain (p99 broken), the primary uplink fault is **already 3–4 minutes old**. The alert needs to fire on a root-cause signal (the flap, or backup utilisation crossing threshold), not on the latency symptom — otherwise you're permanently 3 minutes behind the customer impact.
+
     - **Compare the investigation arc to the automated path.** Run `nobs autocon5 try-it` from Part 3 — it walks the four alert paths automatically. Contrast: `try-it` is the automation handling routine cases without you. The investigation game you just walked is what you do when *automation isn't enough* — when you need to know what the workflow would have done, why, and whether to override it.
+
+        ??? success "Solution — the qualitative comparison"
+
+            Two different jobs, both useful:
+
+            | Aspect | Investigation (Acts 1–6) | Automation (`try-it`) |
+            |---|---|---|
+            | When you do it | Reactive, post-page, under pressure | Pre-computed, in calm |
+            | Latency | Minutes per query, hours for the full arc | Seconds end-to-end |
+            | What it produces | A runbook entry, a hypothesis, a fix | A categorised decision + an audit annotation |
+            | When it scales | When you have time and a specific question | When the alert volume exceeds human attention |
+            | When it doesn't | At 2am with 50 alerts firing simultaneously | When the situation is novel — outside the policy's rule set |
+
+            The lesson: automation handles routine cases (broken peer? mismatch? skip if in maintenance — one second per alert). Investigation handles the unusual cases — where you need to question the policy's reasoning, decide whether to override, or change the policy itself.
+
+            In production, both run in parallel: the flow handles 95% of alerts on autopilot, and the on-call human pays attention only to the 5% the policy escalates or that the human doesn't yet trust.
 
 ## What you took away
 
