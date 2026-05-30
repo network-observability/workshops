@@ -321,7 +321,11 @@ Toggle the query box to **Code** mode (the `Builder | Code` switch on the right 
 sum by (device, interface) (count_over_time({vendor_facility_process="UPDOWN"}[1h]))
 ```
 
-A 1-hour window is "what's been flapping today" — wider than the 2-minute alert window so the table holds stable rows even between flaps. Click **Run query**.
+A 1-hour window is "what's been flapping today" — wider than the 2-minute alert window so the table holds stable rows even between flaps.
+
+Below the query box, expand **Options** and switch **Type** from `Range` to `Instant`. For a table, we want one row per device + interface pair — not one row per time sample. Instant returns the most-recent value per series; Range would return a row per scrape interval, multiplying the table by 50× without adding signal.
+
+Click **Run query**.
 
 #### 3. Switch the panel type
 
@@ -343,18 +347,32 @@ Right-hand options → **Panel options**:
 - **Title**: `Flap history (last 1h)`
 - **Description**: `UPDOWN events per device + interface over the last hour. Click any device cell to drill into Device Health for that device, time range preserved.`
 
-#### 6. Make the device cell a link
+#### 6. Colour-code the flap counts with a gauge
+
+A glance at the table should tell you which rows are quiet and which are alarming without reading numbers. Right-hand options → **Overrides** → **Add field override** → **Fields with name** → pick `Total flaps`. Then click **Add override property** (once per property) and add:
+
+- **Cell options → Cell type**: `Gauge`
+- **Cell options → Gauge display mode**: `LCD gauge` (the retro pixel-bar style — coloured stripes that fill horizontally)
+- **Standard options → Min**: `0`
+- **Standard options → Max**: `100`
+- **Thresholds** (set them inside this same override): Green base, Orange at `30`, Red at `60`
+
+The threshold numbers are higher than the 2-minute flap-rate panel above because this table uses a **1-hour window**: the always-broken interfaces alone accumulate around 28 UPDOWN events per hour just sitting there. So below 30 is "background noise", 30–60 is "something extra is happening", and 60+ is "real flap activity in the last hour".
+
+Each row's `Total flaps` cell now renders as a horizontal LCD bar that fills green → yellow → red as the count climbs. At-a-glance triage without reading numbers.
+
+#### 7. Make the device cell a link
 
 Still in the right-hand options, scroll to **Overrides** → **Add field override** → **Fields with name** → pick `device`. On the override:
 
-- **Cell type**: `Auto` (or `Color text` if you want the link visually distinct).
+- **Cell options → Cell type**: `Auto` (or `Color text` if you want the link visually distinct).
 - **Data links** → **Add link**:
     - **Title**: `Open Device Health for ${__value.text}`
     - **URL**: `/d/c78e686b-138b-4deb-b6ae-3239dc10a162?var-device=${__value.raw}&from=${__from}&to=${__to}`
 
 `${__value.raw}` is the cell's raw label value (`srl1`, `srl2`). `${__from}` and `${__to}` are the dashboard's current time-range bounds — the link carries the window forward so the destination dashboard opens on the same minutes you were just looking at.
 
-#### 7. Save and try it
+#### 8. Save and try it
 
 **Apply**, then **Save dashboard**. Trigger a flap:
 
