@@ -91,9 +91,16 @@ If anything misbehaves during the workshop, ask the instructor — they have the
 
 ![Workshop architecture](https://raw.githubusercontent.com/network-observability/workshops/main/workshops/autocon5/docs/architecture.svg)
 
-In words: synthetic telemetry from sonda lands in Prometheus and Loki. Alerting rules in both stores route through Alertmanager into a FastAPI webhook, which fans out to a Prefect flow. The flow consults **Infrahub** for source-of-truth intent (is this peer expected up? is the device in maintenance?) before deciding to **quarantine**, **skip**, or just **audit** — and optionally runs an AI RCA against the same evidence bundle. Every decision is annotated back into Loki for the audit trail.
+The lab assembles the standard pieces of a modern network observability stack. Here are the building blocks of the stack (this maps to the architecture diagram above), and the tool we picked for each — if any of these are unfamiliar, the [Tour the stack](tour.md) page is a one-screen reference per tool:
 
-The raw telemetry sonda emits is shaped like what a real device puts on the wire: `srl1` looks like a Nokia SR Linux box streaming gNMI (`srl_bgp_oper_state`, `source=srl1`), `srl2` looks like a Cisco/Arista/Juniper box polled over SNMP (`bgpPeerState`, `agent_host=srl2`). Both pipelines land in Prometheus normalized to one canonical schema via per-device Telegraf rename rules, so the queries, dashboards, and alerts you build read against that shared shape regardless of which raw vendor protocol fed them. Part 1 walks both shapes end-to-end.
+- **Source of Truth (SoT)** — [**Infrahub**](https://infrahub.opsmill.com/). The *"should be"* answers come from here: is this BGP peer expected up, is this device in maintenance, what's the operator intent for this link.
+- **Telemetry collection** — **Sonda** + **Telegraf**. Sonda pretends to be the network devices (gNMI-shaped data for `srl1`, SNMP-shaped data for `srl2`). Telegraf scrapes both shapes and rewrites them into one canonical schema before they hit storage.
+- **Observability storage** — **Prometheus** for metrics, **Loki** for logs. Both speak query languages that share the same idea: a stream identified by labels, with samples over time.
+- **Dashboards** — **Grafana**. Prometheus and Loki are the two data sources; every panel you see comes from one of them.
+- **Alert routing** — **Alertmanager**. Prometheus and Loki rule evaluators say *"this is firing"*; Alertmanager decides who hears about it and how it's grouped.
+- **Automation / workflow** — **Prefect**, fronted by a small **FastAPI** webhook. Alerts that warrant action route through here — the workflow consults Infrahub for intent, decides on **quarantine** / **skip** / **audit**, and (optionally) runs an LLM RCA against the evidence bundle. Every decision is annotated back into Loki for the audit trail.
+
+The raw telemetry Sonda emits is shaped like what a real device puts on the wire: `srl1` looks like a Nokia SR Linux box streaming gNMI (`srl_bgp_oper_state`, `source=srl1`), `srl2` looks like a Cisco/Arista/Juniper box polled over SNMP (`bgpPeerState`, `agent_host=srl2`). Both pipelines land in Prometheus normalized to one canonical schema via per-device Telegraf rename rules, so the queries, dashboards, and alerts you build read against that shared shape regardless of which raw vendor protocol fed them. Part 1 walks both shapes end-to-end.
 
 ## Tour the stack
 
