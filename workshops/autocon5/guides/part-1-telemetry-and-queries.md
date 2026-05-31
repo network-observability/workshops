@@ -21,7 +21,7 @@ nobs autocon5 reset
 nobs autocon5 status
 ```
 
-`reset` is safe to run repeatedly — it clears any leftover maintenance flags, expires any silences from a prior workshop run, removes any cascade scenarios still hanging around, and restarts the log shipper if it has gone quiet. Safe to run at the start of every part. `status` then confirms every row reports `ok`. If `prometheus`, `loki`, or `sonda` is anything else, flag it before continuing — your senior wants to know about a degraded stack before you lean on it. (Loki sometimes takes 30–60s after `nobs autocon5 up` to come up green — re-run `status` if it's the only red row.)
+`reset` is safe to run repeatedly — it clears any leftover maintenance flags, expires any silences from a prior workshop run, removes any cascade scenarios still hanging around, and restarts the log shipper if it has gone quiet. Safe to run at the start of every part. `status` then confirms every row reports `ok`. If `prometheus`, `loki`, or `sonda` is anything else, flag it before continuing — your senior wants to know about a degraded stack before you lean on it.
 
 Open Grafana at <http://localhost:3000> (login `admin` / `admin` unless you changed `.env`). Click the compass icon in the left rail to open **Explore**. The datasource picker at the top is how you switch between Prometheus and Loki. You'll bounce between them throughout this part.
 
@@ -48,179 +48,70 @@ Click `Run query`. **You should see exactly 6 results** — three interfaces per
 - `intf_role` — `peer` for the three real ones
 - `collection_type` — `gnmi` (srl1) or `snmp` (srl2)
 - `pipeline` — `telegraf` (both devices route through Telegraf today)
-- `instance`, `job` — where Prometheus scraped from
+- `host`, `instance`, `job` — where Prometheus scraped from
 
 > Your senior nods at the screen. *"Notice anything? Same metric name, same value semantics on both sides — but the `collection_type` label says one device emits gNMI and the other emits SNMP. That's the workshop's normalization story. We'll come back to it. For now: the metric is the same downstream regardless."*
 
 **Stop and notice.** The metric *name* tells you what (operational state of an interface). The *labels* tell you which one and where it came from. Every query you write from now on is a filter or aggregation on labels.
 
-#### 2. Per-device counts
-
-> *"How many BGP peers does each device think it has?"*
+Now try an aggregation. How many peer interfaces are operationally up per device?
 
 ```promql
-count by (device) (bgp_oper_state)
+count by (device) (interface_oper_state{intf_role="peer"} == 1)
 ```
 
-You should see two rows: `device=srl1` returning `3`, and `device=srl2` returning `3`. Three configured BGP peers per device.
+`== 1` filters to only up interfaces (1 = UP, 2 = DOWN). `count by (device)` collapses every label *except* `device` — list the labels you want to keep and everything else flattens. You should see `srl1` returning `2` and `srl2` returning `2` — two healthy peer interfaces per device, with one down on each.
 
-**Stop and notice.** `count by (device)` collapsed every label *except* `device`. PromQL aggregations work that way — list the labels you want to keep; everything else flattens. Try it without the `by`:
+#### 2. Normalization — two raw shapes, one shared schema
 
-```promql
-count(bgp_oper_state)
-```
-
-One row, value `6`. Six BGP peer series total.
-
-#### 3. Find the broken peer
-
-> Your senior leans in. *"Two peers in this lab are wired to be broken on purpose — intent says they should be up, reality disagrees. Find them with one query. Two clauses, joined."*
-
-```promql
-bgp_oper_state != 1
-  and on (device, peer_address)
-bgp_admin_state == 1
-```
-
-You should get **exactly two rows**:
-
-- `device=srl1, peer_address=10.1.99.2` — `bgp_oper_state` value is `5` (active, retrying)
-- `device=srl2, peer_address=10.1.11.1` — `bgp_oper_state` value is `5`
-
-> Your senior leans back in their chair. *"You just found two peers that have been in mismatch for weeks. Each has a `BgpSessionNotUp` alert that's been firing the whole time and nobody's owned it. Welcome to on-call. We're not going to fix them today; we're going to learn from them. The shape of the query you just ran is the shape of the alert that's been paging the rotation."*
-
-**Stop and notice.** `and on (device, peer_address)` is the intent-vs-reality pattern. Left side: where operational state isn't `up` (reality). Right side: where admin says `enabled` (intent). The result keeps the *left* side's value — that's why each row shows `5`, the oper_state, not `1`, the admin_state. Match them on the labels they share, and you've expressed "should be up, isn't" in one line. This single query is the core of how the `BgpSessionNotUp` alert fires later in Part 3 — same intent-vs-reality, just with `for: 30s` wrapped around it.
-
-#### 4. Rate of change on a counter
-
-> *"Counters in Prometheus only ever go up. Reading them raw is useless. Show me the rate."*
-
-```promql
-rate(interface_in_octets{device="srl1"}[1m])
-```
-
-In the panel options on the right of Explore, switch from `Table` to `Time series`. You should see three lines, one per srl1 interface. The two healthy ones (`ethernet-1/1`, `ethernet-1/10`) hover around **~12,500 bytes/sec** — that's the synthetic emitter's `step_size` of 125 KB per 10s. `ethernet-1/11` (the broken interface) sits at **0 bytes/sec** — its counter doesn't tick because the interface is operationally down.
-
-Now widen the window:
-
-```promql
-rate(interface_in_octets{device="srl1"}[5m])
-```
-
-The lines smooth out. The window inside the brackets is how much history `rate()` averages over — short windows are twitchy, long windows hide spikes.
-
-> *"Throw in srl2 too — same query, no device filter."*
-
-```promql
-rate(interface_in_octets[5m])
-```
-
-Six lines now. srl2's healthy interfaces hit **~12,500 bytes/sec**, the broken `ethernet-1/11` flatlines at zero — same shape as srl1. Same query, same units, both vendor pipelines, no special-casing.
-
-**Stop and notice.** Anything that ends in `_octets`, `_packets`, `_total`, `_bytes` is a counter. Wrap it in `rate()` or `increase()`. Plotting a raw counter gives you a saw-tooth or a monotonic line that tells you nothing operationally.
-
-#### 5. Trigger something and watch the query react
-
-> Your senior gestures at the keyboard. *"The lab generates synthetic data on a schedule, but you can also drive events into it yourself. Try this — keep the queries open in Explore."*
-
-```bash
-nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1
-```
-
-One run of this command kicks off a single flap event on `ethernet-1/1`. Here's what's about to happen:
-
-- **Interface bounces** — 30 seconds up, 60 seconds down, repeat. Runs for 4 minutes total.
-- **BGP follows ~10 seconds after each drop** — real flaps don't take BGP down instantly; routers wait briefly before declaring a peer dead.
-- **Interface traffic stops while the link is down** — no packets flow through a downed interface, so the byte counter stops climbing.
-- **Everything recovers on its own** — you don't have to clear anything. The moment the interface comes back up, BGP reconnects, traffic resumes, and the dashboards go green.
-
-??? tip "Trip just the flap, not BGP"
-
-    Pass `--no-cascade` and the same call emits the interface flap and UPDOWN log stream alone — no BGP gated entries. Useful when you want `PeerInterfaceFlapping` to trip but `BgpSessionNotUp` to stay clean.
-
-To watch the cascade react, open three Explore tabs (or one tab and toggle):
-
-```promql
-interface_oper_state{device="srl1", name="ethernet-1/1"}
-```
-
-```promql
-bgp_oper_state{device="srl1", peer_address="10.1.2.2"}
-```
-
-```promql
-bgp_prefixes_accepted{device="srl1", peer_address="10.1.2.2"}
-```
-
-```promql
-rate(interface_in_octets{device="srl1", name="ethernet-1/1"}[1m]) * 8 / 1000
-```
-
-Switch all four to `Time series` view. Run `flap-interface` and watch each one in turn:
-
-- The interface metric flips between `1` (up) and `2` (down) on the 30s-up / 60s-down cadence.
-- `bgp_oper_state` follows from `1` to `2` after a ~10s hold-down. The lag is real (matches a hold-down timer), but Prometheus's 15s scrape interval sometimes lands the interface and BGP transitions in the same sample — so the gap is visible if you happen to catch a scrape mid-window, invisible otherwise.
-- Prefix counters drop to `0` shortly after `bgp_oper_state` — same cascade signal drives both, but Telegraf's 10s scrape of sonda plus Prom's 15s scrape of Telegraf can put them in adjacent samples (so don't be surprised if `bgp_oper` flips one scrape before the prefix counters).
-- Interface traffic drops to `0 kb/s` during each DOWN phase. Here's the chain of cause and effect:
-    - `rate()` measures how fast the byte counter is going up.
-    - During DOWN, no traffic is flowing through the interface, so no bytes get added to the counter.
-    - The counter itself doesn't disappear — it just sits at whatever number it had reached when the interface went down.
-    - When the interface comes back up, traffic starts flowing again and the counter picks up where it left off — no fake spike, no false alarm.
-- The moment the interface returns to up, every gated series snaps back: `bgp_oper_state` goes to `1`, prefix counters go to `10`. Dashboards go green within seconds.
-
-Then briefly switch one tab to the `loki` datasource:
-
-```logql
-{device="srl1", vendor_facility_process="UPDOWN", interface="ethernet-1/1"}
-```
-
-The log lines that drove the metric flip are right there with the same timestamps. Same labels, same correlation pattern you'll lean on heavily later in the bridge exercise.
-
-**Stop and notice.** One CLI command, multiple signals reacting in causal order, and a clean recovery beat when the gate closes. Synthetic data with real shapes — and you can drive it. The query bar reacts to lab state in real time, no batch refresh, no caching layer hiding your changes. The shape of this cascade — interface degrades → BGP follows → prefixes drop → interface recovers → BGP snaps back — is what real outages and recoveries look like in your network. Memorise the shape; it generalises.
-
-!!! tip "Let the cascade settle before the next exercise"
-    The cascade scenarios above run for ~4 minutes end-to-end. If you jump straight into Exercise 6 while they're still active, the `count by (collection_type) (...)` queries on srl1 will be temporarily lower than the steady-state 3 because the cascade replaces the baseline BGP/interface series. Either wait for `nobs autocon5 status` to show no cascade scenarios, or run `nobs autocon5 reset` to clear them immediately.
-
-#### 6. Normalization — two raw shapes, one shared schema
-
-> Your senior swivels their laptop toward you. *"Earlier I said `srl1` and `srl2` are wired through different pipelines on purpose. Now we look at it. This is the part that bites every operator who jumps from one vendor's network to another."*
+> Your senior swivels their laptop toward you. *"Before we go further — notice that `intf_role` label on every series? That didn't come from the device. It was added by Telegraf during normalization. Let me show you what the raw shape looks like before it's touched. This is the part that bites every operator who jumps from one vendor's network to another."*
 
 The two devices speak different protocols at the source:
 
 - **`srl1` emits gNMI** — that's the telemetry shape SR Linux puts on the wire natively. Field names like `srl_bgp_oper_state`, tags like `source`. **Telegraf-srl1** scrapes this raw shape, renames `srl_*` to canonical (`bgp_*`, `interface_*`) and `source` to `device`. Out the other side: the shared schema this workshop's dashboards and alerts speak.
 - **`srl2` emits SNMP** — the classic shape from IF-MIB / BGP4-MIB / CISCO-BGP4-MIB. Field names like `ifHCInOctets`, `bgpPeerState`, `cbgpPeerOperStatus`; tags like `agent_host`, `ifDescr`, `bgpPeerRemoteAddr`. **Telegraf-srl2** scrapes the raw SNMP shape and renames every field and every tag to the same canonical schema. Out the other side: byte-for-byte identical to what srl1 produces.
 
-Both raw shapes live on `sonda-server` (the lab's synthetic-telemetry runtime). Each Telegraf scrapes the server's aggregate `/metrics` endpoint on a 10-second cadence, filtered to its device by a label query — same scrape pattern Prometheus would use against real exporters in production.
+Both raw shapes live on `sonda-server` (the lab's synthetic-telemetry runtime). Each Telegraf scrapes its device's per-scenario `/metrics` endpoints on a 10-second cadence — same scrape pattern Prometheus would use against real exporters in production.
 
 #### See the raw shape, before Telegraf touches it
 
 > Your senior pulls up a terminal. *"You don't have to take the bullet list on faith. Both raw shapes are sitting on sonda-server right now — let me show you."*
 
-`sonda-server` exposes a single `/metrics` endpoint and lets you filter it down to one device with a `label=` query. For srl1, the device tag in the gNMI shape is `source`:
+Each device's scenario IDs land in a shared volume at boot. Pick one srl1 scenario and curl its raw metrics. `sonda-server`'s `/scenarios/{id}/metrics` endpoint **drains** the scenario's emission buffer on each read, and Telegraf is already reading it every 10s — so to see the raw samples yourself you pause Telegraf for one cycle first, let the buffer fill, then curl:
 
 ```bash
-curl -s 'http://localhost:8085/metrics?label=source:srl1' | grep '^srl_bgp_oper_state' | head -1
+SRL1_ID=$(docker exec telegraf-srl1 head -1 /shared/scenario-ids-srl1.txt)
+docker pause telegraf-srl1 && sleep 12
+curl -s "http://localhost:8085/scenarios/${SRL1_ID}/metrics" | tail -1
+docker unpause telegraf-srl1
 ```
 
 ```
-srl_bgp_oper_state{afi_safi_name="ipv4-unicast",collection_type="gnmi",name="default",neighbor_asn="65102",peer_address="10.1.2.2",source="srl1"} 1
+srl_bgp_neighbor_state{afi_safi_name="ipv4-unicast",collection_type="gnmi",name="default",neighbor_asn="65102",peer_address="10.1.2.2",source="srl1"} 1 1778960798157
 ```
 
-The `peer_address` value will vary — the curl returns whichever peer's scenario was registered first. The label structure is what matters: note the metric name (`srl_bgp_oper_state`) and the device label (`source="srl1"`) — that's the gNMI shape SR Linux puts on the wire. The pack `workshops/autocon5/sonda/catalog/srlinux-gnmi-bgp-raw.yaml` lists every metric in this shape.
+Note the metric name (`srl_bgp_neighbor_state`) and the device label (`source="srl1"`) — that's the gNMI shape SR Linux puts on the wire. The pack `workshops/autocon5/sonda/catalog/srlinux-gnmi-bgp-raw.yaml` lists every metric in this shape.
 
-Same exercise on srl2 — same endpoint, different label key because the SNMP shape uses `agent_host`:
+Same exercise on srl2 — same pause-curl-unpause shape:
 
 ```bash
-curl -s 'http://localhost:8085/metrics?label=agent_host:srl2' | grep '^bgpPeerState' | head -1
+SRL2_ID=$(docker exec telegraf-srl2 head -1 /shared/scenario-ids-srl2.txt)
+docker pause telegraf-srl2 && sleep 12
+curl -s "http://localhost:8085/scenarios/${SRL2_ID}/metrics" | tail -1
+docker unpause telegraf-srl2
 ```
 
 ```
-bgpPeerState{afi_safi_name="ipv4-unicast",agent_host="srl2",bgpPeerRemoteAddr="10.1.2.1",bgpPeerRemoteAs="65101",collection_type="snmp",name="default"} 1
+bgpPeerState{afi_safi_name="ipv4-unicast",agent_host="srl2",bgpPeerRemoteAddr="10.1.2.1",bgpPeerRemoteAs="65101",collection_type="snmp",name="default"} 1 1778960808168
 ```
+
+??? info "If your curl returns empty, retry"
+
+    `sonda-server`'s `/scenarios/{id}/metrics` endpoint drains the scenario's emission buffer on each read. The Telegraf scrape (every 10s) is one consumer, your `curl` is another — they race for the same buffer. Rerun the `curl` a few seconds later; you'll get the next emission's events.
 
 Field name `bgpPeerState`, tag `agent_host`, value space matches SNMP enum semantics. Different name, different label keys than `srl_bgp_oper_state` — same logical concept, completely different shape. Pack: `workshops/autocon5/sonda/catalog/cisco-snmp-bgp-raw.yaml`.
 
-> Your senior taps the screen. *"This is a snapshot endpoint — Telegraf reads it on its 10-second cadence, you can read it whenever, nobody steals samples from anyone. Same scrape model real production uses: one source of truth, many consumers."*
+> Your senior taps the screen. *"That drain-on-read behaviour is exactly why a real production scrape architecture has one consumer per endpoint. Two consumers fighting for one buffer is a footgun; this is the lab letting you peek behind Telegraf's back without rearchitecting."*
 
 Now compare to the normalized view in Prometheus, post-Telegraf:
 
@@ -264,18 +155,196 @@ Returns rows for *both* devices, *both* collection types. A dashboard panel quer
 
 **Stop and notice.** The `collection_type` label is for inspecting the normalization itself: *"which raw shape did this sample come from, is that path healthy?"* It's not for branching your query logic. If you write `bgp_oper_state{collection_type="gnmi"}` into a dashboard, you've narrowed to one vendor — useful for debugging that pipeline, but you'll miss every device whose data arrives via any other protocol. Default to collection-type-agnostic queries; reach for the label when you're debugging the normalization, not the network.
 
-#### Your turn (unguided) — find the busiest interface
+#### 3. Rate of change on a counter
 
-> Your senior leans back. *"You've got the basic queries. Now answer one yourself, no scaffolding: which interface is moving the most bytes per second right now, across the whole lab? Get me the answer in one PromQL line."*
+> *"Counters in Prometheus only ever go up. Reading them raw is useless. Show me the rate."*
 
-This is the first unguided exercise. No copy-paste. The metric you need is `interface_in_octets` (or `interface_out_octets`), the operator that turns a counter into a rate is `rate()`, and the function that picks the top N results is `topk()`. Compose them.
+```promql
+rate(interface_in_octets{device="srl1"}[1m])
+```
 
-Take a minute on it before you scroll. Two quick hints if you're stuck:
+In the panel options on the right of Explore, switch from `Table` to `Time series`. You should see three lines, one per srl1 interface. The two healthy ones (`ethernet-1/1`, `ethernet-1/10`) hover around **~12,500 bytes/sec** — that's the synthetic emitter's `step_size` of 125 KB per 10s. `ethernet-1/11` (the broken interface) sits at **0 bytes/sec** — its counter doesn't tick because the interface is operationally down.
 
-- Counters need `rate()` over a window (Exercise 4).
-- `topk(N, expression)` returns the N highest-valued series.
+Now widen the window:
 
-You should be able to land an answer with a single query that returns one or two rows. If you get more than that, narrow further — your senior won't want a list of every interface, they want the one that matters.
+```promql
+rate(interface_in_octets{device="srl1"}[5m])
+```
+
+The lines smooth out. The window inside the brackets is how much history `rate()` averages over — short windows are twitchy, long windows hide spikes.
+
+> *"Throw in srl2 too — same query, no device filter."*
+
+```promql
+rate(interface_in_octets[5m])
+```
+
+Six lines now. srl2's healthy interfaces hit **~12,500 bytes/sec**, the broken `ethernet-1/11` flatlines at zero — same shape as srl1. Same query, same units, both vendor pipelines, no special-casing.
+
+Now aggregate. What is the total inbound throughput per device?
+
+```promql
+sum by (device) (rate(interface_in_octets{name!~"mgmt0.*"}[5m])) * 8
+```
+
+`name!~"mgmt0.*"` excludes management interfaces. `sum by (device)` adds all interface rates together per device. `* 8` converts bytes/sec to bits/sec. Two rows — one per device, total inbound throughput.
+
+**Stop and notice.** Anything that ends in `_octets`, `_packets`, `_total`, `_bytes` is a counter. Wrap it in `rate()` or `increase()`. Plotting a raw counter gives you a saw-tooth or a monotonic line that tells you nothing operationally. The window inside `rate()` controls smoothness — short windows are reactive, long windows hide spikes.
+
+#### 4. Intent-vs-reality — interface metrics
+
+> Your senior gestures at the screen. *"You've got the building blocks. Now answer an operational question: which peer interfaces are supposed to be up but aren't? You have everything you need — two metrics, one join."*
+
+Two metrics encode the two sides of intent and reality:
+
+- `interface_admin_state` — what the operator configured (1 = enabled)
+- `interface_oper_state` — what the network is actually doing (1 = up, 2 = down)
+
+Start with each side in isolation. First, which peer interfaces are admin-enabled?
+
+```promql
+interface_admin_state{intf_role="peer"} == 1
+```
+
+Now, which peer interfaces are operationally down?
+
+```promql
+interface_oper_state{intf_role="peer"} != 1
+```
+
+Join them — admin-enabled interfaces where oper state is not up:
+
+```promql
+interface_admin_state{intf_role="peer"} == 1
+  and on (device, name)
+interface_oper_state{intf_role="peer"} != 1
+```
+
+You should get one row per device — `ethernet-1/11` on each, the deliberately broken interface.
+
+> Your senior nods. *"`and on (device, name)` joins only on the labels you name — device and interface name. Left side is intent (admin says enabled). Right side is reality (oper says not up). The result keeps the left side's value. Read it as: give me all admin-enabled peer interfaces, but only those where the same device + interface is also not operationally up. That's intent-vs-reality in one expression."*
+
+**Stop and notice.** The pattern has three parts: a filter on the intent side, a filter on the reality side, and `and on (...)` naming the labels they share. The left side's value is preserved in the result. This shape generalises to any metric pair that encodes "what should be" and "what is" — the join clause is what makes it precise.
+
+#### 5. Find the broken peer — BGP
+
+> Your senior swivels toward you. *"Same pattern. Same join operator. Different metric pair. Apply it to BGP."*
+
+```promql
+bgp_oper_state != 1
+  and on (device, peer_address)
+bgp_admin_state == 1
+```
+
+You should get **exactly two rows**:
+
+- `device=srl1, peer_address=10.1.99.2` — `bgp_oper_state` value is `5` (active, retrying)
+- `device=srl2, peer_address=10.1.11.1` — `bgp_oper_state` value is `5`
+
+> Your senior leans back in their chair. *"You just found two peers that have been in mismatch for weeks. Each has a `BgpSessionNotUp` alert that's been firing the whole time and nobody's owned it. Welcome to on-call. We're not going to fix them today; we're going to learn from them. The shape of the query you just ran is the shape of the alert that's been paging the rotation."*
+
+**Stop and notice.** The only difference from exercise 4 is the metric names and the join labels — `and on (device, peer_address)` instead of `and on (device, name)`. The intent-vs-reality pattern is identical. This single query is the core of how the `BgpSessionNotUp` alert fires later in Part 3 — same shape, just with `for: 30s` wrapped around it.
+
+### Recording rules — composed metrics
+
+> Your senior opens a file. *"Every query you just wrote in Explore can be baked into Prometheus as a recording rule. Instead of recomputing it on every dashboard load, Prometheus evaluates it on a schedule and stores the result as a new metric. Dashboards and alerts reference the pre-computed name — fast, consistent, one definition."*
+
+The naming convention is `<aggregation_labels>:<metric_name>:<time_window>`. This lab ships two traffic recording rules and one that fans a Loki-derived UPDOWN rate back into Prometheus:
+
+```yaml
+groups:
+  - name: network_traffic_overview
+    rules:
+      - record: device:network_traffic_in_bps:rate_2m
+        expr: sum(rate(interface_in_octets[2m])) by (device) * 8
+      - record: device:network_traffic_out_bps:rate_2m
+        expr: sum(rate(interface_out_octets[2m])) by (device) * 8
+
+  - name: interface_updown_events
+    rules:
+      - record: device:interface_updown_rate:2m
+        expr: events:interface_updown_rate:2m or (sum by (device) (interface_admin_state) * 0)
+```
+
+The third rule (`device:interface_updown_rate:2m`) pulls the UPDOWN event rate — computed by a Loki recording rule — back into Prometheus. The `or (...* 0)` fallback ensures every device always has a series even when no UPDOWN events exist, so dashboard panels don't go blank.
+
+Try querying the pre-computed metric directly in Explore:
+
+```promql
+device:network_traffic_in_bps:rate_2m
+```
+
+Two rows — one per device, total inbound throughput in bits/sec, already computed. No `rate()`, no `sum by` needed at query time. The dashboard panel that shows device traffic references this name, not the raw expression.
+
+**Stop and notice.** A recording rule is just a query that Prometheus runs on a schedule and stores. The result is a first-class metric — you can filter it, alert on it, and reference it from other rules. The naming convention is a readability contract, not a technical requirement: `aggregation:source_metric:window` tells you at a glance what the number represents and over what window it was computed.
+
+### Alerts
+
+> Your senior closes the rules file. *"A query answers a question. An alert is the same query with one addition: if the answer is true, act. That's all an alert rule is."*
+
+#### The expression
+
+Start from the intent-vs-reality query you already know. The operational question is: *"Alert when a peer interface is configured UP but operationally DOWN."*
+
+```promql
+count by (device, name) (
+  (interface_admin_state{intf_role="peer"} == 1)
+  and on (device, name)
+  (interface_oper_state{intf_role="peer"} == 2)
+) > 0
+```
+
+`> 0` is the firing condition — the alert fires whenever at least one interface matches. The `count by (device, name)` keeps the `device` and `name` labels in the alert so the notification knows *which* interface.
+
+#### The rule
+
+Wrap the expression in an alert rule and add three things that make it operationally useful:
+
+```yaml
+groups:
+  - name: interface_intent_mismatch
+    rules:
+      - alert: InterfaceAdminUpOperDown
+        expr: |
+          count by (device, name) (
+            (interface_admin_state{intf_role="peer"} == 1)
+            and on (device, name)
+            (interface_oper_state{intf_role="peer"} == 2)
+          ) > 0
+        for: 2m
+        labels:
+          severity: warning
+          category: network
+        annotations:
+          summary: "Interface intent mismatch detected"
+          description: |
+            Interface {{ $labels.name }} on device {{ $labels.device }}
+            is configured as UP (admin state) but is currently DOWN (oper state).
+
+            This usually indicates a cabling, peer, or physical-layer issue.
+```
+
+- **`for: 2m`** — the condition must hold for 2 minutes before the alert fires. Filters out flap noise.
+- **`labels:`** — static key-value pairs attached to the alert. `severity` and `category` are what Alertmanager routes on in Part 3.
+- **`annotations:`** — human-readable context. `{{ $labels.name }}` and `{{ $labels.device }}` are template variables that expand to the alert's label values — the notification tells you exactly which interface on which device.
+
+#### Lab: see this alert in the stack
+
+The `InterfaceAdminUpOperDown` alert is already loaded. The lab's deliberately broken interfaces (`ethernet-1/11` on both devices) satisfy the expression right now.
+
+1. **Prometheus** — open [http://localhost:9090/#/alerts](http://localhost:9090/#/alerts) and find `InterfaceAdminUpOperDown`. It should be in `FIRING` state with one entry per device.
+
+2. **Grafana Explore** — the `ALERTS` metric exposes firing alerts as a queryable time series:
+
+    ```promql
+    ALERTS{alertname="InterfaceAdminUpOperDown"}
+    ```
+
+    Each row is a firing instance. The label set is the alert's labels merged with the expression's output labels — `device`, `name`, `severity`, `category` all present.
+
+3. **Alertmanager** — open [http://localhost:9093](http://localhost:9093) and confirm the alert arrived and was routed. In Part 3 you'll trace exactly what happens next.
+
+**Stop and notice.** The alert rule you just read is the same intent-vs-reality query from exercise 4, with `> 0`, `for:`, `labels:`, and `annotations:` added. The query is the logic; everything else is operational scaffolding — how long to wait before paging, what labels to route on, what message to show on call. This is the pattern every alert in this lab follows.
 
 ### Logs — LogQL
 
@@ -283,7 +352,7 @@ You should be able to land an answer with a single query that returns one or two
 
 Switch the Explore datasource to `loki`.
 
-#### 7. Stream selection
+#### 6. Stream selection
 
 ```logql
 {device="srl1"}
@@ -293,7 +362,7 @@ Run it. You'll see a stream of recent log lines from `srl1`. The dropdown on the
 
 **Stop and notice.** Curly braces with label selectors look like Prometheus, but they pick *log streams*, not metric series. A LogQL query always starts with `{...}`. Without label selectors Loki doesn't know what to query.
 
-#### 8. Line filter
+#### 7. Line filter
 
 ```logql
 {device="srl1"} |~ "BGP"
@@ -310,7 +379,7 @@ Run it. You'll see a stream of recent log lines from `srl1`. The dropdown on the
 
 **Stop and notice.** Stream selectors filter *which streams* Loki reads. Line filters filter *which lines* inside those streams. Always narrow the streams first — line filters scan, stream selectors index.
 
-#### 9. JSON parse
+#### 8. JSON parse
 
 Sonda emits structured logs. You can query parsed fields, not just substrings:
 
@@ -328,7 +397,7 @@ The `| json` stage parses each line as JSON; `| severity="warn"` filters on a pa
 
 **Stop and notice.** Structured logs let you query and reshape; unstructured logs force regex against text. The pipelines in this lab emit JSON on purpose.
 
-#### 10. Aggregation — log queries that produce metrics
+#### 9. Aggregation — log queries that produce metrics
 
 Aggregating logs over time turns a log query into a metric:
 
@@ -336,17 +405,15 @@ Aggregating logs over time turns a log query into a metric:
 sum by (device) (count_over_time({vendor_facility_process="UPDOWN"}[5m]))
 ```
 
-Switch the panel to `Time series`. You should see two flat lines (one per device) sitting around **1–3 events per 5-minute window** (the broken-interface emitter is stochastic at ~1 event / 2 min). That floor is the always-broken `ethernet-1/11` on each device — the only interface that's actually flapping at rest. Healthy interfaces don't contribute because they don't emit anything when nothing's happening to them; that's the honest answer to "is anything flapping right now?".
+Switch the panel to `Time series`. You should see two lines (one per device) showing UPDOWN events per 5-minute window. With the lab in steady state the count sits at **a handful per device** — sonda emits a slow trickle, well below the `PeerInterfaceFlapping` alert's `> 3 events in 2 minutes` threshold.
 
-Trigger a flap on a previously-silent healthy interface and watch the line jump:
+**Stop and notice.** This is exactly how the `PeerInterfaceFlapping` alert reads logs in Part 3 — same shape, just with a `> 3` threshold and a `for: 30s` clause. Any LogQL aggregation query is a candidate alert rule.
 
-```bash
-nobs autocon5 flap-interface --device srl1 --interface ethernet-1/10
-```
+??? tip "Want to see the line jump now?"
 
-Within ~30 seconds the `srl1` line climbs sharply — past the `PeerInterfaceFlapping` alert's `> 3 events in 2 minutes` threshold and on toward 30+ as the cascade's down-phase log emissions stack into the rolling 5-minute window. The `srl2` line stays at its quiet baseline. **Stop and notice.** This is exactly how the `PeerInterfaceFlapping` alert reads logs in Part 3 — same shape, just with a `> 3` threshold and a `for: 30s` clause. Any LogQL aggregation query is a candidate alert rule.
+    If you're running ahead or want to verify the query before the capstone, trigger a quick flap: `nobs autocon5 flap-interface --device srl1 --interface ethernet-1/10`. Within ~30 seconds the `srl1` line climbs. The capstone exercise (12) drives a full cascade that will show this too — no need to run it twice.
 
-#### 11. Pipeline awareness on logs
+#### 10. Pipeline awareness on logs
 
 The same normalization story plays out on the log side, with one important difference from metrics: logs in this workshop don't go through Telegraf. They have their own shipper story.
 
@@ -371,9 +438,9 @@ You should see streams from both devices. The `device`, `vendor_facility_process
 
 > Your senior looks over. *"This is the move that pays off most often under pressure. Find the broken thing in metrics, then jump to logs with the same labels and read the why. If you only remember one thing from this morning, remember this."*
 
-#### 12. Why is the peer down?
+#### 11. Why is the peer down?
 
-This is the payoff exercise. Use the broken-peer query from #3 to find a mismatched peer, then jump to logs to find out *why*.
+This is the payoff exercise. Use the broken-peer query from #5 to find a mismatched peer, then jump to logs to find out *why*.
 
 In the `prometheus` datasource:
 
@@ -385,14 +452,9 @@ bgp_admin_state{device="srl1"} == 1
 
 On a clean lab, this returns **one row** — `peer_address=10.1.99.2`, value `5` (active, retrying). That's the deliberately broken peer.
 
-??? info "Seeing more than one row, or a peer flickering as spots?"
+??? info "Seeing more than one row? Check the query type."
 
-    Grafana Explore's default is **Range** (plots samples over the time window). Two things show up after a recent flap:
-
-    - **Extra peers** — any peer that was briefly `oper_state != 1` during the window stays as a series even after it recovered.
-    - **Spotty appearance** — the cascading peer (e.g., `10.1.2.2`) draws as discrete spots, one per down-phase, because the `!= 1` filter only matches during the down phase. The deliberately broken peer (`10.1.99.2`) stays a continuous line because its `oper_state=5` constantly.
-
-    Switch the **Type** dropdown next to the query to **Instant** for a "right now" snapshot — should drop you to one row, the broken peer.
+    Grafana Explore's default is **Range** (plots samples over the time window). If a flap or cascade has run inside the window, peers that were briefly `oper_state != 1` will appear as series even after they've recovered. Switch the **Type** dropdown next to the query to **Instant** for a "right now" snapshot — that should drop you back to one row.
 
 ??? tip "Or — Prometheus is carrying stale data from a previous session"
 
@@ -414,13 +476,93 @@ You'll see BGP-related lines for that specific peer. Add a filter to narrow:
 
 > *"Same query shape works on srl2 — try it. Different `peer_address`, same answer-the-why pattern. The fact that one device's metric came in as gNMI and the other's came in as SNMP doesn't change the bridge query at all."*
 
+## Capstone — everything at once
+
+#### 12. Trigger a cascade and watch metrics, logs, and alerts react
+
+> Your senior gestures at the keyboard. *"You've now seen metrics, normalization, recording rules, alerts, and logs as separate concepts. This exercise puts them all on screen at the same time. One command, one cascade — you watch every layer respond in causal order."*
+
+This is the capstone exercise for Part 1. Open four browser tabs before you run anything:
+
+| Tab | What to open |
+|-----|-------------|
+| Metrics | Grafana Explore — `prometheus` datasource |
+| Logs | Grafana Explore — `loki` datasource |
+| Alerts | [Prometheus alerts](http://localhost:9090/#/alerts) |
+| Alertmanager | [http://localhost:9093](http://localhost:9093) |
+
+**Step 1 — set up your metric queries.** In the metrics tab, load these three queries (use split view or separate tabs):
+
+```promql
+interface_oper_state{device="srl1", name="ethernet-1/1"}
+```
+
+```promql
+bgp_oper_state{device="srl1", peer_address="10.1.2.2"}
+```
+
+```promql
+bgp_prefixes_accepted{device="srl1", peer_address="10.1.2.2"}
+```
+
+```promql
+rate(interface_in_octets{device="srl1", name="ethernet-1/1"}[1m]) * 8 / 1000
+```
+
+Switch all four to `Time series` view. Leave them running — Grafana auto-refreshes.
+
+**Step 2 — set up your log stream.** In the logs tab, run:
+
+```logql
+{device="srl1", vendor_facility_process="UPDOWN"}
+```
+
+Switch to `Live` mode (the toggle in the top-right of Explore). Log lines will stream in as they arrive.
+
+**Step 3 — trigger the cascade.** In a terminal:
+
+```bash
+nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1
+```
+
+One command posts a 4-minute cascade to sonda: the interface flaps on a 30s-up / 60s-down cadence, BGP follows after a 10s hold-down, and every signal snaps back cleanly when the gate closes.
+
+??? tip "Trip just the flap, not BGP"
+
+    Pass `--no-cascade` and only the interface metric and UPDOWN log stream fire — BGP stays clean. Useful for testing the `PeerInterfaceFlapping` alert without bringing a session down.
+
+**Step 4 — watch each layer respond in order.**
+
+*Metrics:*
+
+- `interface_oper_state` flips from `1` → `2` immediately when the interface goes down.
+- ~10 seconds later, `bgp_oper_state` follows from `1` → `2` (BGP hold-down timer).
+- `bgp_prefixes_accepted` drops to `0` on the same beat.
+- Interface traffic drops to `0 kb/s` during each DOWN phase. Here's the chain of cause and effect:
+    - `rate()` measures how fast the byte counter is going up.
+    - During DOWN, no traffic is flowing through the interface, so no bytes get added to the counter.
+    - The counter itself doesn't disappear — it just sits at whatever number it had reached when the interface went down.
+    - When the interface comes back up, traffic starts flowing again and the counter picks up where it left off — no fake spike, no false alarm.
+- When the interface recovers, every gated series snaps back: `bgp_oper_state` → `1`, prefix counters → `10`. Dashboards go green within one scrape cycle.
+
+*Logs:*
+
+UPDOWN log lines start appearing in the live stream within seconds of the first down phase. Each line carries the same `device`, `interface`, and `vendor_facility_process` labels as the metrics — that label alignment is what makes the bridge exercise possible.
+
+*Alerts:*
+
+- After ~30 seconds in the down state, check the Prometheus alerts page. You should see `PeerInterfaceFlapping` move from `INACTIVE` → `PENDING` → `FIRING` as the UPDOWN event count crosses the threshold and holds for `for: 30s`.
+- Once `FIRING`, switch to Alertmanager — the alert arrives there routed by its `severity` and `category` labels. In Part 3 you'll trace exactly what the webhook does with it.
+
+**Stop and notice.** Everything you used today is on screen at the same time: a metric query (interface state), a causal chain (interface → BGP → prefixes), a log stream with matching labels, a recording rule feeding the alert expression, and an alert firing and routing. Each layer was a separate concept earlier in Part 1. Under pressure at 2am, this is the view you'll have open — and every piece of it is a query you now know how to write.
+
 ## Stretch goals (optional — pick one if you have time)
 
 - **Find the busiest interface in the last 5 minutes.** Combine `topk` with `rate()` on `interface_in_octets`. Hint: `topk(3, rate(interface_in_octets[5m]))`.
 - **List every distinct severity level present in srl1 logs in the last hour.** LogQL: parse with `| json`, then check the unique values of `severity` — the Explore log inspector shows distinct values per parsed field after a JSON parse stage.
 - **Run the broken-peer query against srl2 only.** Same shape as #3 but scoped to one device. Confirm you get exactly one row (`peer_address=10.1.11.1`).
 - **Plot CPU and memory side by side.** Two queries in one panel: `cpu_used{device="srl1"}` and `memory_utilization{device="srl1"}`. The legend should show two lines.
-- **See the rename rules at work side by side.** `curl -s 'http://localhost:8085/metrics?label=agent_host:srl2' | grep -E '^(ifHC|bgpPeer|cbgpPeer)' | head` shows the raw SNMP names sonda emits *before* Telegraf rewrites them; `docker exec telegraf-srl2 wget -qO- http://localhost:9005/metrics | grep -E '^(interface_|bgp_)' | head` shows the canonical names Prometheus actually scrapes. The rename ruleset that bridges them lives in `telegraf/telegraf-srl2.conf.toml`.
+- **Inspect the raw shape Telegraf normalizes.** `docker exec telegraf-srl2 wget -qO- http://localhost:9005/metrics | grep -E '^(interface_|bgp_)'` shows what the shared names look like; `nobs autocon5 logs telegraf-srl2 | head -40` shows the raw SNMP-named samples *before* normalization. The rename ruleset that bridges them lives in `telegraf/telegraf-srl2.conf.toml`.
 
 ## What you took away
 
@@ -428,7 +570,10 @@ You'll see BGP-related lines for that specific peer. Add a filter to narrow:
 - Every metric is `name + labels + value`. Aggregations collapse labels you don't list.
 - Counters need `rate()`. The window inside the brackets controls smoothness.
 - Intent-vs-reality is two clauses joined by `and on (...)` — the workshop's broken peers are caught by exactly that shape.
+- Recording rules pre-compute expensive aggregations into new metric names (`aggregation:metric:window`). Query the recording rule, not the raw counter — it's faster and already aligned with the alert threshold.
+- Alert rules are just PromQL expressions plus a `for:` duration and a set of labels and annotations. When the expression returns results for longer than `for:`, the alert fires. The lifecycle is INACTIVE → PENDING → FIRING.
 - LogQL stream selectors look like PromQL but pick log streams. Line filters narrow inside those streams.
 - `count_over_time({...}[N])` turns a log query into a metric — same pattern any LogQL alert rule uses.
 - Same labels on metrics and logs means correlation is one query change away. Metric tells you *what*; log tells you *why*.
+- A real incident moves through all three layers at once: the metric catches the anomaly first, the log explains the event, the alert fires when the anomaly persists. The capstone exercise walked you through that chain live.
 - Two normalization stories on this lab — `collection_type=gnmi/snmp` on metrics, `pipeline=direct/vector` on logs. The label that records the source pipeline exists for inspecting the normalization itself; default to pipeline-agnostic queries and reach for the label only when you're debugging the path, not the network.
