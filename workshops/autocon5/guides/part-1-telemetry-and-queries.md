@@ -75,45 +75,52 @@ Both raw shapes live on `sonda-server` (the lab's synthetic-telemetry runtime). 
 
 #### See the raw shape, before Telegraf touches it
 
-> Your senior pulls up a terminal. *"You don't have to take the bullet list on faith. Both raw shapes are sitting on sonda-server right now — let me show you."*
+> Your senior pulls up a terminal. *"You don't have to take the bullet list on faith. Each layer of the pipeline has its own URL — just click them and see the same fact in three different shapes."*
 
-Each device's scenario IDs land in a shared volume at boot. Pick one srl1 scenario and curl its raw metrics. `sonda-server`'s `/scenarios/{id}/metrics` endpoint **drains** the scenario's emission buffer on each read, and Telegraf is already reading it every 10s — so to see the raw samples yourself you pause Telegraf for one cycle first, let the buffer fill, then curl:
+The pipeline has three layers you can inspect directly from your browser:
 
-```bash
-SRL1_ID=$(docker exec telegraf-srl1 head -1 /shared/scenario-ids-srl1.txt)
-docker pause telegraf-srl1 && sleep 12
-curl -s "http://localhost:8085/scenarios/${SRL1_ID}/metrics" | tail -1
-docker unpause telegraf-srl1
-```
+1. **Raw gNMI from srl1** (sonda-server, before Telegraf): <http://localhost:8085/metrics?label=source:srl1>
 
-```
-srl_bgp_neighbor_state{afi_safi_name="ipv4-unicast",collection_type="gnmi",name="default",neighbor_asn="65102",peer_address="10.1.2.2",source="srl1"} 1 1778960798157
-```
+    Look for `srl_*` metric names (e.g. `srl_bgp_oper_state`, `srl_interface_oper_state`) and the `source="srl1"` tag. This is what an SR Linux device emits on its gNMI stream. For example:
 
-Note the metric name (`srl_bgp_neighbor_state`) and the device label (`source="srl1"`) — that's the gNMI shape SR Linux puts on the wire. The pack `workshops/autocon5/sonda/catalog/srlinux-gnmi-bgp-raw.yaml` lists every metric in this shape.
+    ```
+    srl_bgp_oper_state{afi_safi_name="ipv4-unicast",collection_type="gnmi",name="default",neighbor_asn="65102",peer_address="10.1.99.2",source="srl1"} 5
+    ```
 
-Same exercise on srl2 — same pause-curl-unpause shape:
+    The pack `workshops/autocon5/sonda/catalog/srlinux-gnmi-bgp-raw.yaml` lists every metric in this shape.
 
-```bash
-SRL2_ID=$(docker exec telegraf-srl2 head -1 /shared/scenario-ids-srl2.txt)
-docker pause telegraf-srl2 && sleep 12
-curl -s "http://localhost:8085/scenarios/${SRL2_ID}/metrics" | tail -1
-docker unpause telegraf-srl2
-```
+2. **Raw SNMP from srl2** (sonda-server, before Telegraf): <http://localhost:8085/metrics?label=agent_host:srl2>
 
-```
-bgpPeerState{afi_safi_name="ipv4-unicast",agent_host="srl2",bgpPeerRemoteAddr="10.1.2.1",bgpPeerRemoteAs="65101",collection_type="snmp",name="default"} 1 1778960808168
-```
+    Different shape entirely — IF-MIB / BGP4-MIB names (`ifHCInOctets`, `bgpPeerState`, `cbgpPeerOperStatus`) and the `agent_host="srl2"` tag. For example:
 
-??? info "If your curl returns empty, retry"
+    ```
+    bgpPeerState{afi_safi_name="ipv4-unicast",agent_host="srl2",bgpPeerRemoteAddr="10.1.2.1",bgpPeerRemoteAs="65101",collection_type="snmp",name="default"} 1
+    ```
 
-    `sonda-server`'s `/scenarios/{id}/metrics` endpoint drains the scenario's emission buffer on each read. The Telegraf scrape (every 10s) is one consumer, your `curl` is another — they race for the same buffer. Rerun the `curl` a few seconds later; you'll get the next emission's events.
+    Same logical concept (a BGP peer's operational state) as srl1's `srl_bgp_oper_state`, completely different field name, completely different label keys. Pack: `workshops/autocon5/sonda/catalog/cisco-snmp-bgp-raw.yaml`.
 
-Field name `bgpPeerState`, tag `agent_host`, value space matches SNMP enum semantics. Different name, different label keys than `srl_bgp_oper_state` — same logical concept, completely different shape. Pack: `workshops/autocon5/sonda/catalog/cisco-snmp-bgp-raw.yaml`.
+3. **Telegraf-srl1's normalized output** (after gNMI → canonical rename): <http://localhost:9005/metrics>
 
-> Your senior taps the screen. *"That drain-on-read behaviour is exactly why a real production scrape architecture has one consumer per endpoint. Two consumers fighting for one buffer is a footgun; this is the lab letting you peek behind Telegraf's back without rearchitecting."*
+    Now `srl_bgp_oper_state` is plain `bgp_oper_state`. The `source="srl1"` tag is now `device="srl1"`. Same data, canonical shape.
 
-Now compare to the normalized view in Prometheus, post-Telegraf:
+4. **Telegraf-srl2's normalized output** (after SNMP → canonical rename): <http://localhost:9006/metrics>
+
+    `bgpPeerState` is now also `bgp_oper_state`. The `agent_host="srl2"` tag is now `device="srl2"`. Identical structure to telegraf-srl1's output — except for one label we keep on purpose: `collection_type=gnmi` vs `collection_type=snmp`, so you can debug which pipeline a sample came from.
+
+5. **Final view in Prometheus**: <http://localhost:9090/graph?g0.expr=bgp_oper_state%7Bpeer_address%3D~%2210.1.2.%5B12%5D%22%7D&g0.tab=1>
+
+    A single PromQL query for `bgp_oper_state{peer_address=~"10.1.2.[12]"}` returns rows from both devices in the same shape. The vendor difference is invisible at this layer.
+
+??? info "Why the sonda `/metrics` endpoint is safe for two readers at once"
+
+    `sonda-server` exposes two shapes of metric endpoint: the **aggregate** `/metrics?label=key:value` you just used, and a **per-scenario** `/scenarios/{id}/metrics` for a single scenario by ID.
+
+    - The aggregate endpoint is **snapshot-style**: each scrape gets a consistent picture without consuming anything. Telegraf reads it every 10 seconds; you can read it concurrently from your browser; both see the same bytes.
+    - The per-scenario endpoint is **drain-on-read**: each read consumes the scenario's emission buffer. Telegraf doesn't use this endpoint precisely because two consumers can't share a drain-on-read buffer without racing.
+
+    That difference is the production scrape architecture in miniature: **single-consumer endpoints drain, multi-consumer endpoints snapshot**. The aggregate endpoint is what Telegraf actually scrapes; the per-scenario endpoint is there for the scenario's own tooling.
+
+Now flip to the Prometheus query browser and look at the same data after all the renames:
 
 ```promql
 bgp_oper_state{peer_address=~"10.1.2.[12]"}
@@ -615,7 +622,12 @@ UPDOWN log lines start appearing in the live stream within seconds of the first 
 
         Both lines sit comfortably below any operationally interesting threshold — the lab seeds these as "the box is healthy" baseline so you can compare them against the genuinely interesting interface/BGP signals. If either climbed into the 80–90% range, that'd be a "device itself is unhealthy" signal worth investigating (we ruled this out at the top of Act 2 in Advanced exactly for this reason).
 
-- **Inspect the raw shape Telegraf normalizes.** `docker exec telegraf-srl2 wget -qO- http://localhost:9005/metrics | grep -E '^(interface_|bgp_)'` shows what the shared names look like; `nobs autocon5 logs telegraf-srl2 | head -40` shows the raw SNMP-named samples *before* normalization. The rename ruleset that bridges them lives in `telegraf/telegraf-srl2.conf.toml`.
+- **Inspect the raw shape Telegraf normalizes.** Compare the three layers directly in your browser:
+    - <http://localhost:8085/metrics?label=agent_host:srl2> — raw SNMP (pre-Telegraf): `bgpPeerState`, `ifHCInOctets`, `agent_host=srl2`
+    - <http://localhost:9006/metrics> — telegraf-srl2's normalized output: `bgp_oper_state`, `interface_in_octets`, `device=srl2`
+    - <http://localhost:9090/graph?g0.expr=bgp_oper_state%7Bdevice%3D%22srl2%22%7D&g0.tab=1> — Prometheus stores the same data after one more scrape hop
+
+    The rename ruleset that bridges these layers lives in `telegraf/telegraf-srl2.conf.toml`.
 
     ??? success "Solution — three layers of the same data"
 
