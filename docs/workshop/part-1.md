@@ -11,7 +11,7 @@ description: Morning of your first deep day on the rotation. Walk the lab's metr
 
 <p class="autocon5-section-hero__subtitle">Find the broken peer. Bridge metric → log. Build the baseline.</p>
 
-Your senior buddy walks you through the lab's telemetry shape — what *normal* looks like, where the broken things hide, how to bridge a metric anomaly to the log line that explains it. By the end you have a baseline you can compare every future triage against.
+Your senior buddy walks you through the lab's telemetry shape — what *normal* looks like, where the broken things hide, how to bridge a metric anomaly to the log line that explains it. By the end you have a baseline you can compare every future triage against. Everything you query here is *reality* — what the network is actually doing; Part 3 will hold it against *intent* and let a workflow decide which gaps matter.
 
 <p class="autocon5-section-hero__meta">
   <span>~75 minutes</span>

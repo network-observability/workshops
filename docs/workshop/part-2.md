@@ -11,7 +11,7 @@ description: Mid-morning. A post-mortem email lands — last night's page lost t
 
 <p class="autocon5-section-hero__subtitle">Build the panel last night's post-mortem said you needed.</p>
 
-A post-mortem email lands. Last night's page lost ten minutes because a flap-rate panel didn't exist yet. You build it now — thresholds matching the actual alert rule, while the team is still in the room and your senior is at your shoulder.
+A post-mortem email lands. Last night's page lost ten minutes because a flap-rate panel didn't exist yet. You build it now — thresholds matching the actual alert rule, while the team is still in the room and your senior is at your shoulder. Dashboards and alerts are two faces of the same operational decision: the threshold you set on this panel is the same one Part 3's alert rule fires on.
 
 <p class="autocon5-section-hero__meta">
   <span>~75 minutes</span>
