@@ -559,10 +559,75 @@ UPDOWN log lines start appearing in the live stream within seconds of the first 
 ## Stretch goals (optional — pick one if you have time)
 
 - **Find the busiest interface in the last 5 minutes.** Combine `topk` with `rate()` on `interface_in_octets`. Hint: `topk(3, rate(interface_in_octets[5m]))`.
+
+    ??? success "Solution — what topk returns"
+
+        Three rows, one per "busiest" interface across both devices:
+
+        ```
+        srl2 / ethernet-1/10    ~12,700 bytes/sec
+        srl2 / ethernet-1/1     ~12,700 bytes/sec
+        srl1 / ethernet-1/1     ~12,700 bytes/sec
+        ```
+
+        At rest the synthetic emitter ticks every healthy interface at roughly the same `step_size`, so the three winners are essentially tied — `topk` picks 3 of them somewhat arbitrarily. Drive a flap (`nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1`) and the broken/flapping interface stops contributing during DOWN phases — the result list changes accordingly.
+
 - **List every distinct severity level present in srl1 logs in the last hour.** LogQL: parse with `| json`, then check the unique values of `severity` — the Explore log inspector shows distinct values per parsed field after a JSON parse stage.
+
+    ??? success "Solution — three severity buckets"
+
+        After running `sum by (severity) (count_over_time({device="srl1"} | json [1h]))`, three rows fall out:
+
+        | severity | count (varies, ballpark) |
+        |---|---|
+        | `info`  | ~120 (BGP state changes, link UP events) |
+        | `warn`  | ~70 (broken peer retries, admin-up/oper-down events) |
+        | `error` | ~15 (BGP neighbor "connection refused" lines) |
+
+        The lab seeds three severity buckets on purpose — `info` is the baseline noise, `warn` is the steady-state broken-interface emission, `error` is what the broken peer actively produces. In a real network the distribution looks similar: most lines are routine, a fraction are warnings about expected state, and a smaller fraction are errors worth paging on.
+
 - **Run the broken-peer query against srl2 only.** Same shape as #3 but scoped to one device. Confirm you get exactly one row (`peer_address=10.1.11.1`).
+
+    ??? success "Solution — the one row you should see"
+
+        ```promql
+        bgp_admin_state{device="srl2"} == 1
+          and on (device, peer_address)
+        bgp_oper_state{device="srl2"} != 1
+        ```
+
+        Returns exactly one row:
+
+        ```
+        bgp_admin_state{device="srl2", peer_address="10.1.11.1", ...} = 1
+        ```
+
+        That's srl2's deliberately broken peer — admin says "should be up", oper says it isn't. Same shape as srl1's broken peer (`10.1.99.2` from exercise 5), just on the SNMP-shape device. The intent-vs-reality pattern is device-shape-agnostic because the normalization step gives both pipelines the same metric names and labels.
+
 - **Plot CPU and memory side by side.** Two queries in one panel: `cpu_used{device="srl1"}` and `memory_utilization{device="srl1"}`. The legend should show two lines.
+
+    ??? success "Solution — what to expect on the panel"
+
+        Both metrics are sine waves the synthetic emitter produces:
+
+        - `cpu_used{device="srl1"}` ≈ 10–40% (amplitude 15, offset 25, period 120s)
+        - `memory_utilization{device="srl1"}` ≈ 34–50% (amplitude 8, offset 42, period 240s)
+
+        Both lines sit comfortably below any operationally interesting threshold — the lab seeds these as "the box is healthy" baseline so you can compare them against the genuinely interesting interface/BGP signals. If either climbed into the 80–90% range, that'd be a "device itself is unhealthy" signal worth investigating (we ruled this out at the top of Act 2 in Advanced exactly for this reason).
+
 - **Inspect the raw shape Telegraf normalizes.** `docker exec telegraf-srl2 wget -qO- http://localhost:9005/metrics | grep -E '^(interface_|bgp_)'` shows what the shared names look like; `nobs autocon5 logs telegraf-srl2 | head -40` shows the raw SNMP-named samples *before* normalization. The rename ruleset that bridges them lives in `telegraf/telegraf-srl2.conf.toml`.
+
+    ??? success "Solution — three layers of the same data"
+
+        For one line of `bgp_active_routes` on srl2, you'll see roughly:
+
+        | Layer | What it looks like |
+        |---|---|
+        | Sonda raw (before Telegraf) | `bgpPeerInPrefixes{agent_host="srl2", bgpPeerRemoteAddr="10.1.11.1", ...} 10` |
+        | Telegraf `/metrics` (after rename) | `bgp_active_routes{collection_type="snmp", device="srl2", peer_address="10.1.11.1", ..., pipeline="telegraf"} 10` |
+        | The rename rules that bridge them | `tag.source → device`, `bgpPeerRemoteAddr → peer_address`, plus the metric-name rewrites — all in `telegraf/telegraf-srl2.conf.toml` |
+
+        Same number (`10`), same physical fact (this peer has 10 active routes), three different shapes depending on which layer you sample at. The point of the exercise is to convince yourself that "normalization" isn't a black box — it's a config file you can read.
 
 ## What you took away
 
