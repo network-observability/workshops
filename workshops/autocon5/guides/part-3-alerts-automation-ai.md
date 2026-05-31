@@ -923,9 +923,11 @@ There's no single right answer. The point is that the same tool isn't equally va
 
 ## Stretch goals (optional — pick one if you have time)
 
-- **Tail the Prefect flow logs in real time.** `nobs autocon5 logs prefect-flows`. Re-run `try-it --auto` and watch the flow narrate each path from the inside.
+- **Tail the Prefect flow logs in real time.** Watch a flow run from the inside, line-by-line, so you can correlate every decision in the annotation trail with the task that produced it.
 
-    ??? success "Solution — what you'll see in the log stream"
+    ??? success "Solution — how to tail, plus what you'll see in the log stream"
+
+        Run `nobs autocon5 logs prefect-flows` in one terminal, then re-run `try-it --auto` in another.
 
         Each `try-it --auto` cycle produces a burst of log lines, one per task as the flow runs through it. For a `proceed` path:
 
@@ -945,9 +947,16 @@ There's no single right answer. The point is that the same tool isn't equally va
 
         The `[collect]` lines show the exact SoT + metric values the policy will see. The `[policy]` lines show which stage matched and why. The `[annotate]` line carries the same `decision` and `reason` you find in Loki under `{source="prefect"}`. Tailing the logs is the fastest debug loop when the flow returns an unexpected decision — every intermediate value is visible without a single LogQL query.
 
-- **Compare evidence between a healthy peer and a broken one.** `nobs autocon5 evidence srl1 10.1.2.2` (a healthy peer) vs `nobs autocon5 evidence srl1 10.1.99.2` (a broken one). Pay attention to which fields differ — that's the signal the deterministic policy keys on.
+- **Compare evidence between a healthy peer and a broken one.** Both peers share the same SoT intent, but the policy fires `proceed` on one and `skip` on the other. Find the field that drives the difference.
 
-    ??? success "Solution — what differs between the two"
+    ??? success "Solution — commands to run and what differs between the two"
+
+        Run both:
+
+        ```bash
+        nobs autocon5 evidence srl1 10.1.2.2   # a healthy peer
+        nobs autocon5 evidence srl1 10.1.99.2  # a broken one
+        ```
 
         Both peers share the same *intent* in the SoT (`expected_state: established`) — the SoT can't tell which one is broken on its own. What separates them is **reality**, in the metrics:
 
@@ -962,11 +971,18 @@ There's no single right answer. The point is that the same tool isn't equally va
 
         The policy fires `proceed` when `expected_state=established` AND `oper_state ≠ 1`. Both peers have the same SoT intent — the *gap* between intent and reality is what the policy keys on.
 
-- **Toggle maintenance on srl2 instead of srl1.** Re-run `try-it --auto` after toggling. Confirm the maintenance-skip path swaps which device gets skipped. (Reset with `--clear` afterwards.)
+- **Toggle maintenance on srl2 instead of srl1.** The maintenance-skip path isn't hard-coded to a specific device. Confirm it by flipping maintenance on srl2 instead and verifying the skip swapped devices.
 
-    ??? success "Solution — verify in Loki that the skip swapped device"
+    ??? success "Solution — commands + verify in Loki that the skip swapped device"
 
-        After `nobs autocon5 maintenance --device srl2 --state` and re-running `try-it --auto`, run this in Grafana Explore on the Loki datasource:
+        Run, in order:
+
+        ```bash
+        nobs autocon5 maintenance --device srl2 --state
+        nobs autocon5 try-it --auto
+        ```
+
+        Then in Grafana Explore on the Loki datasource:
 
         ```logql
         {source="prefect", workflow="autocon5_quarantine_bgp", decision="skip"} | json
@@ -978,9 +994,15 @@ There's no single right answer. The point is that the same tool isn't equally va
 
         Don't forget `nobs autocon5 maintenance --device srl2 --clear` afterwards (or run `nobs autocon5 reset` — it clears both devices).
 
-- **Watch a path's annotations in Loki directly.** `{source="prefect"} | json` in Explore. Filter by `workflow="autocon5_quarantine_bgp"` and watch annotations land while you trigger paths.
+- **Watch a path's annotations in Loki directly.** Every Prefect decision lands as a structured JSON annotation in Loki. Tail them live to see the audit trail being written as you trigger paths.
 
-    ??? success "Solution — the audit-trail shape"
+    ??? success "Solution — LogQL query + the audit-trail shape"
+
+        In Grafana Explore on the Loki datasource, paste:
+
+        ```logql
+        {source="prefect", workflow="autocon5_quarantine_bgp"} | json
+        ```
 
         Each annotation has this shape (Grafana parses the JSON into a side panel when you click a row):
 
@@ -1003,9 +1025,11 @@ There's no single right answer. The point is that the same tool isn't equally va
 
         Step 5's unguided LogQL query (`sum by (decision) (count_over_time({source="prefect"}[1h]))`) rolls these annotations up by `decision` label — the same audit-trail data, just aggregated.
 
-- **Swap the AI RCA provider.** If you have an OpenAI or Anthropic key, change `AI_RCA_PROVIDER` to `openai` or `anthropic` and re-run a path. Compare the real LLM narrative against the demo provider's templated one — what does the LLM add that the template can't?
+- **Swap the AI RCA provider.** Compare the templated demo provider's RCA narrative against a real LLM's. What does the LLM add that the template can't?
 
-    ??? success "Solution — guidance on the comparison"
+    ??? success "Solution — how to switch providers + guidance on the comparison"
+
+        If you have an OpenAI or Anthropic key, set `AI_RCA_PROVIDER=openai` (or `anthropic`) in your environment (or the relevant `.env`), restart the Prefect flow worker, and re-run a path with `nobs autocon5 try-it --auto`.
 
         The demo provider produces a templated narrative — it stitches evidence-bundle fields into the same paragraph structure every time:
 
