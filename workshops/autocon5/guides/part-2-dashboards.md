@@ -257,6 +257,138 @@ Worth noting: `srl1` and `srl2` arrive through different upstream pipelines (gNM
 
 > Your senior nods at the screen. *"That's the panel. Six hours from now when somebody on the rotation gets paged on a similar shape, this view is on screen the moment they open the dashboard. Ten minutes saved off the next triage. That's the work."*
 
+## From panel to alert — walk the full lifecycle
+
+You've made the panel react to a flap. The line crossed the orange and red thresholds; visually you got both the early heads-up and the page moment. Now the question every on-call asks themselves at 02:14: *did anything else actually fire?* Where does that information live, and what happens to it next?
+
+This walk uses every observability surface the workshop already has running — CLI, Alertmanager UI, Grafana — to follow the alert from rule match → firing → silence → resolved.
+
+> Heads-up: this section is foundational for Part 3. Take the 10 extra minutes here and Part 3's automation walk will feel obvious. Skip it and Part 3 will refer back here anyway.
+
+### A. The rule, live
+
+The `PeerInterfaceFlapping` rule you mirrored in the panel hasn't been hypothetical — it's been evaluating against the same Loki stream this whole time. The yaml anatomy is in the [What's an alert rule?](#whats-an-alert-rule) fold above; what matters here is *when* it fires:
+
+- **Match ≠ firing.** The expression returning a series means the *condition* is true right now. With `for: 30s`, the alert sits in `pending` for 30 seconds first. Only if the condition holds for the full 30s does it promote to `firing`.
+- **Resolved is also an event.** When the condition stops being true and stays gone, the alert flips to `resolved` and (after Alertmanager's `resolve_timeout`, default 5 min) ages out of the active alerts list.
+
+You flapped `srl1/ethernet-1/1` a minute ago. The condition is matching. After 30s it'll be `firing`. Let's confirm.
+
+### B. Inspect alerts from the CLI
+
+```bash
+nobs autocon5 alerts
+```
+
+You'll see something like:
+
+```
+| Alertname                | Severity | Device / target  |   State |  Age |
+| InterfaceAdminUpOperDown | warning  | srl1             |  firing |  ... |
+| InterfaceAdminUpOperDown | warning  | srl2             |  firing |  ... |
+| BgpSessionNotUp          | warning  | srl1 → 10.1.99.2 |  firing |  ... |
+| BgpSessionNotUp          | warning  | srl2 → 10.1.11.1 |  firing |  ... |
+| PeerInterfaceFlapping    | critical | srl1/ethernet-1/1 |  firing | 30s |
+```
+
+Read the steady-state alerts first — they'll be there every time you walk this lab, so distinguishing them from "the thing I just triggered" matters:
+
+- **`InterfaceAdminUpOperDown × 2`** — `ethernet-1/11` on each device is wired `admin up` but its `oper` state is `down`. The rule matches continuously; it never ages out.
+- **`BgpSessionNotUp × 2`** — two deliberately broken BGP peers (`srl1 → 10.1.99.2`, `srl2 → 10.1.11.1`). Same shape: the rule matches continuously. *Part 3 picks these up and acts on them.*
+
+Your flap added a fifth row: **`PeerInterfaceFlapping`**, scoped to `srl1/ethernet-1/1`, severity `critical`. This one is transient — once the cascade ends and the rolling 2-minute count drops below 3, the alert resolves and ages out within ~5 minutes.
+
+> Your senior glances at the screen. *"Two-tier shape — the always-broken stuff sits there forever, and the things you actually want to know about come and go. Both are useful. The always-broken alerts tell you the lab knows about a problem someone hasn't fixed. The transient ones tell you something happened just now."*
+
+### C. Inspect alerts in the Alertmanager UI
+
+Open <http://localhost:9093/#/alerts>. This is the central queue every rule evaluator (Loki ruler, Prometheus rule evaluator) pushes firing alerts into.
+
+What to look at:
+
+- **The alerts list** — same rows you saw from the CLI, grouped by label set. Click any row to expand and see all its labels (`device`, `interface`, `severity`, …) and annotations (`summary`, `description`).
+- **The filter box** at the top — paste `alertname="PeerInterfaceFlapping"` to scope down. Filters use the same label-matcher syntax as PromQL/LogQL selectors.
+- **The generator URL** on an expanded alert — the link back to the rule that fired this alert. For `PeerInterfaceFlapping` it points at the Loki ruler's evaluation.
+- **The Silences tab** in the top nav — currently empty. You'll create one in step F.
+
+### D. Inspect alerts from Grafana via the `ALERTS` metric
+
+Prometheus exposes alert state as a metric. In Grafana Explore, pick the **prometheus** datasource and paste:
+
+```promql
+ALERTS{alertstate="firing"}
+```
+
+Every currently-firing alert returns a series with value `1` and labels copying the alert's `alertname` / `severity` / etc. Filter further:
+
+```promql
+ALERTS{alertname="PeerInterfaceFlapping"}
+```
+
+This is how dashboards surface alert state — the **Currently firing alerts** panel on the Workshop Home dashboard (`/d/workshop-home`) queries this exact metric and renders it as a table. Same data, different surface.
+
+### E. What's a silence?
+
+A **silence** is a per-label-set mute applied at the Alertmanager layer. It has four pieces:
+
+- **Matchers** — label key/value pairs (regex allowed). Any active alert whose labels match all matchers is silenced.
+- **Duration** — how long the silence is active. Auto-expires after.
+- **Creator** — username, for audit.
+- **Comment** — free text. Why the silence exists. *Always write one in production.*
+
+What a silence does *not* do: stop the rule from matching. The condition is still being evaluated and the alert is still active in the rule evaluator's state. The silence only stops the notification path. The matching alert is marked `suppressed` in the Alertmanager UI and carries `silenced_by=<silence-id>` in its metadata.
+
+This distinction matters: silencing isn't fixing. It's saying *"we know about this, stop paging us about it for the next N minutes."* The rule keeps watching; the page just doesn't fire.
+
+### F. Create a silence by hand
+
+We'll silence one of the always-firing `InterfaceAdminUpOperDown` alerts. Safe target — silencing it doesn't break anything in the lab, and seeing it flip from `firing` to `suppressed` is the whole point of this step.
+
+1. In Alertmanager UI, click the **Silences** tab → **New Silence**.
+2. Add matchers (click **+ Add matcher** for each):
+    - `alertname` = `InterfaceAdminUpOperDown`
+    - `device` = `srl1`
+3. **Duration**: `5m`.
+4. **Creator**: your name or `workshop`.
+5. **Comment**: `Testing silences in workshop`.
+6. Click **Confirm**.
+
+Return to the **Alerts** tab. The `InterfaceAdminUpOperDown(srl1)` row now shows as `suppressed`, not `firing`. Click it — labels and annotations are unchanged, but a new `silenced_by` field carries the silence ID.
+
+Now flip it back: in **Silences**, find your silence, click **Expire**. Refresh Alerts — the row is back to `firing`.
+
+> *"That's the dance the on-call does every time something fires while a known maintenance is in progress. Whoever takes the alert clicks Silence, picks the right matchers, sets a duration, writes a comment. The rule keeps watching, the pager stops yelling, the audit trail shows who silenced what and why."*
+
+### G. The lifecycle in one diagram
+
+```text
+   rule starts matching
+            │
+            ▼
+        pending   ◄── for: 30s — the condition must hold this long first
+            │
+            ▼ (30s elapsed)
+         firing   ◄── notifications go out (webhook, email, …)
+            │
+       ┌────┴────┐
+       │         │
+       ▼         ▼
+  suppressed   resolved
+  (silence    (condition
+   applied)    stopped matching)
+       │
+       ▼ (silence expires)
+     firing  ─── continues until condition resolves
+```
+
+Three transitions every alert can make. Memorise them — they're the same on every alerting stack worth using.
+
+### H. Preview Part 3
+
+`BgpSessionNotUp` has been sitting at `firing` for both devices the whole time you've been on this dashboard. They never resolved because the broken peers are *deliberately* broken — the lab keeps them that way as a steady-state target. In Part 3, a **workflow** picks these alerts up via an Alertmanager webhook, decides whether each one deserves human attention or can be silenced automatically, and applies the silence programmatically — exactly the same `firing → suppressed → firing` cycle you just walked by hand. Part 3 explains what the workflow is, how it's triggered, and what its decision policy looks like.
+
+For now: you've seen the full alert surface. CLI, Alertmanager UI, Grafana ALERTS metric, manual silence. That's the substrate Part 3 builds on.
+
 ## Stretch goals (optional — pick one if you have time)
 
 ### Group the dashboard into tabs

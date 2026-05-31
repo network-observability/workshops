@@ -14,32 +14,49 @@ Reset to known-good baseline first — this expires any silences a prior `try-it
 
 ```bash
 nobs autocon5 reset
-```
-
-Four alerts should be firing in the lab — two per category, one per device:
-
-- **`BgpSessionNotUp` × 2** — the deliberately broken peers from this morning (`srl1 → 10.1.99.2`, `srl2 → 10.1.11.1`). All four start `firing` after the reset above (it cleared any silences left from earlier exercises). Once you walk Step 3, you'll see `BgpSessionNotUp` cycle `firing` ↔ `suppressed` as the webhook flow silences each for 20 minutes and the silence then expires.
-- **`InterfaceAdminUpOperDown` × 2** — `ethernet-1/11` on each device is configured as `admin up` but its `oper` state is `down`. That's a permanent intent-vs-reality mismatch (intent says "should be up", reality says "isn't" — the framing we use throughout Part 3, defined in [The four paths](#the-four-paths) below), so the rule fires continuously and never ages out.
-
-```bash
 nobs autocon5 alerts
 ```
 
+You should see four alerts firing — same shape you saw in Part 2:
+
 ```
-| Alertname                | Severity | Device / target  |      State | Age |
-| BgpSessionNotUp          | warning  | srl1 → 10.1.99.2 |     firing | ... |
-| BgpSessionNotUp          | warning  | srl2 → 10.1.11.1 |     firing | ... |
-| InterfaceAdminUpOperDown | warning  | srl1             |     firing | ... |
-| InterfaceAdminUpOperDown | warning  | srl2             |     firing | ... |
+| Alertname                | Severity | Device / target  |   State |  Age |
+| BgpSessionNotUp          | warning  | srl1 → 10.1.99.2 |  firing |  ... |
+| BgpSessionNotUp          | warning  | srl2 → 10.1.11.1 |  firing |  ... |
+| InterfaceAdminUpOperDown | warning  | srl1             |  firing |  ... |
+| InterfaceAdminUpOperDown | warning  | srl2             |  firing |  ... |
 ```
 
-`InterfaceAdminUpOperDown` is steady-state — the underlying mismatch is permanent, so the rule will never age out. Step 3 (the incident drill below) revisits this row when you flap an interface alongside it. The only alert that should ever move between `firing` and `suppressed` here is `BgpSessionNotUp`: it's `firing` immediately after the rule trips, then `suppressed` once the webhook flow applies its 20-minute `quarantine` silence, then `firing` again when the silence expires.
+If you skipped Part 2 §[From panel to alert — walk the full lifecycle](../../../docs/workshop/part-2.md#from-panel-to-alert-walk-the-full-lifecycle), skim it now — the `nobs autocon5 alerts` CLI, the Alertmanager UI, the `ALERTS` metric, and what `firing ↔ suppressed` means are all explained there. Part 3 picks up where that leaves off.
 
-If you see fewer than two `BgpSessionNotUp` rows, give the stack 60 seconds and try again — alert evaluation has a `for: 30s` clause (the underlying condition must hold true for 30 seconds straight before the alert is `firing`; until then it sits in `pending` state), and you might have caught it before promotion. If you ran Part 2 and see a `PeerInterfaceFlapping` row, that's residue from the flap cascade — it ages out within ~5 minutes of the last flap. None of these conditions block the four paths below.
+The two `BgpSessionNotUp` rows are what this part is about. Once you walk Step 3, you'll see each cycle `firing` → `suppressed` (the workflow silences it for 20 minutes) → `firing` again (the silence expires). `InterfaceAdminUpOperDown` is steady-state noise that never moves; ignore it.
+
+If you see fewer than two `BgpSessionNotUp` rows, give the stack 60 seconds and try again — the rule has a `for: 30s` clause, so you might have caught it before promotion. A `PeerInterfaceFlapping` row from Part 2's flap cascade ages out within ~5 minutes.
+
+??? info "What's a workflow?"
+
+    A **workflow** here is code that runs in response to an event. The event is an Alertmanager webhook delivery; the code is a Prefect *flow* — a sequence of named tasks that collect evidence, evaluate a policy, and either silence the alert or escalate it.
+
+    The handoff at a glance:
+
+    ```text
+       alert fires
+            │
+            ▼
+       Alertmanager  ── routes by label match
+            │
+            ▼
+       webhook receiver  ── HTTP POST to Prefect
+            │
+            ▼
+       quarantine_bgp_flow  ── the decision logic
+    ```
+
+    `quarantine_bgp_flow` is **deterministic**: same alert payload in, same decision out, every time. Replayable, reviewable in code review (the decision tree is `DecisionPolicy.evaluate` in [`workshops/autocon5/automation/workshop_sdk.py`](https://github.com/network-observability/workshops/blob/main/workshops/autocon5/automation/workshop_sdk.py)), and auditable through annotations it writes to Loki. The full decision tree is broken out in [The four paths](#the-four-paths) below.
 
 > Tip: you'll bounce between query languages from Part 1 throughout this part — **PromQL** for metrics (`bgp_oper_state{device="srl1", ...}`) and **LogQL** for logs and audit annotations (`{source="prefect", ...}`). Both query the same Grafana Explore tab; you switch by changing the datasource picker at the top.
 
-Open **Workshop Home** at <http://localhost:3000/d/workshop-home>. The **Currently firing alerts** table at the bottom should show those same four rows. Keep this dashboard open in a tab — you'll watch it react to your CLI commands throughout this part. (New to Grafana? The [Grafana section of the Tour](../../../docs/workshop/tour.md#grafana-dashboards-and-explore) walks the dashboards and Explore mode.)
+Open **Workshop Home** at <http://localhost:3000/d/workshop-home>. The **Currently firing alerts** table at the bottom should show those same four rows. Keep this dashboard open in a tab — you'll watch it react to your CLI commands throughout this part.
 
 ## The four paths
 
