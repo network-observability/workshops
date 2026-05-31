@@ -9,9 +9,9 @@ description: Late morning. A real alert lands and your senior narrates how the w
 
 <h1 class="autocon5-section-hero__title">Alerts, automation, AI</h1>
 
-<p class="autocon5-section-hero__subtitle">Close the loop between what should be true and what is true.</p>
+<p class="autocon5-section-hero__subtitle">Observability is the feedback loop. Automation closes it.</p>
 
-A real `BgpSessionNotUp` alert lands. A deterministic Prefect workflow reads intent from [Infrahub](tour.md#infrahub-source-of-truth) and reality from [Prometheus](tour.md#prometheus-the-metrics-store) + Loki, then decides whether the gap is expected or actionable and writes the decision back as an audit annotation. You drive each of the four paths the workflow handles by hand, then optionally toggle on the AI RCA step.
+Parts 1 and 2 dropped you into **observability** — the feedback loop a network engineer reaches for when something looks wrong, the half of the picture made of metrics and logs streaming off the live system. Part 3 is the other half: **automation as the action that closes the loop**. A real `BgpSessionNotUp` alert lands. An **orchestrator** picks it up, asks the **source of truth** what *should* be true, holds it against the observability stream, and acts on the gap. SoT · observability · orchestrator — the trio every network automation framework names — wired here with [Infrahub](tour.md#infrahub-source-of-truth), [Prometheus](tour.md#prometheus-the-metrics-store) + Loki, and [Prefect](tour.md#prefect-workflows-deployments-runs).
 
 <p class="autocon5-section-hero__meta">
   <span>~75 minutes</span>
