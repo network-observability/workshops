@@ -329,24 +329,32 @@ This is how dashboards surface alert state — the **Currently firing alerts** p
 
 There's a second way to put `ALERTS` to work on a dashboard: as a **time-range annotation** that shades the panel during the exact minutes the alert was firing. That makes the rule's firing window and the panel's threshold crossing line up visually on the same plot.
 
-Add one now:
+Add one now (Grafana 13 split the annotation editor across a right-panel pane and a query-editor modal — both steps are below):
 
-1. Open Workshop Lab 2026 → **Dashboard settings** (gear icon, top-right) → **Annotations** tab.
-2. Click **Add annotation query**.
-3. Fill in:
+1. Click **Edit** (top-right of the dashboard). The right sidebar appears.
+2. In the sidebar, click **Dashboard options** (gear icon — hover tooltip says *"Dashboard options"*). The right panel switches to a settings view.
+3. Scroll the right panel down to the **Annotations** section. Click **Add annotation query**.
+4. The right panel now shows the new annotation's outer settings. Fill in:
 
     | Field | Value |
     |---|---|
     | **Name** | `PeerInterfaceFlapping firing` |
-    | **Data source** | `prometheus` |
     | **Color** | red (or any colour you like) |
+    | **Show annotation controls in** | `Above dashboard` (default) |
     | **Show in** | `All panels` (default) |
-    | **Query** | `ALERTS{alertname="PeerInterfaceFlapping", alertstate="firing"}` |
+
+5. Click **Open query editor** (blue button under the *Query* sub-heading). A modal titled **Annotation Query** opens. Fill in:
+
+    | Field | Value |
+    |---|---|
+    | **Data source** | `prometheus` |
+    | **Query** (PromQL input) | `ALERTS{alertname="PeerInterfaceFlapping", alertstate="firing"}` |
     | **Title** | `{{alertname}}` |
     | **Text** | `{{device}}/{{interface}}` |
 
-4. Click **Test annotation query** to confirm. If a flap-driven firing exists in the time window, you'll see one or more events listed. If you flapped 5+ minutes ago and the alert has resolved, "No events found" is also fine — the annotation will pick up the next firing.
-5. Click **Save** (top right), then **Back to dashboard**.
+6. Click **Test annotation query** in the modal. If a flap-driven firing exists in the time window, you'll see one or more events listed. If you flapped 5+ minutes ago and the alert has resolved, "No events found" is also fine — the annotation will pick up the next firing.
+7. Click **Close** to dismiss the modal.
+8. Click **Save** (top-right of the dashboard), then **Exit edit**.
 
 A toggle now appears in the dashboard header: **PeerInterfaceFlapping firing**, enabled. Drive another flap:
 
