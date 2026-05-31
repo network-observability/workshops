@@ -222,11 +222,11 @@ Then re-read what you wrote.
 
 ??? tip "Stretch goals — if you have time before lunch"
 
-    - **Drive the same investigation on srl2.** Re-run the cascade with `--device srl2`. Notice that the existing `BgpSessionNotUp` alert was for srl1's broken peer; on srl2 the broken peer is `10.1.11.1`. The triage decision tree from Act 2 works the same; only the device label changes. Confirm your runbook stub still applies — if it doesn't, either it was too device-specific or you've found a real shape difference worth writing down.
+    - **Drive the same investigation on srl2.** The cascade you just walked was on srl1. Re-run it on srl2 and confirm your runbook stub still applies — if it doesn't, it was either too device-specific or you've found a real shape difference worth writing down.
 
-        ??? success "Solution — what to expect on srl2"
+        ??? success "Solution — command to run + what to expect on srl2"
 
-            Running `nobs autocon5 incident --device srl2` produces the same cascade shape on srl2. The pre-existing `BgpSessionNotUp` alert for `srl2 → 10.1.11.1` (the deliberately-broken peer on the SNMP-shape device) was visible in Act 1 already.
+            Run `nobs autocon5 incident --device srl2`. It produces the same cascade shape on srl2. The pre-existing `BgpSessionNotUp` alert for `srl2 → 10.1.11.1` (the deliberately-broken peer on the SNMP-shape device) was visible in Act 1 already.
 
             Act 2's triage queries all work the same way — just change the device label and adjust the peer:
 
@@ -238,11 +238,11 @@ Then re-read what you wrote.
 
             If your runbook stub *didn't* apply when you swapped to srl2, it was either too device-specific ("check srl1's config") or accidentally encoded a vendor-shape assumption that doesn't survive the SNMP path.
 
-    - **Predict the customer-impact window.** Given the timing you observed (backup utilisation crossing 70% around t=2½ min, latency ramping from there toward 150ms over the next three minutes), at what point would a customer's response-time SLO break? Use the queries from Act 3 to back the answer with data, not feel.
+    - **Predict the customer-impact window.** At what point in the cascade would a customer's response-time SLO break? Back the answer with data from Act 3's queries, not feel.
 
-        ??? success "Solution — the math"
+        ??? success "Solution — the math + customer-impact arithmetic"
 
-            Linear interpolation on latency:
+            Given the timing you observed (backup utilisation crossing 70% around t=2½ min, latency ramping from there toward 150ms over the next three minutes), linear interpolation on latency:
 
             - At t ≈ 2:30, latency starts at 5 ms.
             - At t ≈ 5:30, latency hits 150 ms (3 min of ramp).
@@ -255,9 +255,11 @@ Then re-read what you wrote.
 
             The lesson: by the time customers complain (p99 broken), the primary uplink fault is **already 3–4 minutes old**. The alert needs to fire on a root-cause signal (the flap, or backup utilisation crossing threshold), not on the latency symptom — otherwise you're permanently 3 minutes behind the customer impact.
 
-    - **Compare the investigation arc to the automated path.** Run `nobs autocon5 try-it` from Part 3 — it walks the four alert paths automatically. Contrast: `try-it` is the automation handling routine cases without you. The investigation game you just walked is what you do when *automation isn't enough* — when you need to know what the workflow would have done, why, and whether to override it.
+    - **Compare the investigation arc to the automated path.** Contrast the manual investigation you just walked against Part 3's automated flow. Where does each one belong in a real operation?
 
-        ??? success "Solution — the qualitative comparison"
+        ??? success "Solution — command to run + the qualitative comparison"
+
+            Run `nobs autocon5 try-it` from Part 3 — it walks the four alert paths automatically. `try-it` is the automation handling routine cases without you; the investigation game you just walked is what you do when *automation isn't enough* — when you need to know what the workflow would have done, why, and whether to override it.
 
             Two different jobs, both useful:
 

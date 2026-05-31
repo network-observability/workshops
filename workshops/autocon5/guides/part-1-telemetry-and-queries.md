@@ -565,9 +565,13 @@ UPDOWN log lines start appearing in the live stream within seconds of the first 
 
 ## Stretch goals (optional — pick one if you have time)
 
-- **Find the busiest interface in the last 5 minutes.** Combine `topk` with `rate()` on `interface_in_octets`. Hint: `topk(3, rate(interface_in_octets[5m]))`.
+- **Find the busiest interface in the last 5 minutes.** Combine `topk` with `rate()` on `interface_in_octets`. Which interfaces show up?
 
-    ??? success "Solution — what topk returns"
+    ??? success "Solution — the query + what it returns"
+
+        ```promql
+        topk(3, rate(interface_in_octets[5m]))
+        ```
 
         Three rows, one per "busiest" interface across both devices:
 
@@ -579,11 +583,17 @@ UPDOWN log lines start appearing in the live stream within seconds of the first 
 
         At rest the synthetic emitter ticks every healthy interface at roughly the same `step_size`, so the three winners are essentially tied — `topk` picks 3 of them somewhat arbitrarily. Drive a flap (`nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1`) and the broken/flapping interface stops contributing during DOWN phases — the result list changes accordingly.
 
-- **List every distinct severity level present in srl1 logs in the last hour.** LogQL: parse with `| json`, then check the unique values of `severity` — the Explore log inspector shows distinct values per parsed field after a JSON parse stage.
+- **List every distinct severity level present in srl1 logs in the last hour.** What does the lab actually seed?
 
-    ??? success "Solution — three severity buckets"
+    ??? success "Solution — the query + three severity buckets"
 
-        After running `sum by (severity) (count_over_time({device="srl1"} | json [1h]))`, three rows fall out:
+        Parse the lines with `| json` then aggregate by the parsed field:
+
+        ```logql
+        sum by (severity) (count_over_time({device="srl1"} | json [1h]))
+        ```
+
+        Three rows fall out:
 
         | severity | count (varies, ballpark) |
         |---|---|
@@ -593,9 +603,9 @@ UPDOWN log lines start appearing in the live stream within seconds of the first 
 
         The lab seeds three severity buckets on purpose — `info` is the baseline noise, `warn` is the steady-state broken-interface emission, `error` is what the broken peer actively produces. In a real network the distribution looks similar: most lines are routine, a fraction are warnings about expected state, and a smaller fraction are errors worth paging on.
 
-- **Run the broken-peer query against srl2 only.** Same shape as #3 but scoped to one device. Confirm you get exactly one row (`peer_address=10.1.11.1`).
+- **Run the broken-peer query against srl2 only.** Same shape as exercise 5 (the intent-vs-reality BGP query), but scoped to one device. Confirm you get exactly one row.
 
-    ??? success "Solution — the one row you should see"
+    ??? success "Solution — the query + the one row it returns"
 
         ```promql
         bgp_admin_state{device="srl2"} == 1
@@ -611,9 +621,17 @@ UPDOWN log lines start appearing in the live stream within seconds of the first 
 
         That's srl2's deliberately broken peer — admin says "should be up", oper says it isn't. Same shape as srl1's broken peer (`10.1.99.2` from exercise 5), just on the SNMP-shape device. The intent-vs-reality pattern is device-shape-agnostic because the normalization step gives both pipelines the same metric names and labels.
 
-- **Plot CPU and memory side by side.** Two queries in one panel: `cpu_used{device="srl1"}` and `memory_utilization{device="srl1"}`. The legend should show two lines.
+- **Plot CPU and memory side by side.** Two queries in one Explore panel — what should both lines look like at rest?
 
-    ??? success "Solution — what to expect on the panel"
+    ??? success "Solution — the queries + expected ranges"
+
+        ```promql
+        cpu_used{device="srl1"}
+        ```
+
+        ```promql
+        memory_utilization{device="srl1"}
+        ```
 
         Both metrics are sine waves the synthetic emitter produces:
 
@@ -622,14 +640,15 @@ UPDOWN log lines start appearing in the live stream within seconds of the first 
 
         Both lines sit comfortably below any operationally interesting threshold — the lab seeds these as "the box is healthy" baseline so you can compare them against the genuinely interesting interface/BGP signals. If either climbed into the 80–90% range, that'd be a "device itself is unhealthy" signal worth investigating (we ruled this out at the top of Act 2 in Advanced exactly for this reason).
 
-- **Inspect the raw shape Telegraf normalizes.** Compare the three layers directly in your browser:
-    - <http://localhost:8085/metrics?label=agent_host:srl2> — raw SNMP (pre-Telegraf): `bgpPeerState`, `ifHCInOctets`, `agent_host=srl2`
-    - <http://localhost:9006/metrics> — telegraf-srl2's normalized output: `bgp_oper_state`, `interface_in_octets`, `device=srl2`
-    - <http://localhost:9090/graph?g0.expr=bgp_oper_state%7Bdevice%3D%22srl2%22%7D&g0.tab=1> — Prometheus stores the same data after one more scrape hop
+- **Inspect the raw shape Telegraf normalizes.** Compare the three layers of the pipeline directly — what does the same fact look like before Telegraf, after Telegraf, and after Prometheus has stored it?
 
-    The rename ruleset that bridges these layers lives in `telegraf/telegraf-srl2.conf.toml`.
+    ??? success "Solution — three URLs walking the same fact through three shapes"
 
-    ??? success "Solution — three layers of the same data"
+        Click each URL and grep for one specific metric:
+
+        - <http://localhost:8085/metrics?label=agent_host:srl2> — raw SNMP (pre-Telegraf): `bgpPeerState`, `ifHCInOctets`, `agent_host=srl2`
+        - <http://localhost:9006/metrics> — telegraf-srl2's normalized output: `bgp_oper_state`, `interface_in_octets`, `device=srl2`
+        - <http://localhost:9090/graph?g0.expr=bgp_oper_state%7Bdevice%3D%22srl2%22%7D&g0.tab=1> — Prometheus stores the same data after one more scrape hop
 
         For one line of `bgp_active_routes` on srl2, you'll see roughly:
 
@@ -637,9 +656,9 @@ UPDOWN log lines start appearing in the live stream within seconds of the first 
         |---|---|
         | Sonda raw (before Telegraf) | `bgpPeerInPrefixes{agent_host="srl2", bgpPeerRemoteAddr="10.1.11.1", ...} 10` |
         | Telegraf `/metrics` (after rename) | `bgp_active_routes{collection_type="snmp", device="srl2", peer_address="10.1.11.1", ..., pipeline="telegraf"} 10` |
-        | The rename rules that bridge them | `tag.source → device`, `bgpPeerRemoteAddr → peer_address`, plus the metric-name rewrites — all in `telegraf/telegraf-srl2.conf.toml` |
+        | Prometheus (after one more scrape) | identical to the line above — Prometheus just stores it |
 
-        Same number (`10`), same physical fact (this peer has 10 active routes), three different shapes depending on which layer you sample at. The point of the exercise is to convince yourself that "normalization" isn't a black box — it's a config file you can read.
+        Same number (`10`), same physical fact (this peer has 10 active routes), three different shapes depending on which layer you sample at. The rename ruleset that bridges them lives in `telegraf/telegraf-srl2.conf.toml` — `tag.source → device`, `bgpPeerRemoteAddr → peer_address`, plus the metric-name rewrites. The point of the exercise is to convince yourself that "normalization" isn't a black box — it's a config file you can read.
 
 ## What you took away
 

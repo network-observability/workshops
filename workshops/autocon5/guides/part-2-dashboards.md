@@ -261,59 +261,55 @@ Worth noting: `srl1` and `srl2` arrive through different upstream pipelines (gNM
 
 ### Group the dashboard into tabs
 
-Grafana 13 added a new feature called **Group into tabs** — same idea as tabs in a web browser. Instead of one long page with all eight panels stacked vertically, you split the dashboard into a few tabs at the top, and only the panels for the active tab show up. The eight panels on **Workshop Lab 2026** are a lot to scroll past when you're triaging at 2am; tabs make the page lighter by showing only what you need for the question you're asking.
+The eight panels on **Workshop Lab 2026** are a lot to scroll past when you're triaging at 2am. Use Grafana 13's new **Group into tabs** feature to split the dashboard into a few tabs so each one answers one operational question instead of showing everything at once.
 
-In **Edit** mode, click **`+`** in the right sidebar, then **Group into tabs**. Drag panels into each tab using the layout below — a useful split for a real on-call:
+??? success "Solution — steps + what the dashboard looks like after"
 
-| Tab | Panels to include | What this tab answers |
-|---|---|---|
-| **Overview** | Devices · Interfaces · Firing alerts · Log lines (5m) | "Is anything wrong right now?" |
-| **Interfaces** | Interface Admin State · Interface Operational Status · Interface Traffic · Interface Logs | "What's the state of the device's interfaces?" |
-| **Flap** | Flap rate (per 2 minutes) · Flap history (the table you built above, if you did the table stretch goal) | "Which interface is flapping and how badly?" |
+    Grafana 13's **Group into tabs** works like browser tabs: only the active tab's panels render, so the page feels lighter and the queries run faster.
 
-**Save** the dashboard. Click between the tabs — Grafana only loads the panels for the tab you're on, so the page feels lighter and the queries run faster. Drive a flap (`nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1`) and click into the **Flap** tab — the view is exactly what an on-call would open on a `PeerInterfaceFlapping` page.
+    In **Edit** mode, click **`+`** in the right sidebar, then **Group into tabs**. Drag panels into each tab using the layout below — a useful split for a real on-call:
 
-**Stop and notice.** Tabs only change how the dashboard is laid out — the panels and queries themselves don't change. What changes is *which questions the dashboard answers when you open it*. The Overview tab is for "is anything wrong"; the Flap tab is for "show me the symptom" — different operational questions, same dashboard, same data. Building this split before an incident means the page lands and the right view is already there.
+    | Tab | Panels to include | What this tab answers |
+    |---|---|---|
+    | **Overview** | Devices · Interfaces · Firing alerts · Log lines (5m) | "Is anything wrong right now?" |
+    | **Interfaces** | Interface Admin State · Interface Operational Status · Interface Traffic · Interface Logs | "What's the state of the device's interfaces?" |
+    | **Flap** | Flap rate (per 2 minutes) · Flap history (the table you built above, if you did the table stretch goal) | "Which interface is flapping and how badly?" |
 
-??? success "Solution — what your dashboard looks like after the change"
-
-    The dashboard top should now show three tabs across the top — `Overview`, `Interfaces`, `Flap` — with only the active tab's panels rendering below. Click between them and check:
+    **Save** the dashboard. Click between the tabs and check:
 
     - **Overview** shows the four stat panels (Devices · Interfaces · Firing alerts · Log lines).
     - **Interfaces** shows Interface Admin State · Interface Operational Status · Interface Traffic · Interface Logs.
     - **Flap** shows your Flap rate panel (and Flap history if you also did the table stretch goal).
 
+    Drive a flap (`nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1`) and click into the **Flap** tab — the view is exactly what an on-call would open on a `PeerInterfaceFlapping` page.
+
     If a panel ended up in the wrong tab, drag it between tabs while in Edit mode. The provisioned YAML resets the layout on `nobs autocon5 restart grafana`, so don't worry about breaking anything permanently.
+
+    **Stop and notice.** Tabs only change how the dashboard is laid out — the panels and queries themselves don't change. What changes is *which questions the dashboard answers when you open it*. The Overview tab is for "is anything wrong"; the Flap tab is for "show me the symptom" — different operational questions, same dashboard, same data. Building this split before an incident means the page lands and the right view is already there.
 
 ### Extend the Interface Traffic panel with a per-device aggregate
 
-Open the existing **Interface Traffic** panel in edit mode. The per-interface queries already in the panel multiply by `* 8` to convert bytes/s into bits/s — anything you add must do the same or it'll render 8× smaller than the existing lines.
+The existing **Interface Traffic** panel draws one line per interface. Add a second query that draws a single device-wide total on the same panel, styled so it visually stands out from the per-interface lines.
 
-#### 1. Add the aggregate query
+??? success "Solution — steps + what the panel looks like after"
 
-Click **+ Add query** below the first query. Paste the in+out aggregate, with the same unit conversion and the same rate window as the existing queries:
+    Open the **Interface Traffic** panel in edit mode. The per-interface queries already in the panel multiply by `* 8` to convert bytes/s into bits/s — anything you add must do the same or it'll render 8× smaller than the existing lines.
 
-```promql
-sum(rate(interface_in_octets{device="$device"}[$__rate_interval])) * 8
-  + sum(rate(interface_out_octets{device="$device"}[$__rate_interval])) * 8
-```
+    **1. Add the aggregate query.** Click **+ Add query** below the first query. Paste the in+out aggregate, with the same unit conversion and the same rate window as the existing queries:
 
-#### 2. Name the new series so the override can target it
+    ```promql
+    sum(rate(interface_in_octets{device="$device"}[$__rate_interval])) * 8
+      + sum(rate(interface_out_octets{device="$device"}[$__rate_interval])) * 8
+    ```
 
-Below the query, in the per-query **Options** row, set **Legend** to **Custom** and type `Summary` in the field next to it. Without this step Grafana auto-names the series from its labels, which makes the next step harder — you'd have to target a label-based name like `{}` instead of a stable, friendly one.
+    **2. Name the new series so the override can target it.** Below the query, in the per-query **Options** row, set **Legend** to **Custom** and type `Summary` in the field next to it. Without this step Grafana auto-names the series from its labels, which makes the next step harder — you'd have to target a label-based name like `{}` instead of a stable, friendly one.
 
-#### 3. Make it visually stand out
+    **3. Make it visually stand out.** In the right-hand options panel, scroll to **Overrides** → **+ Add field override** → **Fields with name** → pick `Summary` from the dropdown. Then click **+ Add override property** (once per property) and add:
 
-In the right-hand options panel, scroll to **Overrides** → **+ Add field override** → **Fields with name** → pick `Summary` from the dropdown. Then click **+ Add override property** (once per property) and add:
+    - **Graph styles → Line width**: `3` (thicker than the per-interface lines)
+    - **Graph styles → Line style**: `Dash` (or pick a distinct colour instead — whichever reads more cleanly on your screen)
 
-- **Graph styles → Line width**: `3` (thicker than the per-interface lines)
-- **Graph styles → Line style**: `Dash` (or pick a distinct colour instead — whichever reads more cleanly on your screen)
-
-Now the panel shows per-interface lines plus a single thicker, dashed `Summary` line for the device-wide total — same units, same scale, the aggregate sits naturally above the per-interface lines instead of looking like a flatline near zero.
-
-??? success "Solution — what the panel looks like after the change"
-
-    Two queries in the panel, both multiplied by `* 8` (bits/s):
+    **What the panel should look like after.** Two queries in the panel, both multiplied by `* 8` (bits/s):
 
     | Query | Expression | Legend |
     |---|---|---|
@@ -332,88 +328,68 @@ Now the panel shows per-interface lines plus a single thicker, dashed `Summary` 
 
 > Your senior leans back in. *"Time-series tells you the shape. A table tells you the list — which device, which interface, how many flaps, click here to investigate. Build the second one. Make the device column a link into Device Health so a click takes you straight to the right view."*
 
-You're adding a second panel: a table that summarises flap activity per device + interface over the last hour, with the **device** column as a clickable link into the **Device Health** dashboard, preserving the time window.
+Add a second panel: a table that summarises flap activity per device + interface over the last hour, with the **device** column as a clickable link into the **Device Health** dashboard, preserving the time window. This is the densest stretch goal — budget ~20 minutes if you're new to Grafana table panels, transformations, and data links. The [Grafana section of the Tour](../../../docs/workshop/tour.md#grafana-dashboards-and-explore) is a good companion tab while you work through it.
 
-This is the densest stretch goal — budget ~20 minutes if you're new to Grafana table panels, transformations, and data links. The [Grafana section of the Tour](../../../docs/workshop/tour.md#grafana-dashboards-and-explore) is a good companion tab while you work through it.
+??? success "Solution — full 8-step build + what the table looks like after"
 
-#### 1. Add the panel
+    **1. Add the panel.** Back on the **Workshop Lab 2026** dashboard: click **Edit**, click the **`+`** in the right sidebar, click **Panel**, then click **Configure** in the panel settings that appear. Pick the **`loki`** datasource.
 
-Back on the **Workshop Lab 2026** dashboard: click **Edit**, click the **`+`** in the right sidebar, click **Panel**, then click **Configure** in the panel settings that appear. Pick the **`loki`** datasource.
+    **2. Write the query.** Toggle the query box to **Code** mode (the `Builder | Code` switch on the right of the query toolbar). Paste:
 
-#### 2. Write the query
+    ```logql
+    sum by (device, interface) (count_over_time({vendor_facility_process="UPDOWN"}[1h]))
+    ```
 
-Toggle the query box to **Code** mode (the `Builder | Code` switch on the right of the query toolbar). Paste:
+    A 1-hour window is "what's been flapping today" — wider than the 2-minute alert window so the table holds stable rows even between flaps.
 
-```logql
-sum by (device, interface) (count_over_time({vendor_facility_process="UPDOWN"}[1h]))
-```
+    Below the query box, expand **Options** and switch **Type** from `Range` to `Instant`. For a table, we want one row per device + interface pair — not one row per time sample. Instant returns the most-recent value per series; Range would return a row per scrape interval, multiplying the table by 50× without adding signal.
 
-A 1-hour window is "what's been flapping today" — wider than the 2-minute alert window so the table holds stable rows even between flaps.
+    Click **Run query**.
 
-Below the query box, expand **Options** and switch **Type** from `Range` to `Instant`. For a table, we want one row per device + interface pair — not one row per time sample. Instant returns the most-recent value per series; Range would return a row per scrape interval, multiplying the table by 50× without adding signal.
+    **3. Switch the panel type.** On the right-hand sidebar, click the **All visualizations** tab and pick **Table**. The result lands as a single-row table with a value column and the labels mashed into one cell — that's because Loki returns time-series-shaped data and the table needs help turning labels into proper columns.
 
-Click **Run query**.
+    **4. Reshape with transformations.** Below the query box, click the **Transformations** tab → **Add transformation**. A search dialog opens with every available transformation as a tile.
 
-#### 3. Switch the panel type
+    - Pick **Labels to fields**. Each Loki label (`device`, `interface`) becomes its own column.
+    - Add a second transformation (click **Add another transformation**): **Organize fields by name**. Hide `Time` (click the eye icon next to it — the table doesn't need it), reorder so `device` is first and `interface` second, and rename `Value #A` to `Total flaps` in the rename input next to that row.
 
-On the right-hand sidebar, click the **All visualizations** tab and pick **Table**. The result lands as a single-row table with a value column and the labels mashed into one cell — that's because Loki returns time-series-shaped data and the table needs help turning labels into proper columns.
+    You should now see one row per `device + interface` pair, with three clean columns: `device`, `interface`, `Total flaps`.
 
-#### 4. Reshape with transformations
+    **5. Title and description.** Right-hand options → **Panel options**:
 
-Below the query box, click the **Transformations** tab → **Add transformation**. A search dialog opens with every available transformation as a tile.
+    - **Title**: `Flap history (last 1h)`
+    - **Description**: `UPDOWN events per device + interface over the last hour. Click any device cell to drill into Device Health for that device, time range preserved.`
 
-- Pick **Labels to fields**. Each Loki label (`device`, `interface`) becomes its own column.
-- Add a second transformation (click **Add another transformation**): **Organize fields by name**. Hide `Time` (click the eye icon next to it — the table doesn't need it), reorder so `device` is first and `interface` second, and rename `Value #A` to `Total flaps` in the rename input next to that row.
+    **6. Colour-code the flap counts with a gauge.** A glance at the table should tell you which rows are quiet and which are alarming without reading numbers. Right-hand options → **Overrides** → **Add field override** → **Fields with name** → pick `Total flaps`. Then click **Add override property** (once per property) and add:
 
-You should now see one row per `device + interface` pair, with three clean columns: `device`, `interface`, `Total flaps`.
+    - **Cell options → Cell type**: `Gauge`
+    - **Cell options → Gauge display mode**: `LCD gauge` (the retro pixel-bar style — coloured stripes that fill horizontally)
+    - **Standard options → Min**: `0`
+    - **Standard options → Max**: `100`
+    - **Thresholds** (set them inside this same override): Green base, Orange at `30`, Red at `60`
 
-#### 5. Title and description
+    The threshold numbers are higher than the 2-minute flap-rate panel above because this table uses a **1-hour window**: the always-broken interfaces alone accumulate around 28 UPDOWN events per hour just sitting there. So below 30 is "background noise", 30–60 is "something extra is happening", and 60+ is "real flap activity in the last hour".
 
-Right-hand options → **Panel options**:
+    Each row's `Total flaps` cell now renders as a horizontal LCD bar that fills green → yellow → red as the count climbs. At-a-glance triage without reading numbers.
 
-- **Title**: `Flap history (last 1h)`
-- **Description**: `UPDOWN events per device + interface over the last hour. Click any device cell to drill into Device Health for that device, time range preserved.`
+    **7. Make the device cell a link.** Still in the right-hand options, scroll to **Overrides** → **Add field override** → **Fields with name** → pick `device`. On the override:
 
-#### 6. Colour-code the flap counts with a gauge
+    - **Cell options → Cell type**: `Auto` (or `Color text` if you want the link visually distinct).
+    - **Data links** → **Add link**:
+        - **Title**: `Open Device Health for ${__value.text}`
+        - **URL**: `/d/c78e686b-138b-4deb-b6ae-3239dc10a162?var-device=${__value.raw}&from=${__from}&to=${__to}`
 
-A glance at the table should tell you which rows are quiet and which are alarming without reading numbers. Right-hand options → **Overrides** → **Add field override** → **Fields with name** → pick `Total flaps`. Then click **Add override property** (once per property) and add:
+    `${__value.raw}` is the cell's raw label value (`srl1`, `srl2`). `${__from}` and `${__to}` are the dashboard's current time-range bounds — the link carries the window forward so the destination dashboard opens on the same minutes you were just looking at.
 
-- **Cell options → Cell type**: `Gauge`
-- **Cell options → Gauge display mode**: `LCD gauge` (the retro pixel-bar style — coloured stripes that fill horizontally)
-- **Standard options → Min**: `0`
-- **Standard options → Max**: `100`
-- **Thresholds** (set them inside this same override): Green base, Orange at `30`, Red at `60`
+    **8. Save and try it.** **Apply**, then **Save dashboard**. Trigger a flap:
 
-The threshold numbers are higher than the 2-minute flap-rate panel above because this table uses a **1-hour window**: the always-broken interfaces alone accumulate around 28 UPDOWN events per hour just sitting there. So below 30 is "background noise", 30–60 is "something extra is happening", and 60+ is "real flap activity in the last hour".
+    ```bash
+    nobs autocon5 flap-interface --device srl1 --interface ethernet-1/10
+    ```
 
-Each row's `Total flaps` cell now renders as a horizontal LCD bar that fills green → yellow → red as the count climbs. At-a-glance triage without reading numbers.
+    Within a minute, a row for `srl1 / ethernet-1/10` shows up with a climbing `Total flaps` count. Click the `srl1` cell. Grafana jumps to **Device Health**, scoped to `srl1`, on the same time range you were on.
 
-#### 7. Make the device cell a link
-
-Still in the right-hand options, scroll to **Overrides** → **Add field override** → **Fields with name** → pick `device`. On the override:
-
-- **Cell options → Cell type**: `Auto` (or `Color text` if you want the link visually distinct).
-- **Data links** → **Add link**:
-    - **Title**: `Open Device Health for ${__value.text}`
-    - **URL**: `/d/c78e686b-138b-4deb-b6ae-3239dc10a162?var-device=${__value.raw}&from=${__from}&to=${__to}`
-
-`${__value.raw}` is the cell's raw label value (`srl1`, `srl2`). `${__from}` and `${__to}` are the dashboard's current time-range bounds — the link carries the window forward so the destination dashboard opens on the same minutes you were just looking at.
-
-#### 8. Save and try it
-
-**Apply**, then **Save dashboard**. Trigger a flap:
-
-```bash
-nobs autocon5 flap-interface --device srl1 --interface ethernet-1/10
-```
-
-Within a minute, a row for `srl1 / ethernet-1/10` shows up with a climbing `Total flaps` count. Click the `srl1` cell. Grafana jumps to **Device Health**, scoped to `srl1`, on the same time range you were on.
-
-**Stop and notice.** Tables are the dashboard equivalent of "a list of things to investigate, each row a one-click entry into deeper context". The time-series panel above tells you *something is flapping*. The table tells you *which one, how badly, and here's the next dashboard*. The data-link override is what binds the two dashboards into one navigation flow — no copy-pasting device names, no losing the time range.
-
-??? success "Solution — what the table looks like after the change"
-
-    Three clean columns (no `Time`, no `Value #A` — those got hidden / renamed by the Organize-fields transformation), four rows at rest:
+    **What the table should look like after.** Three clean columns (no `Time`, no `Value #A` — those got hidden / renamed by the Organize-fields transformation), four rows at rest:
 
     | device  | interface     | Total flaps                         |
     |---------|---------------|-------------------------------------|
@@ -426,6 +402,8 @@ Within a minute, a row for `srl1 / ethernet-1/10` shows up with a climbing `Tota
 
     - The `device` cells are blue underlined links. Clicking `srl1` takes you to **Device Health** with `var-device=srl1` and the dashboard's current time range carried forward.
     - The `Total flaps` cells render as horizontal LCD gauges that fill green → orange → red as the count grows. Background noise (always-broken interfaces) sits around 28 (mostly green). An actively-flapping interface climbs past 60 in a few minutes and goes mostly red.
+
+    **Stop and notice.** Tables are the dashboard equivalent of "a list of things to investigate, each row a one-click entry into deeper context". The time-series panel above tells you *something is flapping*. The table tells you *which one, how badly, and here's the next dashboard*. The data-link override is what binds the two dashboards into one navigation flow — no copy-pasting device names, no losing the time range.
 
 ## What you took away
 
