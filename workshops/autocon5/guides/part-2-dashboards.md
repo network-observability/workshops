@@ -327,6 +327,44 @@ ALERTS{alertname="PeerInterfaceFlapping"}
 
 This is how dashboards surface alert state — the **Currently firing alerts** panel on the Workshop Home dashboard (`/d/workshop-home`) queries this exact metric and renders it as a table. Same data, different surface.
 
+There's a second way to put `ALERTS` to work on a dashboard: as a **time-range annotation** that shades the panel during the exact minutes the alert was firing. That makes the rule's firing window and the panel's threshold crossing line up visually on the same plot.
+
+Add one now:
+
+1. Open Workshop Lab 2026 → **Dashboard settings** (gear icon, top-right) → **Annotations** tab.
+2. Click **Add annotation query**.
+3. Fill in:
+
+    | Field | Value |
+    |---|---|
+    | **Name** | `PeerInterfaceFlapping firing` |
+    | **Data source** | `prometheus` |
+    | **Color** | red (or any colour you like) |
+    | **Show in** | `All panels` (default) |
+    | **Query** | `ALERTS{alertname="PeerInterfaceFlapping", alertstate="firing"}` |
+    | **Title** | `{{alertname}}` |
+    | **Text** | `{{device}}/{{interface}}` |
+
+4. Click **Test annotation query** to confirm. If a flap-driven firing exists in the time window, you'll see one or more events listed. If you flapped 5+ minutes ago and the alert has resolved, "No events found" is also fine — the annotation will pick up the next firing.
+5. Click **Save** (top right), then **Back to dashboard**.
+
+A toggle now appears in the dashboard header: **PeerInterfaceFlapping firing**, enabled. Drive another flap:
+
+```bash
+nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1
+```
+
+Wait ~90 seconds (rule needs `> 3 events in 2 minutes` plus the `for: 30s` clause). Your Flap rate panel climbs past the red threshold — and on the *same panel*, a red shaded vertical region appears spanning the exact minutes `PeerInterfaceFlapping` was firing. Hover the region: the tooltip shows the device and interface from the alert's labels (`srl1 / ethernet-1/1`).
+
+> Your senior nods. *"Now the panel doesn't just visualise the condition — it tells you when the rule actually said yes. Threshold lines tell you what *should* trigger a page; annotation regions tell you when it *actually* did. Both on the same plot."*
+
+Two ways to read this once you have it on every panel:
+
+- **During triage**: a glance at the panel tells you whether the page that woke you up is the same page someone got 30 minutes ago. The annotation regions are the historical record of the rule firing alongside the underlying metric shape.
+- **When tuning thresholds**: if a rule fires too often (or not enough), comparing the annotation regions against the panel data is how you decide whether to move the threshold, widen the rolling window, or extend the `for:` clause.
+
+(To scope the annotation to a single panel instead of `All panels`, set **Show in** → **Selected panels** and pick the panel — useful when an annotation only makes sense for one panel's question.)
+
 ### E. What's a silence?
 
 A **silence** is a per-label-set mute applied at the Alertmanager layer. It has four pieces:
