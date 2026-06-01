@@ -11,7 +11,7 @@ description: Morning of your first deep day on the rotation. Walk the lab's metr
 
 <p class="autocon5-section-hero__subtitle">Find the broken peer. Bridge metric → log. Build the baseline.</p>
 
-Your senior buddy walks you through the lab's telemetry shape — what *normal* looks like, where the broken things hide, how to bridge a metric anomaly to the log line that explains it. By the end you have a baseline you can compare every future triage against. Everything you query here is *reality* — what the network is actually doing; Part 3 will hold it against *intent* and let a workflow decide which gaps matter.
+Your senior buddy walks you through the lab's telemetry shape — what *normal* looks like, where the broken things hide, how to bridge a metric anomaly to the log line that explains it. By the end you have a baseline you can compare every future triage against.
 
 <p class="autocon5-section-hero__meta">
   <span>~75 minutes</span>
@@ -20,7 +20,7 @@ Your senior buddy walks you through the lab's telemetry shape — what *normal* 
 </p>
 
 </div>
-
+<!-- 
 <figure class="section-preview" markdown>
 
 ![BGP States — three peers, one stuck in ACTIVE](../assets/screenshots/device-health-bgp-states-light.png#only-light){ .screenshot loading=lazy }
@@ -37,7 +37,7 @@ Your senior buddy walks you through the lab's telemetry shape — what *normal* 
 
 <figcaption>What the metric-to-log bridge looks like in Loki Explore — same labels, two query languages. The single most-cited pattern in this workshop.</figcaption>
 
-</figure>
+</figure> -->
 
 {%
   include-markdown "../../workshops/autocon5/guides/part-1-telemetry-and-queries.md"
