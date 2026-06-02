@@ -477,6 +477,221 @@ Worth saying out loud, so it doesn't trip you up:
 
 What `proceed` *does* do is contain the noise (silence), explain what was seen (audit record), and make the moment visible (dashboard mark). Three observable outcomes from one decision — the loop closing for this alert.
 
+### 5. Maintenance branch — same drill, opposite decision
+
+You've now walked the cycle once: alert → evidence → policy → action. The workflow saw a real mismatch and decided `proceed`.
+
+But here's the thing — **the same alert** doesn't always need action. If srl1 is in a planned maintenance window, the operator already knows the BGP peer might bounce around. They don't want the workflow paging them. The workflow needs to *know* about the maintenance.
+
+That information lives in the source of truth (Infrahub). Phase 5 flips a single flag — `srl1.maintenance` from `false` to `true` — and shows you how that one change makes the workflow decide `skip` on the *same alert* with the *same evidence*.
+
+#### Step 1 · Flip the maintenance flag
+
+```bash
+nobs autocon5 maintenance --device srl1 --state
+```
+
+The CLI confirms:
+
+```
+╭──── WorkshopDevice updated ────╮
+│ srl1.maintenance: False → True │
+╰────────────────────────────────╯
+   The next alert for this device will be SKIPPED by the policy.
+```
+
+Two things happened:
+
+1. The CLI wrote `maintenance=true` to srl1's record in Infrahub.
+2. The CLI also wrote one log line to Loki recording the change (the same audit trail Phase 3 walked, just with `source="workshop-trigger"` instead of `source="prefect"`).
+
+#### Step 2 · See the flag in Infrahub
+
+Open Infrahub at <http://localhost:8000> (login `admin` / `infrahub`). Click **Network Device** in the left nav, then click **srl1**. The `maintenance` field now reads `true`.
+
+This is the same field the workflow's evidence panel showed you in Phase 2 — when the workflow gathered evidence, it asked Infrahub *"is srl1 in maintenance?"* and the answer was `false`. Now the answer is `true`.
+
+#### Step 3 · Re-trigger the alert
+
+The workflow only runs when a *new* alert fires. The silence from Phase 4 is still active, so we need to expire it manually so the alert flips back to `firing` — that pushes a new delivery to the workflow.
+
+Open Alertmanager at <http://localhost:9093/#/silences>. Find the silence you inspected in Phase 4 (the one with `device=srl1` and `peer_address=10.1.99.2`). Click **Expire**. Within a few seconds the alert flips back to `firing`, the webhook delivers a new payload, and the workflow runs again.
+
+#### Step 4 · Read the new decision in Loki
+
+Wait ~10 seconds for the workflow to finish. Then re-run the Phase 3 LogQL query in Grafana:
+
+```logql
+{source="prefect", workflow="autocon5_quarantine_bgp", device="srl1"} | json
+```
+
+The **most recent line** now reads:
+
+| Field | Value |
+|---|---|
+| `decision` (label) | `skip` |
+| `message` (field) | `device under maintenance` |
+
+Same broken peer, same metrics, same evidence as Phase 3 — but a `skip` decision instead of `proceed`. The change happened because the *intent* in the source of truth changed.
+
+!!! warning "Don't clear maintenance until you've seen the `skip` annotation"
+
+    Step 5 below clears the maintenance flag. If you race ahead and clear it before the workflow has actually re-evaluated, it'll re-read `maintenance=false` and return `proceed` instead of `skip`. Confirm the `skip` log line has landed in Loki first, then continue.
+
+#### Step 5 · Clear the maintenance flag
+
+```bash
+nobs autocon5 maintenance --device srl1 --clear
+```
+
+`srl1.maintenance` is back to `false`. The next alert will be evaluated normally — back on the `proceed` path.
+
+> **The big idea.** Maintenance isn't a separate alerting layer. It's not a config you stash in the workflow code. It's a *label in the source of truth* that the workflow consults at decision time. One label flip, opposite decision, same evidence. That's what makes context-aware alerting actually work in production — the workflow doesn't *guess* whether to act; it *looks up* whether to act.
+
+### 6. AI RCA — same evidence, different voice
+
+Every decision you've seen so far has been **deterministic**: the workflow looks at the evidence and makes a yes/no call based on a fixed rule. *Same inputs, same outputs, every time.* That's by design — the workflow has to be replayable, reviewable, auditable.
+
+But there's a second thing the workflow can do alongside the deterministic decision: **ask an AI to write a short narrative explaining the situation in plain language**. We call this the **AI RCA** step — RCA stands for *Root Cause Analysis*.
+
+Important: the AI **does not decide what to do**. The deterministic policy still picks `proceed` or `skip`. The AI just writes a paragraph alongside the decision. Think of it as the on-call's first-draft writeup — *"here's what's going on, here are some likely causes, here are some next steps"* — generated automatically and stapled to the audit record.
+
+#### Step 1 · Enable the demo provider
+
+By default the AI step is off. Flip two lines in the workshop's `.env` file:
+
+```bash
+ENABLE_AI_RCA=true
+AI_RCA_PROVIDER=demo
+```
+
+The `demo` provider works offline — it writes a templated narrative grounded in the same evidence the deterministic policy used. (If you have an OpenAI or Anthropic API key, swap `demo` for `openai` or `anthropic` and add the matching key — same flow, real LLM voice.)
+
+#### Step 2 · Reload the workflow
+
+Docker reads `.env` only when a container is first *created*, not on every restart. The command below recreates the workflow container so it picks up your new settings:
+
+```bash
+nobs autocon5 up
+```
+
+Wait about 30 seconds for the workflow to come back online.
+
+#### Step 3 · Trigger an alert and read the AI narrative
+
+The fastest way to see the AI run is to drive an interface flap (it cascades into a fresh `BgpSessionNotUp` firing):
+
+```bash
+nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1
+```
+
+Wait ~2 minutes for the cascade to fire `BgpSessionNotUp` on the affected peer. Then in Grafana Explore on the Loki datasource:
+
+```logql
+{source="prefect", ai_rca="true"} | json
+```
+
+You'll see one new line per workflow run. Click the most recent one. The `message` field contains a three-section paragraph:
+
+```text
+## Most likely cause
+SoT expects peer 10.1.2.2 on srl1 to be established, but oper_state=5 (active),
+admin_state=1 (enable), received_routes=0.
+
+## Immediate actions
+- Inspect reachability and timers between srl1 and 10.1.2.2
+
+## What to verify next
+- Tail Loki for device=srl1 around the alert window for BGP state transitions
+```
+
+??? info "What the demo AI RCA narrative actually contains"
+
+    With `AI_RCA_PROVIDER=demo`, the workshop ships a templated narrative that fills three sections (Most likely cause / Immediate actions / What to verify next) from the same evidence the deterministic policy reads. Here's what the demo writes for the broken peer:
+
+    ```text
+    AI RCA:
+    (demo narrative — set AI_RCA_PROVIDER=openai|anthropic with an API key
+    for a real model response.)
+
+    ## Most likely cause
+    SoT expects peer 10.1.99.2 on srl1 to be established, with intent reason 'ip-mismatch-demo',
+    but oper_state=5 (active), admin_state=1 (enable), received_routes=0.
+
+    ## Immediate actions
+    - Inspect reachability and timers between srl1 and 10.1.99.2
+
+    ## What to verify next
+    - Tail Loki for device=srl1 around the alert window for BGP state transitions
+    - Check whether the SoT reason 'ip-mismatch-demo' matches a known fault class
+    - Compare received_routes=0 against expected_prefixes_received in the SoT
+    ```
+
+    This lands in Loki as one log line with these labels:
+
+    ```
+    ai_rca=true
+    device=srl1
+    peer_address=10.1.99.2
+    source=prefect
+    workflow=autocon5_quarantine_bgp
+    severity=info
+    ```
+
+    The narrative is grounded in the *same* evidence the deterministic policy used — SoT's `expected_state`, the metric values, the prefix counter. The template doesn't invent facts; it stitches the evidence into prose. When you flip `AI_RCA_PROVIDER` to `openai` or `anthropic` later, the model gets that same evidence dict and writes its own three-section response — different voice, identical inputs. The `ai_rca="true"` label is what distinguishes these records from the deterministic `decision=...` records in the same Loki stream.
+
+#### Where it lands — alongside the decision, never inside it
+
+The AI narrative sits **next to** the deterministic decision in Loki, not in place of it. Run the Phase 3 query again:
+
+```logql
+{source="prefect", workflow="autocon5_quarantine_bgp", device="srl1"} | json
+```
+
+You'll see *two* recent records for the same alert: one with `decision=proceed` (the deterministic outcome) and one with `ai_rca=true` (the AI narrative). Both are grounded in the same evidence the workflow gathered in Phase 2.
+
+#### What changes if you use a real LLM
+
+The `demo` provider writes a templated narrative — same three sections every time, filled in from the evidence fields. It can't draw on outside knowledge; it only has what the workflow handed it.
+
+Swap `AI_RCA_PROVIDER` to `openai` or `anthropic` with a real API key, and you get a real model response: same three sections, but now with broader domain inference, BGP-specific reasoning, and calibrated uncertainty (*"most likely"*, *"consistent with"*). Same evidence in, different voice out.
+
+> **The big idea.** AI in an on-call loop should be a **narrative tool**, not a decision tool. The decision is what stays the same across replays and code reviews. The narrative is what reads well at 02:14. Keep them separate, keep them both grounded in the same evidence, and you get the best of both worlds.
+
+### 7. Your turn — find what the workflow actually did
+
+You've walked every step of the cycle. Now use what you've seen.
+
+> *Without scrolling any dashboard, how many alerts has the workflow handled in the last hour, broken down by decision?*
+
+**The data:** Every decision the workflow makes lands in Loki under `source="prefect"`. The query you've used a few times now (`{source="prefect", workflow="autocon5_quarantine_bgp", device="srl1"} | json`) shows you the raw records. You need a query that *counts* them, grouped by `decision`.
+
+**Two hints if you get stuck:**
+
+- `count_over_time({...}[1h])` turns a Loki query into a number — same pattern as Part 1 exercise 10. A one-hour window catches anything you ran earlier in this part, even if you took a coffee break.
+- `sum by (label) (...)` collapses everything except the label you list. Pick the label that gives the most informative breakdown — try `workflow` first (one row, not useful), then try `decision` (a few rows, much more useful).
+
+Take a minute on it before you scroll. Don't filter by `device` — you want all the devices.
+
+??? success "Solution and what your query should return"
+
+    ```logql
+    sum by (decision) (count_over_time({source="prefect", workflow="autocon5_quarantine_bgp"}[1h]))
+    ```
+
+    You should land on something like:
+
+    | Decision | Count |
+    |---|---|
+    | `proceed` | a few |
+    | `skip` | a few |
+    | `resolved` | maybe a few |
+    | *(empty)*  | several — AI RCA records don't carry a `decision` label |
+
+    Exact counts depend on how many cycles you drove by hand. If you get a single row total, you've collapsed too aggressively (no `by` clause). If you get dozens of rows, you've left a high-cardinality label unaggregated.
+
+> **The big idea.** The audit trail isn't just for humans to read line-by-line. It's a *queryable data source* — every decision the workflow made is one log line, with labels, ready for aggregation. *"How many alerts did the workflow proceed on this morning?"* is one query away.
+
 ## The exercises
 
 ### 1. Inspect what's already firing
