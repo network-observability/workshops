@@ -60,12 +60,19 @@ Open **Workshop Home** at <http://localhost:3000/d/workshop-home>. The **Current
 
 ## The cycle — alert → evidence → policy → action
 
-Every alert this part walks through follows the same four-step shape:
+Two `BgpSessionNotUp` alerts are firing in your lab right now (you just saw them in the setup check above). In a traditional setup, each alert would sit in a queue waiting for a human to notice and react. In this lab, there's an **automated workflow** — a small Python program that watches for new alerts — and it runs the same four steps every time one lands:
+
+1. **Alert** — the workflow notices a new alert. *You already saw this part in the setup check.*
+2. **Evidence** — the workflow gathers facts about the peer the alert is about, from three different sources.
+3. **Policy** — the workflow runs a decision rule on those facts: is this something to act on, or is it expected?
+4. **Action** — depending on the decision, the workflow silences the alert, writes a record of why, and marks it on the dashboard.
 
 ![The Part 3 cycle — alert, evidence, policy, action](../../../docs/assets/diagrams/part-3-cycle-light.svg#only-light){ .screenshot loading=lazy }
 ![The Part 3 cycle — alert, evidence, policy, action](../../../docs/assets/diagrams/part-3-cycle-dark.svg#only-dark){ .screenshot loading=lazy }
 
-You'll walk one full cycle by hand, then a second cycle with maintenance flipped on in the source of truth so you can see how that same alert ends up with a different decision. The point is to internalise the four-step shape — once you know it, every alert your team writes fits the same pattern.
+The rest of Part 3 walks each step in turn — you'll run a CLI command to see the workflow's view of the evidence (Phase 2), read what it decided in Loki (Phase 3), look at the silence it created in Alertmanager and the record it wrote (Phase 4). At the end you'll flip a single flag in the source of truth and watch the *same* alert go through the *same* four steps but land at a *completely different* decision (Phase 5).
+
+The bigger point — and the reason this matters even outside this lab — is that **alerts on their own aren't useful**. The loop that wraps each alert (gather context, decide, act, leave a record) is what turns a notification into an operational decision. Once you know the four steps, every alert your team writes follows the same pattern.
 
 ??? info "Deep dive — the four decision paths in full"
 
