@@ -58,156 +58,294 @@ If you see fewer than two `BgpSessionNotUp` rows, give the stack 60 seconds and 
 
 Open **Workshop Home** at <http://localhost:3000/d/workshop-home>. The **Currently firing alerts** table at the bottom should show those same four rows. Keep this dashboard open in a tab — you'll watch it react to your CLI commands throughout this part.
 
-## The four paths
+## The cycle — alert → evidence → policy → action
 
-> Reading material — skim once, then jump to the exercises below. The folds in this section are deep dives you can come back to when something feels unclear during the exercises.
+Every alert this part walks through follows the same four-step shape:
 
-Every `BgpSessionNotUp` payload that lands on the webhook gets fed through the same **decision tree**: a deterministic Python function that pulls **intent** (from Infrahub) and **reality** (from Prometheus metrics) for the affected peer, compares them, and returns one of a fixed set of outcomes. "Deterministic" here means the same inputs always produce the same decision — no probabilistic step, no LLM judgment in the path. You can replay any historical alert and get bit-identical reasoning, which is what makes the flow reviewable in code review and replayable in a post-mortem. The AI RCA step you'll turn on in Step 6 sits *alongside* this decision, not inside it.
+![The Part 3 cycle — alert, evidence, policy, action](../../../docs/assets/diagrams/part-3-cycle-light.svg#only-light){ .screenshot loading=lazy }
+![The Part 3 cycle — alert, evidence, policy, action](../../../docs/assets/diagrams/part-3-cycle-dark.svg#only-dark){ .screenshot loading=lazy }
 
-```text
-   alert payload
-        │
-        ▼
-   collect_evidence  ── SoT (Infrahub) + metrics (Prom) + logs (Loki)
-        │
-        ▼
-   evaluate_policy  ── deterministic decision tree
-        │
-        ▼
-   one of: proceed · skip · resolved · stop
-```
+You'll walk one full cycle by hand, then a second cycle with maintenance flipped on in the source of truth so you can see how that same alert ends up with a different decision. The point is to internalise the four-step shape — once you know it, every alert your team writes fits the same pattern.
 
-Why these four outcomes specifically (three skips and one proceed)? Because the policy needs to distinguish three different *reasons not to act* — the peer is healthy, the device is in a maintenance window, or the alert already resolved itself — from the single reason *to act*: source-of-truth and metrics disagree and a human probably needs to know. Collapsing any pair into one outcome would lose audit signal; splitting any further would mean the policy is doing something the SoT schema can't yet express.
+??? info "Deep dive — the four decision paths in full"
 
-Every decision the flow makes lands in Loki as an **audit annotation** — one log line per evaluation, written by the `annotate_decision` task right after `evaluate_policy` returns. The annotation carries the device, the peer, and a `decision` label, which is what lets you ask Loki "how many alerts has the flow decided `proceed` on in the last hour?" without scrolling. Step 5 is the unguided exercise where you answer that question yourself.
+    Reading material — skim once, then jump to the exercises below. The nested folds are deeper dives you can come back to when something feels unclear during the exercises.
 
-| Path | Trigger | Decision | Outcome |
-|------|---------|---------|---------|
-| **Mismatch → proceed** | Intent says peer up, metrics disagree | `proceed` | The flow signals "this needs human attention" — visible in the audit annotation, no silence |
-| **Healthy → skip** | Intent and metrics agree (no real problem) | `skip` | Audit annotation only |
-| **In-maintenance → skip** | Device's `maintenance` flag is `true` in Infrahub | `skip` | Audit annotation only |
-| **Resolved → audit trail** | Alert resolved | `resolved` | Audit annotation only |
+    Every `BgpSessionNotUp` payload that lands on the webhook gets fed through the same **decision tree**: a deterministic Python function that pulls **intent** (from Infrahub) and **reality** (from Prometheus metrics) for the affected peer, compares them, and returns one of a fixed set of outcomes. "Deterministic" here means the same inputs always produce the same decision — no probabilistic step, no LLM judgment in the path. You can replay any historical alert and get bit-identical reasoning, which is what makes the flow reviewable in code review and replayable in a post-mortem. The AI RCA step you'll turn on in Phase 6 sits *alongside* this decision, not inside it.
 
-There's a fifth outcome the policy can emit but that `try-it` doesn't exercise: **`stop`** — fires when the device on the alert isn't in Infrahub at all (the SoT lookup returns nothing). The flow can't decide `proceed` vs `skip` without intent data, so it bails early with `decision=stop` and a `device not found in Infrahub` reason. You'll typically only see it if an alert fires before `nobs autocon5 load-infrahub` has finished seeding the schema — rare, but real.
+    ```text
+       alert payload
+            │
+            ▼
+       collect_evidence  ── SoT (Infrahub) + metrics (Prom) + logs (Loki)
+            │
+            ▼
+       evaluate_policy  ── deterministic decision tree
+            │
+            ▼
+       one of: proceed · skip · resolved · stop
+    ```
 
-Annotations land in Loki under `{source="prefect", workflow="autocon5_quarantine_bgp"}` with a `decision` label that takes one of: `proceed`, `skip`, `resolved`, `stop`. They're visible in **Recent events** feeds on both **Workshop Home** and **Device Health**.
+    Why these four outcomes specifically (three skips and one proceed)? Because the policy needs to distinguish three different *reasons not to act* — the peer is healthy, the device is in a maintenance window, or the alert already resolved itself — from the single reason *to act*: source-of-truth and metrics disagree and a human probably needs to know. Collapsing any pair into one outcome would lose audit signal; splitting any further would mean the policy is doing something the SoT schema can't yet express.
 
-??? info "What does intent actually look like in Infrahub?"
+    Every decision the flow makes lands in Loki as an **audit annotation** — one log line per evaluation, written by the `annotate_decision` task right after `evaluate_policy` returns. The annotation carries the device, the peer, and a `decision` label, which is what lets you ask Loki "how many alerts has the flow decided `proceed` on in the last hour?" without scrolling. Phase 7 is the unguided exercise where you answer that question yourself.
 
-    The flow asks Infrahub two questions per alert payload — *is this peer expected to be up?* (`expected_state`) and *is the device in a maintenance window?* (`maintenance`). Both come from the same `WorkshopDevice` GraphQL query with its `bgp_sessions` relationship expanded.
+    | Path | Trigger | Decision | Outcome |
+    |------|---------|---------|---------|
+    | **Mismatch → proceed** | Intent says peer up, metrics disagree | `proceed` | The flow signals "this needs human attention" — visible in the audit annotation, no silence |
+    | **Healthy → skip** | Intent and metrics agree (no real problem) | `skip` | Audit annotation only |
+    | **In-maintenance → skip** | Device's `maintenance` flag is `true` in Infrahub | `skip` | Audit annotation only |
+    | **Resolved → audit trail** | Alert resolved | `resolved` | Audit annotation only |
 
-    (If GraphQL is new: it's a query language where you ask for the exact fields you want — including fields on related objects — and the server returns nested JSON in the same shape. The `WorkshopDevice { … bgp_sessions { … } }` block below reads as *"give me a `WorkshopDevice`, and for each one also include its `bgp_sessions` with these per-session fields."* The Infrahub Sandbox links the schema, so you can autocomplete the field names without memorising them.)
+    There's a fifth outcome the policy can emit but that `try-it` doesn't exercise: **`stop`** — fires when the device on the alert isn't in Infrahub at all (the SoT lookup returns nothing). The flow can't decide `proceed` vs `skip` without intent data, so it bails early with `decision=stop` and a `device not found in Infrahub` reason. You'll typically only see it if an alert fires before `nobs autocon5 load-infrahub` has finished seeding the schema — rare, but real.
 
-    Two paths to run it yourself — both valid, both worth knowing:
+    Annotations land in Loki under `{source="prefect", workflow="autocon5_quarantine_bgp"}` with a `decision` label that takes one of: `proceed`, `skip`, `resolved`, `stop`. They're visible in **Recent events** feeds on both **Workshop Home** and **Device Health**.
 
-    1. **Via the Infrahub UI** at <http://localhost:8000>. Login `admin` / `infrahub`. Click **Network Device** in the left nav, then click **srl1** in the list. The `maintenance` boolean, `site_name`, `role` show in the detail panel; the BGP sessions are on the **Bgp Sessions** tab. Click any peer (e.g., `10.1.99.2`) to see its `expected_state` and `reason`. (Infrahub's UI label for the schema is "Network Device" — the underlying GraphQL type is still `WorkshopDevice`, which is what the query below uses.)
-    2. **Via the GraphQL Sandbox** at <http://localhost:8000/graphql>. Paste the query below and hit run. This is the same query the Prefect flow makes from `automation/workshop_sdk.py` — Step 4A's "See the exact query the flow runs" fold (in [#a-set-maintenance-and-see-the-source-of-truth-flip](#a-set-maintenance-and-see-the-source-of-truth-flip)) covers the verbatim version.
+    ??? info "What does intent actually look like in Infrahub?"
 
-    ```graphql
-    {
-      WorkshopDevice(name__value: "srl1") {
-        edges {
-          node {
-            name { value }
-            maintenance { value }
-            site_name { value }
-            role { value }
-            bgp_sessions {
-              edges {
-                node {
-                  peer_address { value }
-                  expected_state { value }
-                  remote_as { value }
-                  reason { value }
+        The flow asks Infrahub two questions per alert payload — *is this peer expected to be up?* (`expected_state`) and *is the device in a maintenance window?* (`maintenance`). Both come from the same `WorkshopDevice` GraphQL query with its `bgp_sessions` relationship expanded.
+
+        (If GraphQL is new: it's a query language where you ask for the exact fields you want — including fields on related objects — and the server returns nested JSON in the same shape. The `WorkshopDevice { … bgp_sessions { … } }` block below reads as *"give me a `WorkshopDevice`, and for each one also include its `bgp_sessions` with these per-session fields."* The Infrahub Sandbox links the schema, so you can autocomplete the field names without memorising them.)
+
+        Two paths to run it yourself — both valid, both worth knowing:
+
+        1. **Via the Infrahub UI** at <http://localhost:8000>. Login `admin` / `infrahub`. Click **Network Device** in the left nav, then click **srl1** in the list. The `maintenance` boolean, `site_name`, `role` show in the detail panel; the BGP sessions are on the **Bgp Sessions** tab. Click any peer (e.g., `10.1.99.2`) to see its `expected_state` and `reason`. (Infrahub's UI label for the schema is "Network Device" — the underlying GraphQL type is still `WorkshopDevice`, which is what the query below uses.)
+        2. **Via the GraphQL Sandbox** at <http://localhost:8000/graphql>. Paste the query below and hit run. This is the same query the Prefect flow makes from `automation/workshop_sdk.py` — Phase 5's "See the exact query the flow runs" fold covers the verbatim version.
+
+        ```graphql
+        {
+          WorkshopDevice(name__value: "srl1") {
+            edges {
+              node {
+                name { value }
+                maintenance { value }
+                site_name { value }
+                role { value }
+                bgp_sessions {
+                  edges {
+                    node {
+                      peer_address { value }
+                      expected_state { value }
+                      remote_as { value }
+                      reason { value }
+                    }
+                  }
                 }
               }
             }
           }
         }
-      }
-    }
-    ```
+        ```
 
-    What you get back (trimmed to the broken peer's `bgp_session` for readability):
+        What you get back (trimmed to the broken peer's `bgp_session` for readability):
 
-    ```json
-    {
-      "data": {
-        "WorkshopDevice": {
-          "edges": [{
-            "node": {
-              "name": { "value": "srl1" },
-              "maintenance": { "value": false },
-              "site_name": { "value": "lab" },
-              "role": { "value": "edge" },
-              "bgp_sessions": {
-                "edges": [{
-                  "node": {
-                    "peer_address": { "value": "10.1.99.2" },
-                    "expected_state": { "value": "established" },
-                    "remote_as": { "value": 65102 },
-                    "reason": { "value": null }
+        ```json
+        {
+          "data": {
+            "WorkshopDevice": {
+              "edges": [{
+                "node": {
+                  "name": { "value": "srl1" },
+                  "maintenance": { "value": false },
+                  "site_name": { "value": "lab" },
+                  "role": { "value": "edge" },
+                  "bgp_sessions": {
+                    "edges": [{
+                      "node": {
+                        "peer_address": { "value": "10.1.99.2" },
+                        "expected_state": { "value": "established" },
+                        "remote_as": { "value": 65102 },
+                        "reason": { "value": null }
+                      }
+                    }]
                   }
-                }]
-              }
+                }
+              }]
             }
-          }]
+          }
         }
-      }
-    }
-    ```
-
-    Read it back to the concepts: `maintenance: false` means the policy proceeds to the metrics check (no short-circuit); `expected_state: "established"` for `10.1.99.2` means the SoT believes this peer should be up — so if metrics disagree, the policy returns `proceed`. That's Path 1 (mismatch → proceed) sitting in the data.
-
-    For the deeper "what is Infrahub, why a source of truth" framing, see the Tour's [Infrahub section](../../../docs/workshop/tour.md#infrahub-source-of-truth).
-
-??? info "What does reality actually look like in the metrics?"
-
-    The flow asks Prometheus for the *current* per-peer BGP state — `bgp_admin_state`, `bgp_oper_state`, plus the prefix counters. These are the same metric names you queried in Part 1.
-
-    Three paths, in order of friction (lowest to highest):
-
-    1. **Via `nobs autocon5 evidence`** — the workshop's pre-built convenience command that consolidates SoT + metrics + recent logs into one CLI output. The `BGP metrics snapshot` panel is exactly what the flow's `collect_evidence` task pulls. Step 3.B's [evidence walkthrough](#b-investigate-pull-the-evidence-bundle) drives it directly.
-    2. **Via Grafana Explore** at <http://localhost:3000>. Pick the Prometheus datasource and paste:
-        ```promql
-        bgp_admin_state{device="srl1", peer_address="10.1.99.2"}
-        bgp_oper_state{device="srl1", peer_address="10.1.99.2"}
-        bgp_received_routes{device="srl1", peer_address="10.1.99.2"}
-        bgp_prefixes_accepted{device="srl1", peer_address="10.1.99.2"}
-        ```
-    3. **Via the Prometheus HTTP API directly**, for scripting:
-        ```bash
-        curl -sG 'http://localhost:9090/api/v1/query' \
-          --data-urlencode 'query=bgp_oper_state{device="srl1",peer_address="10.1.99.2"}'
         ```
 
-    What you'll see on the broken peer:
+        Read it back to the concepts: `maintenance: false` means the policy proceeds to the metrics check (no short-circuit); `expected_state: "established"` for `10.1.99.2` means the SoT believes this peer should be up — so if metrics disagree, the policy returns `proceed`. That's Path 1 (mismatch → proceed) sitting in the data.
 
+        For the deeper "what is Infrahub, why a source of truth" framing, see the Tour's [Infrahub section](../../../docs/workshop/tour.md#infrahub-source-of-truth).
+
+    ??? info "What does reality actually look like in the metrics?"
+
+        The flow asks Prometheus for the *current* per-peer BGP state — `bgp_admin_state`, `bgp_oper_state`, plus the prefix counters. These are the same metric names you queried in Part 1.
+
+        Three paths, in order of friction (lowest to highest):
+
+        1. **Via `nobs autocon5 evidence`** — the workshop's pre-built convenience command that consolidates SoT + metrics + recent logs into one CLI output. The `BGP metrics snapshot` panel is exactly what the flow's `collect_evidence` task pulls. Phase 2's evidence walkthrough drives it directly.
+        2. **Via Grafana Explore** at <http://localhost:3000>. Pick the Prometheus datasource and paste:
+            ```promql
+            bgp_admin_state{device="srl1", peer_address="10.1.99.2"}
+            bgp_oper_state{device="srl1", peer_address="10.1.99.2"}
+            bgp_received_routes{device="srl1", peer_address="10.1.99.2"}
+            bgp_prefixes_accepted{device="srl1", peer_address="10.1.99.2"}
+            ```
+        3. **Via the Prometheus HTTP API directly**, for scripting:
+            ```bash
+            curl -sG 'http://localhost:9090/api/v1/query' \
+              --data-urlencode 'query=bgp_oper_state{device="srl1",peer_address="10.1.99.2"}'
+            ```
+
+        What you'll see on the broken peer:
+
+        ```
+        bgp_admin_state       = 1   (enable)
+        bgp_oper_state        = 5   (active — retrying)
+        bgp_received_routes   = 0
+        bgp_prefixes_accepted = 0
+        ```
+
+        Read it back to the concepts: `admin_state: 1` (enable) means the device intends this session up; `oper_state: 5` (active, not 1=established) means it isn't actually up; the prefix counters at zero confirm no routes are flowing. Combined with the SoT's `expected_state: established`, that's a clear intent-vs-reality mismatch — exactly what triggers the `proceed` path.
+
+    ??? info "Why deterministic, and not an LLM in the loop?"
+
+        The policy is `DecisionPolicy.evaluate` in [`workshops/autocon5/automation/workshop_sdk.py`](https://github.com/network-observability/workshops/blob/main/workshops/autocon5/automation/workshop_sdk.py) — a two-stage `if / elif` chain. Four reasons that's the right shape here:
+
+        - **Predictable.** Same evidence in, same decision out. No model temperature, no roll of the dice at 02:14.
+        - **Replayable.** Six months from now, you can rerun the same alert payload through the same policy version and see the same outcome — the audit trail is meaningful.
+        - **Version-controlled.** The policy is code. Changes go through a PR like everything else; a reviewer can read what changed before it ships to production.
+        - **Reviewable in incident review.** When the on-call asks "why did the flow silence this?", the answer is a function call you can step through, not a model output to argue about.
+
+    ??? info "What's a maintenance window — and how does it differ from a silence?"
+
+        A **maintenance window** is intent expressed in the source of truth: `WorkshopDevice.maintenance = true` on a device in Infrahub. It says "we know this device is being worked on; alerts about it are expected and should be skipped." The policy reads this flag in stage 1 of the decision tree, *before* it ever looks at metrics, and short-circuits to `skip` if it's set.
+
+        A **silence** is a per-alert mute applied in Alertmanager after a decision is already made. When the policy decides `proceed` on a real mismatch, the flow's `quarantine` task asks Alertmanager to silence the matching alert for 20 minutes so the same page doesn't fire repeatedly while the situation is being investigated.
+
+        One is **upstream** of the decision (maintenance shapes which decision the policy returns); the other is **downstream** of it (a silence is one of the actions a `proceed` decision triggers). Conflating them is the most common confusion in this part of the workshop — Phase 5 walks the maintenance path explicitly to drive the distinction home.
+
+## Walk the cycle
+
+!!! note "Refactor in progress"
+
+    Phases 1 and 2 below are the new flow. Phases 3–7 will replace the corresponding "old" steps under `## The exercises` further down in follow-up commits. For now, walk Phase 1 → Phase 2, then continue with the existing Step 2 ("Walk all four paths in one shot") and onwards.
+
+### 1. Alert — see it fire
+
+The workflow can't do anything until an alert exists. Start here: confirm the lab has alerts to work with.
+
+```bash
+nobs autocon5 alerts
+```
+
+You should see four rows. Two of them are `BgpSessionNotUp` — those are the alerts we'll follow through the rest of this part:
+
+```
+| Alertname                | Severity | Device / target  |   State |  Age |
+| BgpSessionNotUp          | warning  | srl1 → 10.1.99.2 |  firing |  ... |
+| BgpSessionNotUp          | warning  | srl2 → 10.1.11.1 |  firing |  ... |
+| InterfaceAdminUpOperDown | warning  | srl1             |  firing |  ... |
+| InterfaceAdminUpOperDown | warning  | srl2             |  firing |  ... |
+```
+
+Two things to notice:
+
+- **The `device` and `peer_address` labels.** These two labels are how the workflow finds the right peer in the source of truth — same keys, same values, no translation.
+- **The State column.** All four should read `firing`. If a row shows `suppressed` instead, the workflow already silenced it in a previous run — that's fine, Phase 4 explains what `suppressed` means here.
+
+Prefer the browser? Open Alertmanager at <http://localhost:9093/#/alerts>. Same four rows, with click-to-expand details. (If you skipped Part 2 §"From panel to alert", the alert lifecycle — `pending → firing → suppressed → resolved` — is walked in detail there.)
+
+For Part 3, we focus on what happens *after* the alert is `firing`: the workflow picks it up and decides what to do. That starts with gathering facts.
+
+### 2. Evidence — what the workflow collected
+
+Before the workflow decides anything, it gathers facts about the peer the alert is firing on. We call this the **evidence**: three pieces of information, plus a hint of what the decision will be.
+
+You can see exactly what the workflow sees with one command:
+
+```bash
+nobs autocon5 evidence srl1 10.1.99.2
+```
+
+(`10.1.99.2` is the broken peer on `srl1` — same one in the firing list from Phase 1.)
+
+The output is four panels. Each answers a different question:
+
+| Panel | Source | Answers |
+|---|---|---|
+| **Source of truth (Infrahub)** | The intent database | "Is this peer **supposed** to be up?" |
+| **BGP metrics snapshot (Prometheus)** | The metrics store | "Is this peer **actually** up?" |
+| **Loki — last 20 relevant log lines** | The log store | "What happened recently on this peer?" |
+| **Policy hint** | The workflow's decision rule | "What would the workflow decide right now?" |
+
+??? info "What the four panels actually look like in the terminal"
+
+    Running `nobs autocon5 evidence srl1 10.1.99.2` against the broken peer produces four panels. Here's what each one actually looks like in the terminal, with the connecting thread between them called out.
+
+    ```text
+    ╭───────────────────── Source of truth (Infrahub) ─────────────────────╮
+    │ device          srl1   site=lab  role=edge                           │
+    │ maintenance     false                                                │
+    │ intended peer   yes                                                  │
+    │ expected state  established                                          │
+    │ reason          ip-mismatch-demo                                     │
+    │ remote_as       65102                                                │
+    ╰──────────────────────────────────────────────────────────────────────╯
+            ↑ Same fields the Prefect flow's `collect_evidence` task reads via GraphQL.
+              `maintenance=false` → stage 1 of the policy proceeds to the metrics check.
+              `expected_state=established` → SoT says this peer should be up.
+
+       BGP metrics snapshot (Prometheus)
+    ┏━━━━━━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━┓
+    ┃ Metric            ┃ Value ┃ Decoded ┃
+    ┡━━━━━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━┩
+    │ admin_state       │     1 │ enable  │
+    │ oper_state        │     5 │ active  │
+    │ received_routes   │     0 │ —       │
+    │ sent_routes       │    10 │ —       │
+    │ active_routes     │    10 │ —       │
+    │ suppressed_routes │     0 │ —       │
+    └───────────────────┴───────┴─────────┘
+            ↑ The `Decoded` column is the enum-to-text mapping — `oper_state=5`
+              decodes to `active` (retrying, not yet established). admin=1, oper=5
+              on a peer the SoT expects `established` is the intent-vs-reality mismatch.
+
+    ╭─────────────── Loki — last 20 relevant line(s) ──────────────────────╮
+    │ {"timestamp":"...","severity":"warn","message":"BGP neighbor         │
+    │  10.1.99.2: connection refused — peer not reachable on configured    │
+    │  subnet",...}                                                        │
+    │ {"timestamp":"...","severity":"warn","message":"BGP neighbor         │
+    │  10.1.99.2: configured remote-as 65102 but peer never responded;     │
+    │  FSM stuck in active",...}                                           │
+    │ {"timestamp":"...","severity":"info","message":"QUARANTINE applied   │
+    │  (silence_id=...)",...}                                              │
+    ╰──────────────────────────────────────────────────────────────────────╯
+            ↑ Mixed log streams: device-emitted BGP errors (the "why") and prior
+              Prefect annotations (the "what the flow did"). One bundle, multiple
+              sources. ("FSM" in the sample is BGP's finite state machine — the
+              progression Idle → Active → Connect → OpenSent → Established;
+              "stuck in active" means the peer is retrying but never reaching
+              Established.)
+
+    ╭──────────────── Policy hint ────────────────╮
+    │ decision: proceed                           │
+    │ reason  : SoT expects peer up, but metrics  │
+    │           show mismatch                     │
+    ╰─────────────────────────────────────────────╯
+            ↑ The deterministic policy's verdict on this exact bundle. The Prefect
+              flow's `evaluate_policy` task computes the same answer and writes it
+              to Loki as the `decision=proceed` annotation you'll see in Phase 3.
     ```
-    bgp_admin_state       = 1   (enable)
-    bgp_oper_state        = 5   (active — retrying)
-    bgp_received_routes   = 0
-    bgp_prefixes_accepted = 0
-    ```
 
-    Read it back to the concepts: `admin_state: 1` (enable) means the device intends this session up; `oper_state: 5` (active, not 1=established) means it isn't actually up; the prefix counters at zero confirm no routes are flowing. Combined with the SoT's `expected_state: established`, that's a clear intent-vs-reality mismatch — exactly what triggers the `proceed` path. The numeric-to-meaning decoding (`1=enable`, `5=active/retrying`) is what the `Decoded` column in `nobs autocon5 evidence`'s output shows; Step 3.B walks the full mapping table.
+    Read it back to the concepts: all four panels share one peer's worth of context — what the SoT believes, what the metrics measure, what the recent logs say, what the policy concluded. The `Policy hint` is the same answer the Prefect flow lands at in production; the difference is `nobs autocon5 evidence` shows it to you on the CLI before the flow runs, so you can predict the decision before triggering an alert.
 
-??? info "Why deterministic, and not an LLM in the loop?"
+The first two panels are the key pair:
 
-    The policy is `DecisionPolicy.evaluate` in [`workshops/autocon5/automation/workshop_sdk.py`](https://github.com/network-observability/workshops/blob/main/workshops/autocon5/automation/workshop_sdk.py) — a two-stage `if / elif` chain. Four reasons that's the right shape here:
+- **Source of truth** says **what should be true** — for this peer, `expected_state=established` means "should be up and exchanging routes."
+- **Metrics** say **what is true** — for this peer, `oper_state=5` means the BGP session is stuck trying to come up.
 
-    - **Predictable.** Same evidence in, same decision out. No model temperature, no roll of the dice at 02:14.
-    - **Replayable.** Six months from now, you can rerun the same alert payload through the same policy version and see the same outcome — the audit trail is meaningful.
-    - **Version-controlled.** The policy is code. Changes go through a PR like everything else; a reviewer can read what changed before it ships to production.
-    - **Reviewable in incident review.** When the on-call asks "why did the flow silence this?", the answer is a function call you can step through, not a model output to argue about.
+The gap between those two is the reason the alert is firing.
 
-??? info "What's a maintenance window — and how does it differ from a silence?"
+You can see the same source-of-truth data in the Infrahub browser UI. Open <http://localhost:8000> (login `admin` / `infrahub`), click **Network Device** in the left nav, click **srl1**, then click the **Bgp Sessions** tab. The row for `10.1.99.2` shows `Expected State: Established`, `Reason: ip-mismatch-demo`. Same data the workflow reads, just rendered for humans.
 
-    A **maintenance window** is intent expressed in the source of truth: `WorkshopDevice.maintenance = true` on a device in Infrahub. It says "we know this device is being worked on; alerts about it are expected and should be skipped." The policy reads this flag in stage 1 of the decision tree, *before* it ever looks at metrics, and short-circuits to `skip` if it's set.
+![Infrahub WorkshopBgpSession detail for the broken peer 10.1.99.2](../../../docs/assets/screenshots/infrahub-bgp-session-broken.png#only-light){ .screenshot loading=lazy }
+![Infrahub WorkshopBgpSession detail for the broken peer 10.1.99.2](../../../docs/assets/screenshots/infrahub-bgp-session-broken.png#only-dark){ .screenshot loading=lazy }
 
-    A **silence** is a per-alert mute applied in Alertmanager after a decision is already made. When the policy decides `proceed` on a real mismatch, the flow's `quarantine` task asks Alertmanager to silence the matching alert for 20 minutes so the same page doesn't fire repeatedly while the situation is being investigated.
-
-    One is **upstream** of the decision (maintenance shapes which decision the policy returns); the other is **downstream** of it (a silence is one of the actions a `proceed` decision triggers). Conflating them is the most common confusion in this part of the workshop — Step 4 walks the maintenance path explicitly to drive the distinction home.
+> Why pull all this for one alert? Because the alert on its own doesn't say enough. `BgpSessionNotUp` only tells us "a BGP session is down" — but the right *action* depends on whether the session was supposed to be up, whether the device is in maintenance, and whether the session has already come back. Those answers live in three different systems. The workflow pulls all three in one go.
 
 ## The exercises
 
