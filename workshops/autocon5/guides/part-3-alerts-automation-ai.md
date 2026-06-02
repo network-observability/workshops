@@ -354,6 +354,129 @@ You can see the same source-of-truth data in the Infrahub browser UI. Open <http
 
 > Why pull all this for one alert? Because the alert on its own doesn't say enough. `BgpSessionNotUp` only tells us "a BGP session is down" — but the right *action* depends on whether the session was supposed to be up, whether the device is in maintenance, and whether the session has already come back. Those answers live in three different systems. The workflow pulls all three in one go.
 
+### 3. Policy — what was decided and why
+
+Phase 2 showed you the *facts* the workflow gathered. Phase 3 looks at the **decision** the workflow made from those facts — and where to find a written record of it.
+
+When the workflow finishes looking at a peer, it writes one line to the **log store (Loki)** describing what it decided. We call this an **audit record** — same shape as a normal log line, with extra labels saying which workflow ran, which peer it was for, and what it decided. The record survives long after the alert is gone, so you can ask Loki *"what did the workflow do an hour ago?"* or *"what did it decide on srl1 last week?"* and get an answer.
+
+Open Grafana, switch to the **Loki** datasource in Explore, and paste:
+
+```logql
+{source="prefect", workflow="autocon5_quarantine_bgp", device="srl1"} | json
+```
+
+You should see one log line per decision the workflow has made on `srl1` recently. Click the most recent one — Grafana opens a side panel parsing the JSON. The fields that matter:
+
+| Field | Value (for the broken peer) | What it means |
+|---|---|---|
+| `decision` (label) | `proceed` | The workflow decided to take action |
+| `peer_address` (label) | `10.1.99.2` | Which peer this decision was about |
+| `message` (field) | `SoT expects peer up, but metrics show mismatch` | Plain-English reason |
+| `timestamp` | `2026-…` | When the workflow ran |
+
+That `message` is the same answer the **Policy hint** panel showed you in Phase 2 — just now it's permanent. Anyone who comes back to this alert tomorrow can run the same query and read what the workflow decided and why.
+
+??? info "What does an audit record actually look like in Loki?"
+
+    The flow's `annotate_decision` task writes one Loki log line per evaluation — these are the "audit records" the prose above talks about. Two of them side by side — `decision=proceed` (the actionable mismatch path you're seeing now) and `decision=stop` (the rare path where the device isn't in Infrahub at all):
+
+    ```json
+    // decision=proceed (the actionable mismatch path)
+    {
+      "timestamp": "2026-05-26T11:15:26.971Z",
+      "severity": "info",
+      "message": "SoT expects peer up, but metrics show mismatch",
+      "labels": {
+        "decision": "proceed",
+        "device": "srl2",
+        "peer_address": "10.1.11.1",
+        "source": "prefect",
+        "workflow": "autocon5_quarantine_bgp"
+      },
+      "fields": {}
+    }
+
+    // decision=stop (would only appear if Infrahub didn't have the device)
+    {
+      "timestamp": "2026-05-26T10:43:31.234Z",
+      "severity": "info",
+      "message": "device not found in Infrahub",
+      "labels": {
+        "decision": "stop",
+        "device": "srl2",
+        "peer_address": "10.1.11.1",
+        "source": "prefect",
+        "workflow": "autocon5_quarantine_bgp"
+      },
+      "fields": {}
+    }
+    ```
+
+    Every record carries the same five-label envelope (`source`, `workflow`, `decision`, `device`, `peer_address`) plus a free-form `message`. That label set is what makes Phase 7's aggregation query (`sum by (decision) (count_over_time(...))`) work — collapsing on the label that distinguishes paths is the whole game. The `message` field carries human-readable reasoning ("SoT expects peer up, but metrics show mismatch" vs "device not found in Infrahub") — Loki indexes the labels, not the message, so queries filter on the former and read the latter.
+
+#### The three decisions, explained
+
+The workflow can write one of three decisions for any given alert:
+
+| Decision | When it fires | What happens next |
+|---|---|---|
+| **`proceed`** | The source of truth says this peer **should** be up, but the metrics say it **isn't**. | Something is actually wrong. The workflow takes action (Phase 4). |
+| **`skip`** | Either the device is in a maintenance window, or the peer is healthy according to the metrics. | No action needed. The workflow just records that it checked. |
+| **`resolved`** | The alert has stopped firing on its own (the underlying problem went away). | No action needed. The workflow records that it resolved. |
+
+Three different decisions, all written to the same audit trail, all queryable with the same LogQL line you just ran. Phase 5 walks the **maintenance → skip** path — flipping a single flag in the source of truth so the *same* broken peer ends up at `skip` instead of `proceed`. For now, what matters is that the workflow's decision is **visible** and **explained** — not buried in code, not guessed from behaviour.
+
+> Why write the decision instead of just doing the action? Because in a real on-call rotation, the next person who looks at this peer needs to know *what was decided and why* — not just *what happened*. A silenced alert tells you "someone or something muted this" but doesn't tell you the reasoning. An audit record carries the reasoning forward, queryable, forever.
+
+### 4. Action — what `proceed` actually does
+
+Phase 3 showed you the workflow decided `proceed` on the broken peer. The word `proceed` only means something if you know what it triggers. Here's what **actually happens** in the lab when the workflow returns `proceed` — three concrete things, each in a different system.
+
+#### A · The silence — containment in Alertmanager
+
+The workflow asks Alertmanager to **silence** the alert for 20 minutes. Same kind of silence you created by hand in Part 2 §F — only this one was created automatically, scoped to the specific peer.
+
+Open Alertmanager at <http://localhost:9093/#/alerts>. Find the row for `BgpSessionNotUp` on `srl1 → 10.1.99.2`. Its **State** column reads `suppressed` (not `firing`) — the workflow silenced it.
+
+Click into the row. The `silenced_by` field carries a unique ID. Click that ID and you land on the **Silences** tab for that specific silence. Three things worth noticing:
+
+- **Matchers** — `alertname=BgpSessionNotUp`, `device=srl1`, `peer_address=10.1.99.2`. The workflow built these from the alert's own labels — same labels you saw in Phase 1.
+- **Comment** — `QUARANTINE: SoT expects peer up, but metrics show mismatch`. Same reason as the audit record from Phase 3.
+- **Created by** — the workflow itself, not a human.
+
+!!! tip "Don't see `suppressed`?"
+
+    If the row shows `firing` instead, the silence may have expired — silences last 20 minutes, and the workflow re-silences each time the alert fires again. Wait 30 seconds for Alertmanager to push another delivery to the workflow, then refresh the page. The row should flip back to `suppressed`.
+
+> Why silence and not fix? Silencing stops the *page* from firing again for 20 minutes — the same alert won't wake the on-call up twice for the same issue. The underlying problem is still active in the rule evaluator's state; the silence just mutes the notification path. Part 2 §E walks the silence-vs-fixing distinction in detail.
+
+#### B · The audit record — memory in Loki
+
+You already saw this in Phase 3 — the workflow wrote a `decision=proceed` log line to Loki with the reason. This is the **institutional memory**: it survives long after the silence expires, the alert resolves, and the next person on the rotation logs in. One log line per decision, every decision, forever.
+
+#### C · The dashboard mark — visibility in Grafana
+
+In Part 2 §D you added a Grafana annotation that draws a red shaded region on the **Flap rate (2 min)** panel whenever `PeerInterfaceFlapping` is firing. The **same pattern** works for any alert exposed in the `ALERTS` metric — change the alertname filter to `BgpSessionNotUp` and you get the same red region on a different panel marking exactly when this alert was firing.
+
+If you'd like to see it for `BgpSessionNotUp` too, add a second annotation using the same Part 2 §D walk, with this query instead:
+
+```promql
+ALERTS{alertname="BgpSessionNotUp", alertstate="firing"}
+```
+
+This step is optional — the silence and the audit record are already enough to verify the workflow's action. The dashboard mark is the third *type* of action the diagram showed, and the pattern is worth knowing whether you add the second annotation now or later.
+
+#### What `proceed` doesn't do
+
+Worth saying out loud, so it doesn't trip you up:
+
+- It does **not** fix the underlying problem on the device. The broken peer stays broken until a human (or a separate remediation flow) addresses it.
+- It does **not** open a ticket or page the on-call directly. In production this is where you'd hook in PagerDuty, OpsGenie, Jira, Slack — in this lab, the silence + audit record + dashboard mark is the full chain.
+- It does **not** decide *what to do next*. That's a human's job: read the audit record, look at the dashboard, walk the runbook.
+
+What `proceed` *does* do is contain the noise (silence), explain what was seen (audit record), and make the moment visible (dashboard mark). Three observable outcomes from one decision — the loop closing for this alert.
+
 ## The exercises
 
 ### 1. Inspect what's already firing
