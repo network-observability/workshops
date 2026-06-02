@@ -416,6 +416,114 @@ Click a run to drill in. The detail page has the task graph, parameters, logs, a
 
 The task graph is the single best place to debug a quarantine decision — every task's output is visible, so you can see exactly what evidence the flow collected, what policy it evaluated, and which path it took. The per-task logs underneath stream live during a run.
 
+### Automations — when X happens, do Y
+
+Prefect's **Automations** page (<http://localhost:4200/automations>) is where you wire up things that should happen *after* the workflow does its thing. Examples:
+
+- Send a Slack notification every time `quarantine_bgp_flow` completes.
+- Open a ticket when a flow run enters the `Failed` state.
+- Kick off a follow-up workflow when a deployment completes.
+
+Every automation has the same shape: a **trigger** (the event to react to) and one or more **actions** (what to do when it fires). The Prefect 3.x form is a three-step wizard — **01 Trigger → 02 Actions → 03 Details** — that builds the trigger and action list for you.
+
+#### Add an automation
+
+The fastest way to see it work: chain a follow-up workflow whenever `quarantine_bgp_flow` finishes a successful run.
+
+1. Open <http://localhost:4200/automations> and click **Add Automation**.
+2. **01 Trigger** — pick **Flow run state changed**. Configure it to fire when the flow `quarantine-bgp-flow` reaches state `Completed`, then click **Next**.
+3. **02 Actions** — pick **Run a deployment** and choose the `alert-receiver` deployment. Fill the parameter inputs:
+    - **`alertname`**: `automation-fired`
+    - **`status`**: `firing`
+    - **`alert_group`**: paste this JSON object as-is:
+        ```json
+        {"alerts": [{"labels": {"device": "srl1", "peer_address": "10.1.2.2", "afi_safi_name": "ipv4-unicast"}}], "groupLabels": {"alertname": "automation-fired"}, "status": "firing"}
+        ```
+    Click **Next**.
+
+    Other action options exist — **Send a notification** for example — but those need a "notification block" (a stored credential bundle for Slack, Discord, PagerDuty, etc.) configured first. None are pre-configured in this lab. Skip unless you have a target system ready to wire up.
+
+4. **03 Details** — name it `chain-after-quarantine` and click **Save**.
+
+#### Watch it fire
+
+Drive any path — for example, `nobs autocon5 try-it --auto`. Then refresh <http://localhost:4200/runs>. Each `quarantine_bgp_flow` completion now fires the automation, which kicks off a fresh `alert-receiver` flow run alongside the original. The two are visible as separate rows in the runs list.
+
+??? info "What an automation looks like in storage"
+
+    Behind the UI form, Prefect stores the automation as a structured record — trigger + actions — that the API can list, create, or delete. After saving the example above, this query returns the record:
+
+    ```bash
+    curl -s -X POST 'http://localhost:4200/api/automations/filter' \
+      -H 'content-type: application/json' -d '{"limit": 10}' | jq '.[] | {name, enabled, trigger, actions}'
+    ```
+
+    ```json
+    {
+      "name": "chain-after-quarantine",
+      "description": "Demo: fire alert-receiver when quarantine_bgp_flow completes",
+      "enabled": true,
+      "trigger": {
+        "type": "event",
+        "match": {"prefect.resource.id": "prefect.flow-run.*"},
+        "match_related": {
+          "prefect.resource.id": "prefect.flow.<quarantine_bgp_flow_id>",
+          "prefect.resource.role": "flow"
+        },
+        "expect": ["prefect.flow-run.Completed"],
+        "for_each": ["prefect.resource.id"],
+        "posture": "Reactive",
+        "threshold": 1
+      },
+      "actions": [{
+        "type": "run-deployment",
+        "deployment_id": "<alert-receiver-deployment-id>",
+        "parameters": {
+          "alertname": "automation-fired",
+          "status": "firing"
+        }
+      }]
+    }
+    ```
+
+    `posture: "Reactive"` means fire-on-event (as opposed to "Proactive" which fires on absence-of-event). The `actions` array is what the "Action" panel writes — `run-deployment` here, but the same array can hold notification or webhook actions. This whole record can be exported, edited, and POST'd back to the API — same shape as a Terraform resource for an automation, if your team works that way.
+
+#### The pattern — stackable triggers
+
+Automations let you stack reactive layers on top of the alert pipeline:
+
+- **Layer 1** (the alert pipeline you walk in Part 3): Alertmanager fires → webhook → `quarantine_bgp_flow` → silence + audit record.
+- **Layer 2** (an automation): `quarantine_bgp_flow` completed → automation matched → notification / follow-up / ticket.
+- **Layer 3+**: a Layer 2 action's completion can fire *another* automation, and so on.
+
+Each layer narrows the trigger and adds context for the next. In a real incident-response platform this is how event chains compose — same shape, different transports.
+
+```text
+   ALERT PIPELINE                       AUTOMATION LAYER
+   ──────────────                       ────────────────
+
+   Alertmanager                         Prefect Automation
+   fires alert                          (configured in UI)
+        │                                    │
+        │  TRIGGER                           │  TRIGGER
+        ▼                                    ▼
+   Webhook receives                     Flow run state changed
+   BgpSessionNotUp payload              (quarantine_bgp_flow
+        │                                → Completed)
+        │  MATCH                            │
+        ▼                                   │  MATCH
+   quarantine_bgp_flow                      ▼
+   (DecisionPolicy)                     Automation criteria met
+        │                                    │
+        │  ACTION                            │  ACTION
+        ▼                                    ▼
+   silence + audit record               Send notification
+                                        or Run deployment
+                                        or webhook out
+```
+
+Layer 1 reacts to alerts. Layer 2 reacts to Layer 1's completions. Stackable indefinitely.
+
 ### Where you'll see this in the workshop
 
 - **Part 3** spends most of its time in here. You'll trigger four canonical paths from `try-it`, then watch each one render as a flow run.
