@@ -6,8 +6,6 @@ Late morning. The clock is creeping toward lunch. The flap-rate panel you built 
 
 > *"Watch what happens automatically. The flow's going to handle this without us. Then I'll walk you through the four cases it covers, and you can drive each one yourself. By the end of the hour you'll know exactly what the automation can and can't do for you — and which calls still belong to a human."*
 
-Drive each of the four alert paths by hand, watch the Prefect workflow decide what to do with each, then optionally turn on the **AI RCA** step (RCA = Root Cause Analysis — a short plain-English narrative the workflow can generate alongside its decision) and compare its narrative against the rule-based decision the workflow already made. (Rule-based — also called **deterministic** — means the workflow uses a fixed set of if/else rules: same alert payload in, same decision out every time. We unpack what that means a little further down in "The cycle".) By the end you'll have seen all four decisions land in the audit log and know which calls still belong to a human.
-
 ## Setup check
 
 Reset to known-good baseline first — this expires any silences a prior `try-it` run might have created and clears any maintenance flags from earlier exercises:
