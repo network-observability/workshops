@@ -15,17 +15,17 @@
 
   <style><![CDATA[
     .bg          { fill: #fafafa; }
-    .phase-label { font-size: 13px; font-weight: 600; fill: #64748b;
+    .phase-label { font-size: 17px; font-weight: 600; fill: #64748b;
                    letter-spacing: 0.18em; text-transform: uppercase; }
-    .box-title   { font-size: 26px; font-weight: 700; fill: #0f172a;
+    .box-title   { font-size: 32px; font-weight: 700; fill: #0f172a;
                    letter-spacing: 0.02em; }
-    .box-sub     { font-size: 14px; fill: #475569; }
-    .pill-text   { font-size: 14px; font-weight: 600; fill: #0e1a1d; }
-    .annot       { font-size: 13px; fill: #64748b; }
-    .footer      { font-size: 15px; fill: #475569; letter-spacing: 0.05em; }
-    .footer-emph { font-size: 15px; fill: #15803d; font-weight: 700;
+    .box-sub     { font-size: 17px; fill: #475569; }
+    .pill-text   { font-size: 17px; font-weight: 600; fill: #0e1a1d; }
+    .annot       { font-size: 16px; fill: #64748b; }
+    .footer      { font-size: 18px; fill: #475569; letter-spacing: 0.05em; }
+    .footer-emph { font-size: 18px; fill: #15803d; font-weight: 700;
                    letter-spacing: 0.05em; }
-    .bundle-tag  { font-size: 12px; font-weight: 700; fill: #ffffff;
+    .bundle-tag  { font-size: 14px; font-weight: 700; fill: #ffffff;
                    letter-spacing: 0.2em; }
 
     /* Phase boxes — light pastel fill + bold colored border */

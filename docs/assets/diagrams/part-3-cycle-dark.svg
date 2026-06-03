@@ -15,17 +15,17 @@
 
   <style><![CDATA[
     .bg          { fill: #0e1a1d; }
-    .phase-label { font-size: 13px; font-weight: 400; fill: #7c8a91;
+    .phase-label { font-size: 17px; font-weight: 400; fill: #7c8a91;
                    letter-spacing: 0.18em; text-transform: uppercase; }
-    .box-title   { font-size: 26px; font-weight: 700; fill: #f4f6f7;
+    .box-title   { font-size: 32px; font-weight: 700; fill: #f4f6f7;
                    letter-spacing: 0.02em; }
-    .box-sub     { font-size: 14px; fill: #b8c5cd; }
-    .pill-text   { font-size: 14px; font-weight: 600; fill: #0e1a1d; }
-    .annot       { font-size: 13px; fill: #94a3b8; }
-    .footer      { font-size: 15px; fill: #7c8a91; letter-spacing: 0.05em; }
-    .footer-emph { font-size: 15px; fill: #86efac; font-weight: 600;
+    .box-sub     { font-size: 17px; fill: #b8c5cd; }
+    .pill-text   { font-size: 17px; font-weight: 600; fill: #0e1a1d; }
+    .annot       { font-size: 16px; fill: #94a3b8; }
+    .footer      { font-size: 18px; fill: #7c8a91; letter-spacing: 0.05em; }
+    .footer-emph { font-size: 18px; fill: #86efac; font-weight: 600;
                    letter-spacing: 0.05em; }
-    .bundle-tag  { font-size: 12px; font-weight: 700; fill: #c4b5fd;
+    .bundle-tag  { font-size: 14px; font-weight: 700; fill: #c4b5fd;
                    letter-spacing: 0.2em; }
 
     .box           { fill: #14252a; stroke-width: 3; }
