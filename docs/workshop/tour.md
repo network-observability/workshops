@@ -20,6 +20,14 @@ The workshop runs ~21 containers. You only ever look at six of them: **Sonda ser
 
 </div>
 
+!!! tip "How to read this page"
+
+    This page is meant to be **skimmed**, not deep-dived (unless you want to, of course).
+
+    Think of it as a guided overview of the workshop stack — the six UIs you'll meet, what each component is responsible for, and how to interact with the key buttons and panels of each one. Enough to recognise the tool when you meet it in a guide.
+
+    You don't need to memorise anything here. The four part guides (Part 1, Part 2, Part 3, Advanced) **link back to specific sections of this page** whenever a tool comes up that you'd benefit from knowing more about. Glance through once now so the names feel familiar, and come back later when a guide points you somewhere specific.
+
 ## Sonda server — the synthetic telemetry control plane
 
 ### What this is
