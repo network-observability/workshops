@@ -25,7 +25,7 @@ You should see four alerts firing — same shape you saw in Part 2:
 | InterfaceAdminUpOperDown | warning  | srl2             |  firing |  ... |
 ```
 
-If you skipped Part 2 §[From panel to alert — walk the full lifecycle](../../../docs/workshop/part-2.md#from-panel-to-alert-walk-the-full-lifecycle), skim it now — the `nobs autocon5 alerts` CLI, the Alertmanager UI, the `ALERTS` metric, and what `firing ↔ suppressed` means are all explained there. Part 3 picks up where that leaves off.
+If you skipped Part 2's [From panel to alert — walk the full lifecycle](../../../docs/workshop/part-2.md#from-panel-to-alert-walk-the-full-lifecycle), skim it now — the `nobs autocon5 alerts` CLI, the Alertmanager UI, the `ALERTS` metric, and what `firing ↔ suppressed` means are all explained there. Part 3 picks up where that leaves off.
 
 The two `BgpSessionNotUp` rows are what this part is about. Once you walk Step 3, you'll see each cycle `firing` → `suppressed` (the workflow silences it for 20 minutes) → `firing` again (the silence expires). `InterfaceAdminUpOperDown` is steady-state noise that never moves; ignore it.
 
@@ -253,7 +253,7 @@ Two things to notice:
 - **The `device` and `peer_address` labels.** These two labels are how the workflow finds the right peer in the source of truth — same keys, same values, no translation.
 - **The State column.** All four should read `firing`. If a row shows `suppressed` instead, the workflow already muted it temporarily — `suppressed` means *"the alert is still active but a silence is muting the page"*. Either state is fine for this part; Phase 4 walks the details.
 
-Prefer the browser? Open Alertmanager at <http://localhost:9093/#/alerts>. Same four rows, with click-to-expand details. (If you skipped Part 2 §"From panel to alert", the alert lifecycle — `pending → firing → suppressed → resolved` — is walked in detail there.)
+Prefer the browser? Open Alertmanager at <http://localhost:9093/#/alerts>. Same four rows, with click-to-expand details. (If you skipped Part 2's "From panel to alert" section, the alert lifecycle — `pending → firing → suppressed → resolved` — is walked in detail there.)
 
 For Part 3, we focus on what happens *after* the alert is `firing`: the workflow picks it up and decides what to do. That starts with gathering facts.
 
@@ -442,7 +442,7 @@ Phase 3 showed you the workflow decided `proceed` on the broken peer. The word `
 
 #### A · The silence — containment in Alertmanager
 
-The workflow asks Alertmanager to **silence** the alert for 20 minutes. Same kind of silence you created by hand in Part 2 §F ("Create a silence by hand") — only this one was created automatically, scoped to the specific peer.
+The workflow asks Alertmanager to **silence** the alert for 20 minutes. Same kind of silence you created by hand in Part 2's "Create a silence by hand" section — only this one was created automatically, scoped to the specific peer.
 
 Open Alertmanager at <http://localhost:9093/#/alerts>. Find the row for `BgpSessionNotUp` on `srl1 → 10.1.99.2`. Its **State** column reads `suppressed` (not `firing`) — the workflow silenced it.
 
@@ -456,7 +456,7 @@ Click into the row. The `silenced_by` field carries a unique ID. Click that ID a
 
     If the row shows `firing` instead, the silence may have expired — silences last 20 minutes, and the workflow re-silences each time the alert fires again. Wait 30 seconds for Alertmanager to push another delivery to the workflow, then refresh the page. The row should flip back to `suppressed`.
 
-> Why silence and not fix? Silencing stops the *page* from firing again for 20 minutes — the same alert won't wake the on-call up twice for the same issue. The underlying problem is still happening (the rule keeps matching); the silence just mutes the notification path. Part 2 §E ("What's a silence?") walks the silence-vs-fixing distinction in detail.
+> Why silence and not fix? Silencing stops the *page* from firing again for 20 minutes — the same alert won't wake the on-call up twice for the same issue. The underlying problem is still happening (the rule keeps matching); the silence just mutes the notification path. Part 2's "What's a silence?" section walks the silence-vs-fixing distinction in detail.
 
 #### B · The audit record — memory in Loki
 
@@ -464,9 +464,9 @@ You already saw this in Phase 3 — the workflow wrote a `decision=proceed` log 
 
 #### C · The dashboard mark — visibility in Grafana
 
-In Part 2 §D ("Inspect alerts from Grafana via the `ALERTS` metric") you added a Grafana annotation that draws a red shaded region on the **Flap rate (2 min)** panel whenever `PeerInterfaceFlapping` is firing. The **same pattern** works for any alert exposed in the `ALERTS` metric — change the alertname filter to `BgpSessionNotUp` and you get the same red region on a different panel marking exactly when this alert was firing.
+In Part 2's "See alerts in Grafana — and overlay them on your panel" section you added a Grafana **alert marker** that draws a red shaded region on the **Flap rate (2 min)** panel whenever `PeerInterfaceFlapping` is firing. The **same pattern** works for any alert exposed in the `ALERTS` metric — change the alertname filter to `BgpSessionNotUp` and you get the same red region on a different panel marking exactly when this alert was firing.
 
-If you'd like to see it for `BgpSessionNotUp` too, add a second annotation using the same Part 2 §D walk, with this query instead:
+If you'd like to see it for `BgpSessionNotUp` too, add a second alert marker using the same Part 2 walk, with this query instead:
 
 ```promql
 ALERTS{alertname="BgpSessionNotUp", alertstate="firing"}
