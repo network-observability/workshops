@@ -320,7 +320,7 @@ Now run the command and read the output:
 | InterfaceAdminUpOperDown | warning  | srl2             |  firing |  ... |
 | BgpSessionNotUp          | warning  | srl1 → 10.1.99.2 |  firing |  ... |
 | BgpSessionNotUp          | warning  | srl2 → 10.1.11.1 |  firing |  ... |
-| PeerInterfaceFlapping    | critical | srl1/ethernet-1/1 |  firing | 30s |
+| PeerInterfaceFlapping    | critical | srl1 → ethernet-1/1 |  firing | 30s |
 ```
 
 Four steady-state rows + one transient — and the last column (`Age`) tells you which is which at a glance: `...` (long-running) vs `30s` (new).
