@@ -304,7 +304,9 @@ The lab ships a small CLI that prints the current alert state in a table — sam
 nobs autocon5 alerts
 ```
 
-You'll see five rows. Before you look at them — a quick map of what to expect, because the lab is wired with a couple of *always-firing* alerts on top of whatever you just triggered. Two tiers:
+> Give the cascade ~90 seconds from when you ran `flap-interface` before you expect the `PeerInterfaceFlapping` row to appear. The count crosses `> 3` after the first down phase, and the rule's `for: 30s` clause then has to hold before the alert promotes from `pending` to `firing`. If you check too early, you'll see only the four steady-state rows.
+
+You'll see five rows once the alert fires. Before you look at them — a quick map of what to expect, because the lab is wired with a couple of *always-firing* alerts on top of whatever you just triggered. Two tiers:
 
 - **Steady-state alerts** — always there, every time you walk this lab:
     - **`InterfaceAdminUpOperDown × 2`** — `ethernet-1/11` on each device is wired `admin up` but its `oper` state is `down` (the always-broken interface from step 3). The rule matches continuously; it never ages out.
