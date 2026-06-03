@@ -348,7 +348,7 @@ The first two panels are the key pair:
 
 The gap between those two is the reason the alert is firing.
 
-You can see the same source-of-truth data in the Infrahub browser UI. Open <http://localhost:8000> (login `admin` / `infrahub`), click **Network Device** in the left nav, click **srl1**, then click the **Bgp Sessions** tab. The row for `10.1.99.2` shows `Expected State: Established`, `Reason: ip-mismatch-demo`. Same data the workflow reads, just rendered for humans.
+You can see the same source-of-truth data in the Infrahub browser UI. Open <http://localhost:8000> — the landing page shows you as `anonymous` at the bottom-left. **Click "Log in" in that bottom-left area**, enter `admin` / `infrahub` in the form that opens, and submit. Then click **Network Device** in the left nav, click **srl1**, then click the **Bgp Sessions** tab. The row for `10.1.99.2` shows `Expected State: Established`, `Reason: ip-mismatch-demo`. Same data the workflow reads, just rendered for humans.
 
 ![Infrahub WorkshopBgpSession detail for the broken peer 10.1.99.2](../../../docs/assets/screenshots/infrahub-bgp-session-broken.png#only-light){ .screenshot loading=lazy }
 ![Infrahub WorkshopBgpSession detail for the broken peer 10.1.99.2](../../../docs/assets/screenshots/infrahub-bgp-session-broken.png#only-dark){ .screenshot loading=lazy }
@@ -368,6 +368,10 @@ Open Grafana, switch to the **Loki** datasource in Explore, and paste:
 ```
 
 The `| json` at the end is LogQL's way of saying *"parse each log line's body as JSON so I can read individual fields"* — the workflow writes its records as JSON, so this turns each line into a structured object Grafana can show in a side panel.
+
+!!! tip "No records yet?"
+
+    If the query returns *"No data"*, the workflow hasn't processed an alert on this peer yet. The workflow only runs when an alert fires at it — give the lab ~30–60 seconds after the setup-check reset for the always-firing alerts to make their way through, then re-run the query. (Or skip ahead to Phase 4 and come back; by then there'll be records.)
 
 You should see one log line per decision the workflow has made on `srl1` recently. Click the most recent one — Grafana opens a side panel parsing the JSON. The fields that matter:
 
@@ -512,15 +516,23 @@ The workflow reads this value **fresh on every alert evaluation** — so the mom
 
 #### Step 2 · See the flag in Infrahub
 
-Open Infrahub at <http://localhost:8000> (login `admin` / `infrahub`). Click **Network Device** in the left nav, then click **srl1**. The `maintenance` field now reads `true`.
+Open Infrahub at <http://localhost:8000>. If you haven't logged in yet, click **Log in** in the bottom-left, enter `admin` / `infrahub`, and submit. Then click **Network Device** in the left nav, then click **srl1**. The `maintenance` field now reads `true`.
 
 This is the same field the workflow's evidence panel showed you in Phase 2 — when the workflow gathered evidence, it asked Infrahub *"is srl1 in maintenance?"* and the answer was `false`. Now the answer is `true`.
 
-#### Step 3 · Re-trigger the alert
+#### Step 3 · Re-trigger the workflow
 
-The workflow only runs when a *new* alert fires. The silence from Phase 4 is still active, so we need to expire it manually so the alert flips back to `firing` — that pushes a new delivery to the workflow.
+The workflow only runs when something pushes an alert at it. The natural way to do that is to wait for the alert to fire again — but if the silence from Phase 4 is still active, that's a 20-minute wait, and Alertmanager's own re-fire timing adds more on top. For this exercise we trigger the workflow directly so the re-evaluation lands within seconds:
 
-Open Alertmanager at <http://localhost:9093/#/silences>. Find the silence you inspected in Phase 4 (the one with `device=srl1` and `peer_address=10.1.99.2`). Click **Expire**. Within a few seconds the alert flips back to `firing`, the webhook delivers a new payload, and the workflow runs again.
+```bash
+docker compose --project-name autocon5 exec prefect-flows \
+  prefect deployment run alert-receiver/alert-receiver \
+  --param alertname=BgpSessionNotUp \
+  --param status=firing \
+  --param 'alert_group={"alerts":[{"labels":{"device":"srl1","peer_address":"10.1.99.2","afi_safi_name":"ipv4-unicast"}}],"groupLabels":{"alertname":"BgpSessionNotUp"},"status":"firing"}'
+```
+
+This sends the same alert payload Alertmanager would have sent — same shape, same workflow, same decision logic — without waiting on Alertmanager's notification timing. (The full reasoning behind this command lives in the *"Trigger the workflow directly without an alert"* fold under [Optional deep dives](#optional-deep-dives).)
 
 #### Step 4 · Read the new decision in Loki
 
