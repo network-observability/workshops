@@ -68,8 +68,8 @@ count by (device) (interface_oper_state{intf_role="peer"} == 1)
 
 The two devices speak different protocols at the source:
 
-- **`srl1` emits gNMI** — that's the telemetry shape SR Linux puts on the wire natively. Field names like `srl_bgp_oper_state`, tags like `source`. **Telegraf-srl1** scrapes this raw shape, renames `srl_*` to canonical (`bgp_*`, `interface_*`) and `source` to `device`. Out the other side: the shared schema this workshop's dashboards and alerts speak.
-- **`srl2` emits SNMP** — the classic shape from IF-MIB / BGP4-MIB / CISCO-BGP4-MIB. Field names like `ifHCInOctets`, `bgpPeerState`, `cbgpPeerOperStatus`; tags like `agent_host`, `ifDescr`, `bgpPeerRemoteAddr`. **Telegraf-srl2** scrapes the raw SNMP shape and renames every field and every tag to the same canonical schema. Out the other side: byte-for-byte identical to what srl1 produces.
+- **`srl1` emits gNMI** — that's the telemetry shape SR Linux puts on the wire natively. Field names like `srl_interface_oper_state`, tags like `source`. **Telegraf-srl1** scrapes this raw shape, renames `srl_*` to canonical (`interface_*`, `bgp_*`) and `source` to `device`. Out the other side: the shared schema this workshop's dashboards and alerts speak.
+- **`srl2` emits SNMP** — the classic shape from IF-MIB / BGP4-MIB. Field names like `ifOperStatus`, `ifHCInOctets`; tags like `agent_host`, `ifDescr`. **Telegraf-srl2** scrapes the raw SNMP shape and renames every field and every tag to the same canonical schema. Out the other side: byte-for-byte identical to what srl1 produces.
 
 Both raw shapes live on `sonda-server` (the lab's synthetic-telemetry runtime). Each Telegraf scrapes its device's per-scenario `/metrics` endpoints on a 10-second cadence — same scrape pattern Prometheus would use against real exporters in production.
 
@@ -81,35 +81,35 @@ The pipeline has three layers you can inspect directly from your browser:
 
 1. **Raw gNMI from srl1** (sonda-server, before Telegraf): <http://localhost:8085/metrics?label=source:srl1>
 
-    Look for `srl_*` metric names (e.g. `srl_bgp_oper_state`, `srl_interface_oper_state`) and the `source="srl1"` tag. This is what an SR Linux device emits on its gNMI stream. For example:
+    Look for `srl_*` metric names and the `source="srl1"` tag. This is what an SR Linux device emits on its gNMI stream. For example:
 
     ```
-    srl_bgp_oper_state{afi_safi_name="ipv4-unicast",collection_type="gnmi",name="default",neighbor_asn="65102",peer_address="10.1.99.2",source="srl1"} 5
+    srl_interface_oper_state{collection_type="gnmi",name="ethernet-1/1",intf_role="peer",source="srl1"} 1
     ```
 
-    The pack `workshops/autocon5/sonda/catalog/srlinux-gnmi-bgp-raw.yaml` lists every metric in this shape.
+    The pack `workshops/autocon5/sonda/catalog/srlinux-gnmi-interfaces-raw.yaml` lists every metric in this shape.
 
 2. **Raw SNMP from srl2** (sonda-server, before Telegraf): <http://localhost:8085/metrics?label=agent_host:srl2>
 
-    Different shape entirely — IF-MIB / BGP4-MIB names (`ifHCInOctets`, `bgpPeerState`, `cbgpPeerOperStatus`) and the `agent_host="srl2"` tag. For example:
+    Different shape entirely — IF-MIB names (`ifOperStatus`, `ifHCInOctets`) and the `agent_host="srl2"` tag. For example:
 
     ```
-    bgpPeerState{afi_safi_name="ipv4-unicast",agent_host="srl2",bgpPeerRemoteAddr="10.1.2.1",bgpPeerRemoteAs="65101",collection_type="snmp",name="default"} 1
+    ifOperStatus{agent_host="srl2",collection_type="snmp",ifDescr="ethernet-1/1"} 1
     ```
 
-    Same logical concept (a BGP peer's operational state) as srl1's `srl_bgp_oper_state`, completely different field name, completely different label keys. Pack: `workshops/autocon5/sonda/catalog/cisco-snmp-bgp-raw.yaml`.
+    Same logical concept (interface operational state) as srl1's `srl_interface_oper_state`, completely different field name, completely different label keys. Pack: `workshops/autocon5/sonda/catalog/cisco-snmp-interfaces-raw.yaml`.
 
 3. **Telegraf-srl1's normalized output** (after gNMI → canonical rename): <http://localhost:9005/metrics>
 
-    Now `srl_bgp_oper_state` is plain `bgp_oper_state`. The `source="srl1"` tag is now `device="srl1"`. Same data, canonical shape.
+    Now `srl_interface_oper_state` is plain `interface_oper_state`. The `source="srl1"` tag is now `device="srl1"`. Same data, canonical shape.
 
 4. **Telegraf-srl2's normalized output** (after SNMP → canonical rename): <http://localhost:9006/metrics>
 
-    `bgpPeerState` is now also `bgp_oper_state`. The `agent_host="srl2"` tag is now `device="srl2"`. Identical structure to telegraf-srl1's output — except for one label we keep on purpose: `collection_type=gnmi` vs `collection_type=snmp`, so you can debug which pipeline a sample came from.
+    `ifOperStatus` is now also `interface_oper_state`. The `agent_host="srl2"` tag is now `device="srl2"`. Identical structure to telegraf-srl1's output — except for one label we keep on purpose: `collection_type=gnmi` vs `collection_type=snmp`, so you can debug which pipeline a sample came from.
 
-5. **Final view in Prometheus**: <http://localhost:9090/graph?g0.expr=bgp_oper_state%7Bpeer_address%3D~%2210.1.2.%5B12%5D%22%7D&g0.tab=1>
+5. **Final view in Prometheus**: <http://localhost:9090/graph?g0.expr=interface_oper_state&g0.tab=1>
 
-    A single PromQL query for `bgp_oper_state{peer_address=~"10.1.2.[12]"}` returns rows from both devices in the same shape. The vendor difference is invisible at this layer.
+    A single PromQL query for `interface_oper_state` returns rows from both devices in the same shape. The vendor difference is invisible at this layer.
 
 ??? info "Why the sonda `/metrics` endpoint is safe for two readers at once"
 
@@ -123,26 +123,26 @@ The pipeline has three layers you can inspect directly from your browser:
 Now flip to the Prometheus query browser and look at the same data after all the renames:
 
 ```promql
-bgp_oper_state{peer_address=~"10.1.2.[12]"}
+interface_oper_state{intf_role="peer"}
 ```
 
-Two rows, both `bgp_oper_state{device=..., peer_address=..., afi_safi_name="ipv4-unicast", name="default", ...}`. Same metric name, same label keys, regardless of whether the upstream was `srl_bgp_oper_state{source=srl1}` or `bgpPeerState{agent_host=srl2}`. That's the rename rules in `telegraf-{srl1,srl2}.conf.toml` doing the lift.
+Six rows, all `interface_oper_state{device=..., name=..., intf_role="peer", ...}`. Same metric name, same label keys, regardless of whether the upstream was `srl_interface_oper_state{source=srl1}` or `ifOperStatus{agent_host=srl2}`. That's the rename rules in `telegraf-{srl1,srl2}.conf.toml` doing the lift.
 
 The label that records which raw shape a series came from is `collection_type`. Run this once per device:
 
 ```promql
-count by (collection_type) (bgp_oper_state{device="srl1"})
+count by (collection_type) (interface_oper_state{device="srl1"})
 ```
 
 You should see one row: `collection_type=gnmi` returning `3`.
 
 ```promql
-count by (collection_type) (bgp_oper_state{device="srl2"})
+count by (collection_type) (interface_oper_state{device="srl2"})
 ```
 
 One row: `collection_type=snmp` returning `3`. Same metric, same number of series, different vendor shape upstream.
 
-Now click into a result on each side and compare the full label set — `device`, `peer_address`, `neighbor_asn`, `name`, `afi_safi_name`. The *only* meaningful difference is the `collection_type` value. Everything else lines up.
+Now click into a result on each side and compare the full label set — `device`, `name`, `intf_role`, `collection_type`. The *only* meaningful difference is the `collection_type` value. Everything else lines up.
 
 That alignment is what "normalization" actually buys you:
 
@@ -272,8 +272,6 @@ groups:
       - record: device:interface_updown_rate:2m
         expr: events:interface_updown_rate:2m or (sum by (device) (interface_admin_state) * 0)
 ```
-
-The third rule (`device:interface_updown_rate:2m`) pulls the UPDOWN event rate — computed by a Loki recording rule — back into Prometheus. The `or (...* 0)` fallback ensures every device always has a series even when no UPDOWN events exist, so dashboard panels don't go blank.
 
 Try querying the pre-computed metric directly in Explore:
 
@@ -422,7 +420,7 @@ Switch the panel to `Time series`. You should see two lines (one per device) sho
 
 #### 10. Pipeline awareness on logs
 
-The same normalization story plays out on the log side, with one important difference from metrics: logs in this workshop don't go through Telegraf. They have their own shipper story.
+The same normalization story plays out on the log side, with one important difference from metrics: logs don't go through Telegraf. Telegraf is a metrics pipeline — it scrapes and normalizes time-series samples. Logs are a different data shape (timestamped text streams), so the lab uses a dedicated log shipper instead: **Vector** for `srl2`, and a direct push path for `srl1`.
 
 `srl1` emits structured logs directly to Loki — that's the **normalized log**, `pipeline=direct`. `srl2` emits raw RFC 5424 syslog over UDP to Vector; Vector parses the syslog, extracts SD-IDs, and rewrites them into the same label vocabulary `srl1` already uses — that's the same log **still being processed to become normalized**, `pipeline=vector`.
 
@@ -498,7 +496,7 @@ This is the capstone exercise for Part 1. Open four browser tabs before you run 
 | Alerts | [Prometheus alerts](http://localhost:9090/#/alerts) |
 | Alertmanager | [http://localhost:9093](http://localhost:9093) |
 
-**Step 1 — set up your metric queries.** In the metrics tab, load these three queries (use split view or separate tabs):
+**Step 1 — set up your metric queries.** In the metrics tab, load these four queries (use split view or separate tabs):
 
 ```promql
 interface_oper_state{device="srl1", name="ethernet-1/1"}
