@@ -6,7 +6,7 @@ Late morning. The clock is creeping toward lunch. The flap-rate panel you built 
 
 > *"Watch what happens automatically. The flow's going to handle this without us. Then I'll walk you through the four cases it covers, and you can drive each one yourself. By the end of the hour you'll know exactly what the automation can and can't do for you — and which calls still belong to a human."*
 
-Drive each of the four alert paths by hand, watch the Prefect workflow decide what to do with each, then optionally turn on the AI RCA step and compare its narrative against the rule-based decision the workflow already made. (Rule-based here means the workflow uses a fixed set of if/else rules — same alert payload in, same decision out every time. We unpack what that means a little further down in "The four paths".) By the end you'll have seen all four decisions land in the audit log and know which calls still belong to a human.
+Drive each of the four alert paths by hand, watch the Prefect workflow decide what to do with each, then optionally turn on the **AI RCA** step (RCA = Root Cause Analysis — a short plain-English narrative the workflow can generate alongside its decision) and compare its narrative against the rule-based decision the workflow already made. (Rule-based — also called **deterministic** — means the workflow uses a fixed set of if/else rules: same alert payload in, same decision out every time. We unpack what that means a little further down in "The cycle".) By the end you'll have seen all four decisions land in the audit log and know which calls still belong to a human.
 
 ## Setup check
 
@@ -52,9 +52,9 @@ If you see fewer than two `BgpSessionNotUp` rows, give the stack 60 seconds and 
        quarantine_bgp_flow  ── the decision logic
     ```
 
-    `quarantine_bgp_flow` is **deterministic**: same alert payload in, same decision out, every time. Replayable, reviewable in code review (the decision tree is `DecisionPolicy.evaluate` in [`workshops/autocon5/automation/workshop_sdk.py`](https://github.com/network-observability/workshops/blob/main/workshops/autocon5/automation/workshop_sdk.py)), and auditable through annotations it writes to Loki. The full decision tree is broken out in [The four paths](#the-four-paths) below.
+    `quarantine_bgp_flow` is **deterministic** (same alert payload in, same decision out, every time — also called "rule-based"). Replayable, reviewable in code review (the decision tree is `DecisionPolicy.evaluate` in [`workshops/autocon5/automation/workshop_sdk.py`](https://github.com/network-observability/workshops/blob/main/workshops/autocon5/automation/workshop_sdk.py)), and auditable through **audit records** it writes to Loki — one log line per decision, with labels you can query later. The full decision tree is broken out in the "Deep dive" fold under [The cycle](#the-cycle-alert-evidence-policy-action) below.
 
-> Tip: you'll bounce between query languages from Part 1 throughout this part — **PromQL** for metrics (`bgp_oper_state{device="srl1", ...}`) and **LogQL** for logs and audit annotations (`{source="prefect", ...}`). Both query the same Grafana Explore tab; you switch by changing the datasource picker at the top.
+> Tip: you'll bounce between query languages from Part 1 throughout this part — **PromQL** for metrics (`bgp_oper_state{device="srl1", ...}`) and **LogQL** for logs and audit records (`{source="prefect", ...}`). Both query the same Grafana Explore tab; you switch by changing the datasource picker at the top. (If you skipped Part 1, the Tour's [Prometheus section](../../../docs/workshop/tour.md#prometheus-the-metrics-store) gives you the basics for both — same query language family.)
 
 Open **Workshop Home** at <http://localhost:3000/d/workshop-home>. The **Currently firing alerts** table at the bottom should show those same four rows. Keep this dashboard open in a tab — you'll watch it react to your CLI commands throughout this part.
 
@@ -70,7 +70,10 @@ Two `BgpSessionNotUp` alerts are firing in your lab right now (you just saw them
 ![The Part 3 cycle — alert, evidence, policy, action](../../../docs/assets/diagrams/part-3-cycle-light.svg#only-light){ .screenshot loading=lazy }
 ![The Part 3 cycle — alert, evidence, policy, action](../../../docs/assets/diagrams/part-3-cycle-dark.svg#only-dark){ .screenshot loading=lazy }
 
-The rest of Part 3 walks each step in turn — you'll run a CLI command to see the workflow's view of the evidence (Phase 2), read what it decided in Loki (Phase 3), look at the silence it created in Alertmanager and the record it wrote (Phase 4). At the end you'll flip a single flag in the source of truth and watch the *same* alert go through the *same* four steps but land at a *completely different* decision (Phase 5).
+The rest of Part 3 is structured around this cycle:
+
+- **Phases 1 → 4** walk **one full pass** through it — alert (you'll see the firing alert), evidence (you'll run a CLI to see what the workflow gathered), policy (you'll read the decision in Loki), action (you'll look at the silence in Alertmanager and the record it wrote).
+- **Phases 5 → 7** are **variations on the same cycle** — flip a flag in the source of truth and watch the same alert land at a different decision (Phase 5), turn on the AI narrative step (Phase 6), then write your own query against the audit trail (Phase 7).
 
 The bigger point — and the reason this matters even outside this lab — is that **alerts on their own aren't useful**. The loop that wraps each alert (gather context, decide, act, leave a record) is what turns a notification into an operational decision. Once you know the four steps, every alert your team writes follows the same pattern.
 
@@ -93,20 +96,22 @@ The bigger point — and the reason this matters even outside this lab — is th
        one of: proceed · skip · resolved · stop
     ```
 
-    Why these four outcomes specifically (three skips and one proceed)? Because the policy needs to distinguish three different *reasons not to act* — the peer is healthy, the device is in a maintenance window, or the alert already resolved itself — from the single reason *to act*: source-of-truth and metrics disagree and a human probably needs to know. Collapsing any pair into one outcome would lose audit signal; splitting any further would mean the policy is doing something the SoT schema can't yet express.
+    The policy writes one of **three decisions** for any given alert — `proceed`, `skip`, or `resolved`. The reason there are *four paths* below is that `skip` happens for two different reasons (healthy peer / device in maintenance), and we list each reason separately because they're operationally different. There's also a rare bail-out value (`stop`) for one edge case — explained at the end of this fold.
 
-    Every decision the flow makes lands in Loki as an **audit annotation** — one log line per evaluation, written by the `annotate_decision` task right after `evaluate_policy` returns. The annotation carries the device, the peer, and a `decision` label, which is what lets you ask Loki "how many alerts has the flow decided `proceed` on in the last hour?" without scrolling. Phase 7 is the unguided exercise where you answer that question yourself.
+    Every decision the flow makes lands in Loki as an **audit record** — one log line per evaluation, written by the `annotate_decision` task right after `evaluate_policy` returns. The record carries the device, the peer, and a `decision` label, which is what lets you ask Loki "how many alerts has the flow decided `proceed` on in the last hour?" without scrolling. Phase 7 is the unguided exercise where you answer that question yourself.
 
     | Path | Trigger | Decision | Outcome |
     |------|---------|---------|---------|
-    | **Mismatch → proceed** | Intent says peer up, metrics disagree | `proceed` | The flow signals "this needs human attention" — visible in the audit annotation, no silence |
-    | **Healthy → skip** | Intent and metrics agree (no real problem) | `skip` | Audit annotation only |
-    | **In-maintenance → skip** | Device's `maintenance` flag is `true` in Infrahub | `skip` | Audit annotation only |
-    | **Resolved → audit trail** | Alert resolved | `resolved` | Audit annotation only |
+    | **Mismatch → proceed** | Intent says peer up, metrics disagree | `proceed` | The flow signals "this needs human attention" — visible in the audit record, plus a silence |
+    | **Healthy → skip** | Intent and metrics agree (no real problem) | `skip` | Audit record only |
+    | **In-maintenance → skip** | Device's `maintenance` flag is `true` in Infrahub | `skip` | Audit record only |
+    | **Resolved → audit trail** | Alert resolved | `resolved` | Audit record only |
 
-    There's a fifth outcome the policy can emit but that `try-it` doesn't exercise: **`stop`** — fires when the device on the alert isn't in Infrahub at all (the SoT lookup returns nothing). The flow can't decide `proceed` vs `skip` without intent data, so it bails early with `decision=stop` and a `device not found in Infrahub` reason. You'll typically only see it if an alert fires before `nobs autocon5 load-infrahub` has finished seeding the schema — rare, but real.
+    Why four paths instead of collapsing the two `skip` cases into one? Because the *reason not to act* matters for the audit trail — "we skipped because the peer is healthy" and "we skipped because the device is in maintenance" should be searchable separately when an operator reads the trail later. Collapsing them would lose that signal.
 
-    Annotations land in Loki under `{source="prefect", workflow="autocon5_quarantine_bgp"}` with a `decision` label that takes one of: `proceed`, `skip`, `resolved`, `stop`. They're visible in **Recent events** feeds on both **Workshop Home** and **Device Health**.
+    Bail-out: the policy can also emit **`stop`** (the rare edge case) when the device on the alert isn't in Infrahub at all — the SoT lookup returns nothing, the flow can't decide `proceed` vs `skip` without intent data, so it bails early with `decision=stop` and a `device not found in Infrahub` reason. You'll typically only see it if an alert fires before `nobs autocon5 load-infrahub` has finished seeding the schema — rare, but real. `try-it` doesn't exercise this path.
+
+    Audit records land in Loki under `{source="prefect", workflow="autocon5_quarantine_bgp"}` with a `decision` label that takes one of: `proceed`, `skip`, `resolved`, `stop`. They're visible in **Recent events** feeds on both **Workshop Home** and **Device Health**.
 
     ??? info "What does intent actually look like in Infrahub?"
 
@@ -248,7 +253,7 @@ You should see four rows. Two of them are `BgpSessionNotUp` — those are the al
 Two things to notice:
 
 - **The `device` and `peer_address` labels.** These two labels are how the workflow finds the right peer in the source of truth — same keys, same values, no translation.
-- **The State column.** All four should read `firing`. If a row shows `suppressed` instead, the workflow already silenced it in a previous run — that's fine, Phase 4 explains what `suppressed` means here.
+- **The State column.** All four should read `firing`. If a row shows `suppressed` instead, the workflow already muted it temporarily — `suppressed` means *"the alert is still active but a silence is muting the page"*. Either state is fine for this part; Phase 4 walks the details.
 
 Prefer the browser? Open Alertmanager at <http://localhost:9093/#/alerts>. Same four rows, with click-to-expand details. (If you skipped Part 2 §"From panel to alert", the alert lifecycle — `pending → firing → suppressed → resolved` — is walked in detail there.)
 
@@ -256,7 +261,7 @@ For Part 3, we focus on what happens *after* the alert is `firing`: the workflow
 
 ### 2. Evidence — what the workflow collected
 
-Before the workflow decides anything, it gathers facts about the peer the alert is firing on. We call this the **evidence**: three pieces of information, plus a hint of what the decision will be.
+Before the workflow decides anything, it gathers facts about the peer the alert is firing on. We call this the **evidence**: three pieces of information about the peer, plus a preview of what the workflow's decision rule would say given those facts.
 
 You can see exactly what the workflow sees with one command:
 
@@ -303,7 +308,8 @@ The output is four panels. Each answers a different question:
     │ active_routes     │    10 │ —       │
     │ suppressed_routes │     0 │ —       │
     └───────────────────┴───────┴─────────┘
-            ↑ The `Decoded` column is the enum-to-text mapping — `oper_state=5`
+            ↑ The `Decoded` column is the number-to-name mapping (each numeric
+              state code translated to its plain-English name) — `oper_state=5`
               decodes to `active` (retrying, not yet established). admin=1, oper=5
               on a peer the SoT expects `established` is the intent-vs-reality mismatch.
 
@@ -318,8 +324,9 @@ The output is four panels. Each answers a different question:
     │  (silence_id=...)",...}                                              │
     ╰──────────────────────────────────────────────────────────────────────╯
             ↑ Mixed log streams: device-emitted BGP errors (the "why") and prior
-              Prefect annotations (the "what the flow did"). One bundle, multiple
-              sources. ("FSM" in the sample is BGP's finite state machine — the
+              audit records the workflow wrote on earlier runs (the "what the flow did
+              before — e.g., QUARANTINE = the action Phase 4 covers"). One bundle,
+              multiple sources. ("FSM" in the sample is BGP's finite state machine — the
               progression Idle → Active → Connect → OpenSent → Established;
               "stuck in active" means the peer is retrying but never reaching
               Established.)
@@ -331,7 +338,7 @@ The output is four panels. Each answers a different question:
     ╰─────────────────────────────────────────────╯
             ↑ The deterministic policy's verdict on this exact bundle. The Prefect
               flow's `evaluate_policy` task computes the same answer and writes it
-              to Loki as the `decision=proceed` annotation you'll see in Phase 3.
+              to Loki as the `decision=proceed` audit record you'll see in Phase 3.
     ```
 
     Read it back to the concepts: all four panels share one peer's worth of context — what the SoT believes, what the metrics measure, what the recent logs say, what the policy concluded. The `Policy hint` is the same answer the Prefect flow lands at in production; the difference is `nobs autocon5 evidence` shows it to you on the CLI before the flow runs, so you can predict the decision before triggering an alert.
@@ -361,6 +368,8 @@ Open Grafana, switch to the **Loki** datasource in Explore, and paste:
 ```logql
 {source="prefect", workflow="autocon5_quarantine_bgp", device="srl1"} | json
 ```
+
+The `| json` at the end is LogQL's way of saying *"parse each log line's body as JSON so I can read individual fields"* — the workflow writes its records as JSON, so this turns each line into a structured object Grafana can show in a side panel.
 
 You should see one log line per decision the workflow has made on `srl1` recently. Click the most recent one — Grafana opens a side panel parsing the JSON. The fields that matter:
 
@@ -431,7 +440,7 @@ Phase 3 showed you the workflow decided `proceed` on the broken peer. The word `
 
 #### A · The silence — containment in Alertmanager
 
-The workflow asks Alertmanager to **silence** the alert for 20 minutes. Same kind of silence you created by hand in Part 2 §F — only this one was created automatically, scoped to the specific peer.
+The workflow asks Alertmanager to **silence** the alert for 20 minutes. Same kind of silence you created by hand in Part 2 §F ("Create a silence by hand") — only this one was created automatically, scoped to the specific peer.
 
 Open Alertmanager at <http://localhost:9093/#/alerts>. Find the row for `BgpSessionNotUp` on `srl1 → 10.1.99.2`. Its **State** column reads `suppressed` (not `firing`) — the workflow silenced it.
 
@@ -445,7 +454,7 @@ Click into the row. The `silenced_by` field carries a unique ID. Click that ID a
 
     If the row shows `firing` instead, the silence may have expired — silences last 20 minutes, and the workflow re-silences each time the alert fires again. Wait 30 seconds for Alertmanager to push another delivery to the workflow, then refresh the page. The row should flip back to `suppressed`.
 
-> Why silence and not fix? Silencing stops the *page* from firing again for 20 minutes — the same alert won't wake the on-call up twice for the same issue. The underlying problem is still active in the rule evaluator's state; the silence just mutes the notification path. Part 2 §E walks the silence-vs-fixing distinction in detail.
+> Why silence and not fix? Silencing stops the *page* from firing again for 20 minutes — the same alert won't wake the on-call up twice for the same issue. The underlying problem is still happening (the rule keeps matching); the silence just mutes the notification path. Part 2 §E ("What's a silence?") walks the silence-vs-fixing distinction in detail.
 
 #### B · The audit record — memory in Loki
 
@@ -453,7 +462,7 @@ You already saw this in Phase 3 — the workflow wrote a `decision=proceed` log 
 
 #### C · The dashboard mark — visibility in Grafana
 
-In Part 2 §D you added a Grafana annotation that draws a red shaded region on the **Flap rate (2 min)** panel whenever `PeerInterfaceFlapping` is firing. The **same pattern** works for any alert exposed in the `ALERTS` metric — change the alertname filter to `BgpSessionNotUp` and you get the same red region on a different panel marking exactly when this alert was firing.
+In Part 2 §D ("Inspect alerts from Grafana via the `ALERTS` metric") you added a Grafana annotation that draws a red shaded region on the **Flap rate (2 min)** panel whenever `PeerInterfaceFlapping` is firing. The **same pattern** works for any alert exposed in the `ALERTS` metric — change the alertname filter to `BgpSessionNotUp` and you get the same red region on a different panel marking exactly when this alert was firing.
 
 If you'd like to see it for `BgpSessionNotUp` too, add a second annotation using the same Part 2 §D walk, with this query instead:
 
@@ -487,7 +496,7 @@ That information lives in the source of truth (Infrahub). Phase 5 flips a single
 nobs autocon5 maintenance --device srl1 --state
 ```
 
-The CLI confirms:
+The `--state` flag sets `srl1.maintenance` to `true` (later we'll use `--clear` to set it back to `false`). The CLI confirms:
 
 ```
 ╭──── WorkshopDevice updated ────╮
@@ -500,6 +509,8 @@ Two things happened:
 
 1. The CLI wrote `maintenance=true` to srl1's record in Infrahub.
 2. The CLI also wrote one log line to Loki recording the change (the same audit trail Phase 3 walked, just with `source="workshop-trigger"` instead of `source="prefect"`).
+
+The workflow reads this value **fresh on every alert evaluation** — so the moment the flag flips, the next decision the workflow makes uses the new value.
 
 #### Step 2 · See the flag in Infrahub
 
@@ -530,7 +541,7 @@ The **most recent line** now reads:
 
 Same broken peer, same metrics, same evidence as Phase 3 — but a `skip` decision instead of `proceed`. The change happened because the *intent* in the source of truth changed.
 
-!!! warning "Don't clear maintenance until you've seen the `skip` annotation"
+!!! warning "Don't clear maintenance until you've seen the `skip` audit record"
 
     Step 5 below clears the maintenance flag. If you race ahead and clear it before the workflow has actually re-evaluated, it'll re-read `maintenance=false` and return `proceed` instead of `skip`. Confirm the `skip` log line has landed in Loki first, then continue.
 
@@ -554,7 +565,7 @@ Important: the AI **does not decide what to do**. The deterministic policy still
 
 #### Step 1 · Enable the demo provider
 
-By default the AI step is off. Flip two lines in the workshop's `.env` file:
+By default the AI step is off. Open the workshop's `.env` file at `workshops/autocon5/.env` and flip these two lines:
 
 ```bash
 ENABLE_AI_RCA=true
@@ -565,7 +576,7 @@ The `demo` provider works offline — it writes a templated narrative grounded i
 
 #### Step 2 · Reload the workflow
 
-Docker reads `.env` only when a container is first *created*, not on every restart. The command below recreates the workflow container so it picks up your new settings:
+The workflow runs inside a Docker container, and Docker only reads `.env` when a container is first *created* — a plain restart won't pick up your change. The command below recreates the container so the new settings take effect:
 
 ```bash
 nobs autocon5 up
@@ -575,13 +586,13 @@ Wait about 30 seconds for the workflow to come back online.
 
 #### Step 3 · Trigger an alert and read the AI narrative
 
-The fastest way to see the AI run is to drive an interface flap (it cascades into a fresh `BgpSessionNotUp` firing):
+The fastest way to see the AI run is to drive an interface flap. `flap-interface` triggers a 4-minute scenario where the interface bounces up and down — that drags the BGP session down with the interface, which in turn causes a fresh `BgpSessionNotUp` alert to fire and the workflow to run on it (this time with AI RCA enabled).
 
 ```bash
 nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1
 ```
 
-Wait ~2 minutes for the cascade to fire `BgpSessionNotUp` on the affected peer. Then in Grafana Explore on the Loki datasource:
+Wait ~2 minutes for `BgpSessionNotUp` to fire on the affected peer. Then in Grafana Explore on the Loki datasource:
 
 ```logql
 {source="prefect", ai_rca="true"} | json
@@ -646,6 +657,8 @@ The AI narrative sits **next to** the deterministic decision in Loki, not in pla
 
 You'll see *two* recent records for the same alert: one with `decision=proceed` (the deterministic outcome) and one with `ai_rca=true` (the AI narrative). Both are grounded in the same evidence the workflow gathered in Phase 2.
 
+Worth noting for Phase 7: the AI narrative records share the workflow's Loki stream but **don't carry a `decision` label** (since they're not decisions — they're narratives). So if you later query by `decision`, the AI records will land in an empty/unlabeled bucket rather than alongside `proceed` / `skip` / `resolved`. Phase 7 walks the query that surfaces this.
+
 #### What changes if you use a real LLM
 
 The `demo` provider writes a templated narrative — same three sections every time, filled in from the evidence fields. It can't draw on outside knowledge; it only has what the workflow handed it.
@@ -667,7 +680,7 @@ You've walked every step of the cycle. Now use what you've seen.
 - `count_over_time({...}[1h])` turns a Loki query into a number — same pattern as Part 1 exercise 10. A one-hour window catches anything you ran earlier in this part, even if you took a coffee break.
 - `sum by (label) (...)` collapses everything except the label you list. Pick the label that gives the most informative breakdown — try `workflow` first (one row, not useful), then try `decision` (a few rows, much more useful).
 
-Take a minute on it before you scroll. Don't filter by `device` — you want all the devices.
+Take a minute on it before you scroll. **Drop the `device="srl1"` filter** that Phases 3 and 5 used — for this question you want the workflow's full activity across both devices, not just one.
 
 ??? success "Solution and what your query should return"
 
@@ -804,7 +817,7 @@ There's no single right answer. The point is that the same tool isn't equally va
 
 ## Stretch goals (optional — pick one if you have time)
 
-- **Tail the Prefect flow logs in real time.** Watch a flow run from the inside, line-by-line, so you can correlate every decision in the annotation trail with the task that produced it.
+- **Tail the Prefect flow logs in real time.** Watch a flow run from the inside, line-by-line, so you can correlate every decision in the audit-record trail with the task that produced it.
 
     ??? success "Solution — how to tail, plus what you'll see in the log stream"
 
@@ -869,13 +882,13 @@ There's no single right answer. The point is that the same tool isn't equally va
         {source="prefect", workflow="autocon5_quarantine_bgp", decision="skip"} | json
         ```
 
-        The most recent `skip` annotation should now show `device="srl2"` instead of `srl1`. The `message` is still `"device under maintenance"` — only which device was being evaluated changed.
+        The most recent `skip` audit record should now show `device="srl2"` instead of `srl1`. The `message` is still `"device under maintenance"` — only which device was being evaluated changed.
 
         The point of the exercise: the policy is **device-agnostic**. It consults the SoT for whichever device the alert payload names. Flipping maintenance on any device routes that device's alerts to skip, automatically. The decision logic isn't hard-coded to a particular device.
 
         Don't forget `nobs autocon5 maintenance --device srl2 --clear` afterwards (or run `nobs autocon5 reset` — it clears both devices).
 
-- **Watch a path's annotations in Loki directly.** Every Prefect decision lands as a structured JSON annotation in Loki. Tail them live to see the audit trail being written as you trigger paths.
+- **Watch a path's audit records in Loki directly.** Every Prefect decision lands as a structured JSON record in Loki. Tail them live to see the audit trail being written as you trigger paths.
 
     ??? success "Solution — LogQL query + the audit-trail shape"
 
@@ -885,7 +898,7 @@ There's no single right answer. The point is that the same tool isn't equally va
         {source="prefect", workflow="autocon5_quarantine_bgp"} | json
         ```
 
-        Each annotation has this shape (Grafana parses the JSON into a side panel when you click a row):
+        Each record has this shape (Grafana parses the JSON into a side panel when you click a row):
 
         ```json
         {
@@ -937,5 +950,5 @@ There's no single right answer. The point is that the same tool isn't equally va
 - The same alert payload routes to four different decisions depending on context (`proceed`, `skip` for healthy, `skip` for maintenance, `resolved`). Without enrichment, every alert looks the same.
 - The evidence bundle is the contract between the deterministic policy and the AI RCA — both consume it, neither sees more than the other.
 - Maintenance windows aren't a separate alerting layer. They're a label the flow consults at decision time. One source of truth, one decision point.
-- AI RCA is opt-in narrative around the same evidence. It's annotation, not autonomy. Human judgment still owns the "act / don't act" call.
+- AI RCA is opt-in narrative around the same evidence. It's a paragraph stapled next to the decision, not the decision itself. Human judgment still owns the "act / don't act" call.
 - The four paths are the recipe: mismatch → proceed, healthy → skip, maintenance → skip, resolved → audit. Memorise them — they generalise to any alert your team writes.
