@@ -472,9 +472,9 @@ Now flip it back: in **Silences**, find your silence, click **Expire**. Refresh 
 
 Three transitions every alert can make — and `resolved` isn't a dead end: if the condition starts matching again later, the alert re-enters `pending` and the cycle restarts. Memorise this shape, it's the same on every alerting stack worth using.
 
-### H. Preview Part 3
+??? info "Why has `BgpSessionNotUp` been sitting in `firing` this whole time? — preview of Part 3"
 
-`BgpSessionNotUp` has been sitting at `firing` for both devices the whole time you've been on this dashboard. They never resolved because the broken peers are *deliberately* broken — the lab keeps them that way as a steady-state target. In Part 3, a **workflow** (a small program that runs automatically when an alert fires) picks these alerts up via an **Alertmanager webhook** (an HTTP call Alertmanager makes to a configured URL every time an alert fires, so external systems can react to it), decides whether each one deserves human attention or can be silenced automatically, and applies the silence programmatically — exactly the same `firing → suppressed → firing` cycle you just walked by hand. Part 3 explains what the workflow is, how it's triggered, and what its decision policy looks like.
+    `BgpSessionNotUp` has been sitting at `firing` for both devices the whole time you've been on this dashboard. They never resolved because the broken peers are *deliberately* broken — the lab keeps them that way as a steady-state target. In Part 3, a **workflow** (a small program that runs automatically when an alert fires) picks these alerts up via an **Alertmanager webhook** (an HTTP call Alertmanager makes to a configured URL every time an alert fires, so external systems can react to it), decides whether each one deserves human attention or can be silenced automatically, and applies the silence programmatically — exactly the same `firing → suppressed → firing` cycle you just walked by hand. Part 3 explains what the workflow is, how it's triggered, and what its decision policy looks like.
 
 For now: you've seen the full alert surface. CLI, Alertmanager UI, Grafana ALERTS metric, manual silence. That's the substrate Part 3 builds on.
 
