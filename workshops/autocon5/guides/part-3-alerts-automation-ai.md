@@ -441,13 +441,13 @@ Open Grafana, switch to the **Loki** datasource in Explore, and paste:
 {source="prefect", workflow="autocon5_quarantine_bgp", device="srl1"} | json
 ```
 
-The `| json` at the end is LogQL's way of saying *"parse each log line's body as JSON so I can read individual fields"* — the workflow writes its records as JSON, so this turns each line into a structured object Grafana can show in a side panel.
+The `| json` at the end is LogQL's way of saying *"parse each log line's body as JSON so I can read individual fields"* — the workflow writes its records as JSON, so this turns each line into a structured object Grafana renders inline (one field per row, right under the log line — no clicking needed).
 
 !!! tip "No records yet?"
 
     If the query returns *"No data"*, the workflow hasn't processed an alert on this peer yet. The workflow only runs when an alert fires at it — give the lab ~30–60 seconds after the setup-check reset for the always-firing alerts to make their way through, then re-run the query. (Or skip ahead to Phase 4 and come back; by then there'll be records.)
 
-You should see one log line per decision the workflow has made on `srl1` recently. Click the most recent one — Grafana opens a side panel parsing the JSON. The fields that matter:
+You should see one log line per decision the workflow has made on `srl1` recently. Look at the most recent one — Grafana parses the JSON inline, so every field is visible right under the row. The fields that matter:
 
 | Field | Value (for the broken peer) | What it means |
 |---|---|---|
@@ -682,7 +682,7 @@ Wait ~2 minutes for `BgpSessionNotUp` to fire on the affected peer. Then in Graf
 {source="prefect", ai_rca="true"} | json
 ```
 
-You'll see one new line per workflow run. Click the most recent one. The `message` field contains a three-section paragraph:
+You'll see one new line per workflow run. Look at the most recent one — the parsed fields appear inline. The `message` field contains a three-section paragraph:
 
 ```text
 ## Most likely cause
@@ -982,7 +982,7 @@ There's no single right answer. The point is that the same tool isn't equally va
         {source="prefect", workflow="autocon5_quarantine_bgp"} | json
         ```
 
-        Each record has this shape (Grafana parses the JSON into a side panel when you click a row):
+        Each record has this shape (Grafana parses the JSON inline, so every field renders right under the row):
 
         ```json
         {
