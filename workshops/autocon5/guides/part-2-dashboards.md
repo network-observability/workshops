@@ -482,34 +482,6 @@ For now: you've seen the full alert surface. CLI, Alertmanager UI, Grafana ALERT
 
 ## Stretch goals (optional — pick one if you have time)
 
-### Group the dashboard into tabs
-
-The eight panels on **Workshop Lab 2026** are a lot to scroll past when you're triaging at 2am. Use Grafana 13's new **Group into tabs** feature to split the dashboard into a few tabs so each one answers one operational question instead of showing everything at once.
-
-??? success "Solution — steps + what the dashboard looks like after"
-
-    Grafana 13's **Group into tabs** works like browser tabs: only the active tab's panels render, so the page feels lighter and the queries run faster.
-
-    In **Edit** mode, click **`+`** in the right sidebar, then **Group into tabs**. Drag panels into each tab using the layout below — a useful split for a real on-call:
-
-    | Tab | Panels to include | What this tab answers |
-    |---|---|---|
-    | **Overview** | Devices · Interfaces · Firing alerts · Log lines (5m) | "Is anything wrong right now?" |
-    | **Interfaces** | Interface Admin State · Interface Operational Status · Interface Traffic · Interface Logs | "What's the state of the device's interfaces?" |
-    | **Flap** | Flap rate (per 2 minutes) · Flap history (the table you built above, if you did the table stretch goal) | "Which interface is flapping and how badly?" |
-
-    **Save** the dashboard. Click between the tabs and check:
-
-    - **Overview** shows the four stat panels (Devices · Interfaces · Firing alerts · Log lines).
-    - **Interfaces** shows Interface Admin State · Interface Operational Status · Interface Traffic · Interface Logs.
-    - **Flap** shows your Flap rate panel (and Flap history if you also did the table stretch goal).
-
-    Drive a flap (`nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1`) and click into the **Flap** tab — the view is exactly what an on-call would open on a `PeerInterfaceFlapping` page.
-
-    If a panel ended up in the wrong tab, drag it between tabs while in Edit mode. The provisioned YAML resets the layout on `nobs autocon5 restart grafana`, so don't worry about breaking anything permanently.
-
-    **Stop and notice.** Tabs only change how the dashboard is laid out — the panels and queries themselves don't change. What changes is *which questions the dashboard answers when you open it*. The Overview tab is for "is anything wrong"; the Flap tab is for "show me the symptom" — different operational questions, same dashboard, same data. Building this split before an incident means the page lands and the right view is already there.
-
 ### Extend the Interface Traffic panel with a per-device aggregate
 
 The existing **Interface Traffic** panel draws one line per interface. Add a second query that draws a single device-wide total on the same panel, styled so it visually stands out from the per-interface lines.
@@ -627,6 +599,34 @@ Add a second panel: a table that summarises flap activity per device + interface
     - The `Total flaps` cells render as horizontal LCD gauges that fill green → orange → red as the count grows. Background noise (always-broken interfaces) sits around 28 (mostly green). An actively-flapping interface climbs past 60 in a few minutes and goes mostly red.
 
     **Stop and notice.** Tables are the dashboard equivalent of "a list of things to investigate, each row a one-click entry into deeper context". The time-series panel above tells you *something is flapping*. The table tells you *which one, how badly, and here's the next dashboard*. The data-link override is what binds the two dashboards into one navigation flow — no copy-pasting device names, no losing the time range.
+
+### Group the dashboard into tabs
+
+The eight panels on **Workshop Lab 2026** are a lot to scroll past when you're triaging at 2am. Use Grafana 13's new **Group into tabs** feature to split the dashboard into a few tabs so each one answers one operational question instead of showing everything at once.
+
+??? success "Solution — steps + what the dashboard looks like after"
+
+    Grafana 13's **Group into tabs** works like browser tabs: only the active tab's panels render, so the page feels lighter and the queries run faster.
+
+    In **Edit** mode, click **`+`** in the right sidebar, then **Group into tabs**. Drag panels into each tab using the layout below — a useful split for a real on-call:
+
+    | Tab | Panels to include | What this tab answers |
+    |---|---|---|
+    | **Overview** | Devices · Interfaces · Firing alerts · Log lines (5m) | "Is anything wrong right now?" |
+    | **Interfaces** | Interface Admin State · Interface Operational Status · Interface Traffic · Interface Logs | "What's the state of the device's interfaces?" |
+    | **Flap** | Flap rate (per 2 minutes) · Flap history (the table you built above, if you did the table stretch goal) | "Which interface is flapping and how badly?" |
+
+    **Save** the dashboard. Click between the tabs and check:
+
+    - **Overview** shows the four stat panels (Devices · Interfaces · Firing alerts · Log lines).
+    - **Interfaces** shows Interface Admin State · Interface Operational Status · Interface Traffic · Interface Logs.
+    - **Flap** shows your Flap rate panel (and Flap history if you also did the table stretch goal).
+
+    Drive a flap (`nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1`) and click into the **Flap** tab — the view is exactly what an on-call would open on a `PeerInterfaceFlapping` page.
+
+    If a panel ended up in the wrong tab, drag it between tabs while in Edit mode. The provisioned YAML resets the layout on `nobs autocon5 restart grafana`, so don't worry about breaking anything permanently.
+
+    **Stop and notice.** Tabs only change how the dashboard is laid out — the panels and queries themselves don't change. What changes is *which questions the dashboard answers when you open it*. The Overview tab is for "is anything wrong"; the Flap tab is for "show me the symptom" — different operational questions, same dashboard, same data. Building this split before an incident means the page lands and the right view is already there.
 
 ## What you took away
 
