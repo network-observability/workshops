@@ -788,6 +788,16 @@ Swap `AI_RCA_PROVIDER` to `openai` or `anthropic` with a real API key, and you g
 
 > **The big idea.** AI in an on-call loop should be a **narrative tool**, not a decision tool. The decision is what stays the same across replays and code reviews. The narrative is what reads well at 02:14. Keep them separate, keep them both grounded in the same evidence, and you get the best of both worlds.
 
+!!! tip "Done experimenting? Revert to the offline `demo` provider"
+
+    Two-line revert. In `workshops/autocon5/.env`:
+
+    ```bash
+    AI_RCA_PROVIDER=demo
+    ```
+
+    Then `nobs autocon5 up` to reload the container against the new env. The workflow keeps writing AI RCA annotations, but they're templated again — no API calls, no cost. (Leave your API key in `.env`; it's ignored when the provider is `demo`.) If you'd rather turn the step off entirely, set `ENABLE_AI_RCA=false` instead.
+
 ### 7. Your turn — find what the workflow actually did
 
 You've walked every step of the cycle. Now use what you've seen.
