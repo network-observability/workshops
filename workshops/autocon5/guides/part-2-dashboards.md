@@ -224,6 +224,10 @@ nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1
 
 This kicks off a 4-minute **cascade** — a scripted sequence of state changes the lab plays back to imitate a real incident. For this command the interface cycles `30s up, 60s down` for four minutes. UPDOWN log lines emit at a steady cadence (~one every two seconds) during each down window. Switch the dashboard's `Device` dropdown to `srl1` if you aren't already there.
 
+!!! tip "Turn on auto-refresh so the panel updates live"
+
+    By default the dashboard only re-queries when you reload it. To watch the flap climb in real time, click the circular **arrow icon** at the top-right of the dashboard (next to the time-range picker) and pick **5s** from the dropdown. The panel will re-query every 5 seconds — fast enough to catch the cascade as it unfolds, slow enough not to hammer the backends. Set it back to **Off** when you're done.
+
 <figure class="section-preview" markdown>
 
 ![Flap rate panel during a flap](../../../docs/assets/screenshots/flap-rate-flapping-light.png#only-light){ .screenshot loading=lazy }
