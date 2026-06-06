@@ -341,6 +341,80 @@ The output is four panels. Each answers a different question:
 
     Read it back to the concepts: all four panels share one peer's worth of context — what the SoT believes, what the metrics measure, what the recent logs say, what the policy concluded. The `Policy hint` is the same answer the Prefect flow lands at in production; the difference is `nobs autocon5 evidence` shows it to you on the CLI before the flow runs, so you can predict the decision before triggering an alert.
 
+??? info "Curious how the workflow collects all this in Python? Three small calls"
+
+    Each of the three "fact" panels comes from one tiny method in [`workshops/autocon5/automation/workshop_sdk.py`](https://github.com/network-observability/workshops/blob/main/workshops/autocon5/automation/workshop_sdk.py). Snippets below — not the full module, just enough to feel the shape.
+
+    **Metrics — six instant PromQL reads:**
+
+    ```python
+    def bgp_metrics_snapshot(self, device, peer_address, afi_safi, instance_name) -> dict[str, float]:
+        qs = self.bgp_queries(device, peer_address, afi_safi, instance_name)
+        return {
+            "admin_state":     first_prom_value(self.prom.instant(qs["admin_state"]),     default=-1),
+            "oper_state":      first_prom_value(self.prom.instant(qs["oper_state"]),      default=-1),
+            "received_routes": first_prom_value(self.prom.instant(qs["received_routes"]), default=0),
+            # ... three more, same shape
+        }
+    ```
+
+    `self.prom.instant(...)` is a one-line HTTP GET to Prometheus's `/api/v1/query`; `first_prom_value` unwraps the JSON to a single float. Point-in-time reads, nothing clever.
+
+    **Logs — one LogQL query scoped to the peer:**
+
+    ```python
+    def bgp_logql(self, device, peer_address) -> str:
+        return (
+            f'{{device="{device}"}} '
+            f'!= "license" '
+            f'|~ "(bgp|BGP|neighbor|session|route|ipv4-unicast|{peer_address})"'
+        )
+
+    def bgp_logs(self, device, peer_address, minutes=10, limit=200) -> list[str]:
+        return self.loki.query_range(
+            self.bgp_logql(device, peer_address), minutes=minutes, limit=limit
+        )
+    ```
+
+    Stream selector pins the device; the regex line filter (`|~`) keeps anything BGP-shaped *or* mentioning the peer's IP. One query returns both device-emitted BGP errors and the workflow's earlier audit records — the mixed-stream payload you saw in panel three above.
+
+    **Intent — one GraphQL call to Infrahub:**
+
+    ```python
+    def bgp_gate(self, device, peer_address, afi_safi) -> dict:
+        return self.sot.build_bgp_intent_gate(
+            device=device, peer_address=peer_address, afi_safi=afi_safi,
+        )
+    ```
+
+    `self.sot` wraps an Infrahub HTTP client; `build_bgp_intent_gate` issues one typed GraphQL query and packs the result into a plain dict — `{"found": ..., "maintenance": ..., "expected_state": ..., "reason": ..., ...}`. No magic; just GraphQL with a schema on the other side.
+
+    **The decode step** — the `Decoded` column in panel two (`oper_state=5 → active`) comes from a tiny lookup table:
+
+    ```python
+    OPER_MAP = {0: "unknown", 1: "established", 2: "idle", 3: "connect", 4: "openconfirm", 5: "active"}
+
+    def decode_bgp_states(metrics: dict[str, float]) -> dict[str, str]:
+        oper = int(metrics["oper_state"])
+        return {"oper_state": OPER_MAP.get(oper, str(oper))}
+    ```
+
+    Numeric protocol enums are great on the wire and useless on a dashboard — this is the entire translation layer.
+
+    **All four wired together** — the only thing the Prefect task calls:
+
+    ```python
+    def collect_bgp_evidence(self, device, peer_address, afi_safi, instance_name, ...):
+        ev = EvidenceBundle(device=device, peer_address=peer_address, ...)
+        ev.sot     = self.bgp_gate(device, peer_address, afi_safi)
+        ev.metrics = self.bgp_metrics_snapshot(device, peer_address, afi_safi, instance_name)
+        ev.sot["decoded"] = decode_bgp_states(ev.metrics)
+        ev.logs    = self.bgp_logs(device, peer_address)
+        return ev
+    ```
+
+    Three reads, one decode, return a dataclass. The whole "evidence-gathering" step is roughly ten lines of orchestration; the rest of [`workshop_sdk.py`](https://github.com/network-observability/workshops/blob/main/workshops/autocon5/automation/workshop_sdk.py) is thin HTTP clients (`self.prom`, `self.loki`, `self.sot`, `self.am`) that talk to each store.
+
 The first two panels are the key pair:
 
 - **Source of truth** says **what should be true** — for this peer, `expected_state=established` means "should be up and exchanging routes."
