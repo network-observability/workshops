@@ -725,6 +725,14 @@ admin_state=1 (enable), received_routes=0.
 
     The `line_format` directive replaces the rendered log line with just the unescaped `message` value (the `| json` parser has already turned the `\n` escapes into real newlines). Turn on **Wrap lines** in the Grafana Logs view toolbar so the multi-line narrative wraps instead of scrolling sideways.
 
+    Prefer the terminal? Same data, rendered as Markdown:
+
+    ```bash
+    nobs autocon5 rca srl1 10.1.99.2
+    ```
+
+    Most-recent narrative for that device/peer pair. Both args are optional (omit to see the latest record across the lab); add `--last 3` to compare several recent runs side by side, `--minutes 180` to widen the lookback window.
+
 ??? info "What the demo AI RCA narrative actually contains"
 
     With `AI_RCA_PROVIDER=demo`, the workshop ships a templated narrative that fills three sections (Most likely cause / Immediate actions / What to verify next) from the same evidence the deterministic policy reads. Here's what the demo writes for the broken peer:
