@@ -187,6 +187,32 @@ nobs autocon5 alerts
 
 The `BgpSessionNotUp` row is still in the firing list — that's expected. The alert isn't "fixed" by going into maintenance; what changes is the *response* path. The webhook flow consults Infrahub on every alert it receives, sees `srl1.maintenance=true`, and decides `skip` (reason: `device under maintenance`) instead of `quarantine`. Open Workshop Home and look at the **Recent events** feed: the next time Alertmanager's webhook fires for this alert, the new annotation reads `skip` rather than `quarantine`. Alertmanager's `repeat_interval` for this alert is 20 minutes, so you may not see the `skip` annotation appear within the time you spend in this guide. Part 3's `try-it` tour, Path 2, walks exactly this transition with an immediate replay if you want to see it land.
 
+!!! tip "Want to see the skip annotation land *now*?"
+
+    Bypass Alertmanager's `repeat_interval` and post the alert payload directly to the workflow — same shape Alertmanager would have sent, no notification-timing wait:
+
+    ```bash
+    docker compose --project-name autocon5 exec prefect-flows \
+      prefect deployment run alert-receiver/alert-receiver \
+      --param alertname=BgpSessionNotUp \
+      --param status=firing \
+      --param 'alert_group={"alerts":[{"labels":{"device":"srl1","peer_address":"10.1.99.2","afi_safi_name":"ipv4-unicast"}}],"groupLabels":{"alertname":"BgpSessionNotUp"},"status":"firing"}'
+    ```
+
+    Within ~15 seconds a fresh audit record lands in Loki:
+
+    ```bash
+    nobs autocon5 rca srl1 10.1.99.2   # AI narrative for the same evidence
+    ```
+
+    Or query the deterministic decision directly:
+
+    ```logql
+    {source="prefect", workflow="autocon5_quarantine_bgp", decision="skip", device="srl1"} | json
+    ```
+
+    Either surface shows the `decision=skip` / `reason=device under maintenance` record the workflow just wrote.
+
 **Stop and notice.** Maintenance isn't a static config attribute on the device — it's a *containment lever* the on-call uses live during an incident. Flipping the flag tells the automation "I'm in here; please don't fire automated actions while I'm working." The flow consults the source of truth at decision time, so the change has effect on the very next alert that arrives. This is what the workshop's source-of-truth integration was for.
 
 ### Act 6 — Fix and recover
