@@ -252,7 +252,7 @@ This walk uses every observability surface the workshop already has running — 
 
 The `PeerInterfaceFlapping` rule you mirrored in the panel hasn't been hypothetical — it's been running against the same set of UPDOWN log lines you queried in the panel, this whole time. Expand the fold below for the full yaml anatomy and where the rule lives in the repo; what matters for this walk is *when* it fires.
 
-[](){ #whats-an-alert-rule }
+<a id="whats-an-alert-rule"></a>
 
 ??? info "What's an alert rule? — yaml anatomy and where to see it"
 
