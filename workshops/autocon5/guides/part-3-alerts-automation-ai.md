@@ -715,6 +715,16 @@ admin_state=1 (enable), received_routes=0.
 - Tail Loki for device=srl1 around the alert window for BGP state transitions
 ```
 
+!!! tip "Read the narrative in its rendered shape"
+
+    The query above shows each JSON field on its own row — handy for inspecting structure, but hard on the eyes for prose. To render `message` with its markdown headers and bullets intact, swap to:
+
+    ```logql
+    {source="prefect", ai_rca="true"} | json | line_format "{{ .message }}"
+    ```
+
+    The `line_format` directive replaces the rendered log line with just the unescaped `message` value (the `| json` parser has already turned the `\n` escapes into real newlines). Turn on **Wrap lines** in the Grafana Logs view toolbar so the multi-line narrative wraps instead of scrolling sideways.
+
 ??? info "What the demo AI RCA narrative actually contains"
 
     With `AI_RCA_PROVIDER=demo`, the workshop ships a templated narrative that fills three sections (Most likely cause / Immediate actions / What to verify next) from the same evidence the deterministic policy reads. Here's what the demo writes for the broken peer:
