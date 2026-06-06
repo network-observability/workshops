@@ -1,4 +1,4 @@
-# Part 2 — Dashboards
+# Part 2 — Dashboards and Alerts
 
 ## What you'll do here
 

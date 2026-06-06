@@ -1,5 +1,5 @@
 ---
-title: Part 2 — Dashboards
+title: Part 2 — Dashboards and Alerts
 description: Mid-morning. A post-mortem email lands — last night's page lost ten minutes because a flap-rate panel didn't exist. Build it now, with thresholds matching the alert rule.
 ---
 
@@ -7,7 +7,7 @@ description: Mid-morning. A post-mortem email lands — last night's page lost t
 
 <span class="autocon5-section-hero__badge">Part 2 of 4 · Mid-morning</span>
 
-<h1 class="autocon5-section-hero__title">Dashboards</h1>
+<h1 class="autocon5-section-hero__title">Dashboards and Alerts</h1>
 
 <p class="autocon5-section-hero__subtitle">Build the panel last night's post-mortem said you needed.</p>
 
@@ -44,7 +44,7 @@ A post-mortem email lands. Last night's page lost ten minutes because a flap-rat
 
 <a class="autocon5-nav-footer__next" href="../part-3/">
   <span class="autocon5-nav-footer__label">Next →</span>
-  <span class="autocon5-nav-footer__title">Part 3 — Alerts, automation, AI</span>
+  <span class="autocon5-nav-footer__title">Part 3 — Alert response, Automation and AI</span>
 </a>
 
 </nav>

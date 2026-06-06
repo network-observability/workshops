@@ -132,8 +132,8 @@ nav:
       - Tour the stack: workshop/tour.md
       - One workday, one investigation: workshop/guides.md
       - Part 1 — Telemetry and queries: workshop/part-1.md
-      - Part 2 — Dashboards: workshop/part-2.md
-      - Part 3 — Alerts, automation, AI: workshop/part-3.md
+      - Part 2 — Dashboards and Alerts: workshop/part-2.md
+      - Part 3 — Alert response, Automation and AI: workshop/part-3.md
       - Advanced — End-to-end investigation: workshop/advanced.md
   - "Modern Network Observability hub ↗": https://network-observability.github.io/
 

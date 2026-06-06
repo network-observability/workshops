@@ -1,4 +1,4 @@
-# Part 3 — Alerts, automation, AI-assisted ops
+# Part 3 — Alert response, Automation and AI-assisted ops
 
 ## What you'll do here
 
