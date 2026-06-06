@@ -20,7 +20,7 @@ Whoever's free, take it.
 
 A "flap" is an interface bouncing up and down in quick succession. The flap-rate panel counts UPDOWN log events per interface in a rolling window — a number that climbs fast when something is flapping and sits at the floor when it isn't.
 
-An **alert rule** here is a small query the lab runs on a schedule, with a "fires if this is true" condition attached — when the condition holds, the lab calls it an *active alert*. (Full anatomy in the *What's an alert rule?* fold inside the exercise below — for now, just know it's a query + a firing condition.)
+An **alert rule** here is a small query the lab runs on a schedule, with a "fires if this is true" condition attached — when the condition holds, the lab calls it an *active alert*. (Full anatomy comes up later when you walk the alert lifecycle — for now, just know it's a query + a firing condition.)
 
 Add one panel to the **Workshop Lab 2026** dashboard that answers a real operational question: *is this interface flapping right now?* You'll wire it to the dashboard's `device` variable so the same panel works for either device, set thresholds that match the actual alert rule, then drive a flap from the CLI and watch the panel react.
 
@@ -53,49 +53,6 @@ When you save changes to this dashboard, they stick for the rest of your worksho
 ## The exercise
 
 You're adding a **flap rate** panel: how many UPDOWN log events per minute, broken out per interface, with thresholds that match the `PeerInterfaceFlapping` alert rule.
-
-[](){ #whats-an-alert-rule }
-
-??? info "What's an alert rule?"
-
-    An **alert rule** is five pieces of YAML that together say *"watch this; fire if this holds; tag the alert this way; describe it like this."* Let's break it down:
-
-    - A **query** — the thing the rule keeps re-evaluating against your metrics or logs.
-    - A **firing condition** — what makes the query "true" (e.g., `> 3 events in 2 minutes`).
-    - An optional **`for:` duration** — how long the condition must hold before the rule actually fires. Filters out blips that come and go.
-    - **Labels** — key/value pairs attached to every firing instance, used downstream for routing and filtering.
-    - **Annotations** — human-readable text that travels with the alert into notifications. (Don't confuse these *Prometheus rule annotations* with the **alert markers** you'll add to a dashboard panel in section D — different system, same word; we'll come back to this.)
-
-    The thing that runs the rule on a schedule and decides when it's "matching" is called the **rule evaluator** — Prometheus has one for its PromQL-based rules, Loki has one (called the **Loki ruler**) for its LogQL-based rules.
-
-    Here's the `PeerInterfaceFlapping` rule the thresholds above are mirroring:
-
-    ```yaml
-    - alert: PeerInterfaceFlapping
-      expr: sum by(device, interface) (count_over_time({vendor_facility_process="UPDOWN"}[2m])) > 3
-      for: 30s
-      labels:
-        severity: critical
-        source: loki
-        environment: network-observability-lab
-        device: '{{ $labels.device }}'
-        interface: '{{ $labels.interface }}'
-      annotations:
-        summary: "[NET] Flapping interface in {{ $labels.device }}/{{ $labels.interface }}"
-        description: "The interface {{ $labels.device }}/{{ $labels.interface }} is flapping"
-    ```
-
-    - **`expr`** — the firing condition. The same LogQL query the panel uses, with `> 3` appended. When the expression returns at least one series, the rule is matching.
-    - **`for: 30s`** — the condition must hold continuously for 30 seconds before the alert moves from `pending` (rule has matched but the duration hasn't elapsed) to `firing` (notification dispatched). Filters out transient noise.
-    - **`labels`** — attached to every firing instance. `severity` and `source` are what Alertmanager routes on; `device` / `interface` propagate the offending instance's identity through to the page.
-    - **`annotations`** — human-readable text rendered into notifications. `{{ $labels.x }}` interpolates from the firing series' labels.
-
-    **Where to see this rule live.** Loki has its own rule evaluator — the **Loki ruler**, a component inside Loki that runs LogQL-based alert rules on a schedule, mirroring what Prometheus does for PromQL rules. `PeerInterfaceFlapping` is evaluated by the Loki ruler, not Prometheus, so it does NOT show up on Prometheus `/alerts`:
-
-    - **When firing**: [Alertmanager](http://localhost:9093/#/alerts) — the Loki ruler pushes alerts here just like Prometheus does. Loki-evaluated rules and Prometheus-evaluated rules land in the same queue.
-    - **Always**: the rule lives in the repo at [`workshops/autocon5/loki/rules/alerting_rules.yml`](https://github.com/network-observability/workshops/blob/main/workshops/autocon5/loki/rules/alerting_rules.yml#L5) — that link jumps straight to the `PeerInterfaceFlapping` definition. There's no equivalent UI to Prometheus `/alerts` for Loki-defined rules — the Loki ruler doesn't ship one. The [Prometheus alerts page](../../../docs/workshop/tour.md#prometheus-the-metrics-store) in the Tour shows what that UI looks like for the rules Prometheus does evaluate.
-
-    Part 3 walks the full lifecycle — alert fires, Alertmanager routes, webhook hands off, Prefect flow decides what to do.
 
 ### 1. Enter edit mode
 
@@ -293,7 +250,52 @@ This walk uses every observability surface the workshop already has running — 
 
 ### A. The rule, live
 
-The `PeerInterfaceFlapping` rule you mirrored in the panel hasn't been hypothetical — it's been running against the same set of UPDOWN log lines you queried in the panel, this whole time. The yaml anatomy is in the [What's an alert rule?](#whats-an-alert-rule) fold above; what matters here is *when* it fires:
+The `PeerInterfaceFlapping` rule you mirrored in the panel hasn't been hypothetical — it's been running against the same set of UPDOWN log lines you queried in the panel, this whole time. Expand the fold below for the full yaml anatomy and where the rule lives in the repo; what matters for this walk is *when* it fires.
+
+[](){ #whats-an-alert-rule }
+
+??? info "What's an alert rule? — yaml anatomy and where to see it"
+
+    An **alert rule** is five pieces of YAML that together say *"watch this; fire if this holds; tag the alert this way; describe it like this."* Let's break it down:
+
+    - A **query** — the thing the rule keeps re-evaluating against your metrics or logs.
+    - A **firing condition** — what makes the query "true" (e.g., `> 3 events in 2 minutes`).
+    - An optional **`for:` duration** — how long the condition must hold before the rule actually fires. Filters out blips that come and go.
+    - **Labels** — key/value pairs attached to every firing instance, used downstream for routing and filtering.
+    - **Annotations** — human-readable text that travels with the alert into notifications. (Don't confuse these *Prometheus rule annotations* with the **alert markers** you'll add to a dashboard panel in section D — different system, same word; we'll come back to this.)
+
+    The thing that runs the rule on a schedule and decides when it's "matching" is called the **rule evaluator** — Prometheus has one for its PromQL-based rules, Loki has one (called the **Loki ruler**) for its LogQL-based rules.
+
+    Here's the `PeerInterfaceFlapping` rule the thresholds you set on the panel are mirroring:
+
+    ```yaml
+    - alert: PeerInterfaceFlapping
+      expr: sum by(device, interface) (count_over_time({vendor_facility_process="UPDOWN"}[2m])) > 3
+      for: 30s
+      labels:
+        severity: critical
+        source: loki
+        environment: network-observability-lab
+        device: '{{ $labels.device }}'
+        interface: '{{ $labels.interface }}'
+      annotations:
+        summary: "[NET] Flapping interface in {{ $labels.device }}/{{ $labels.interface }}"
+        description: "The interface {{ $labels.device }}/{{ $labels.interface }} is flapping"
+    ```
+
+    - **`expr`** — the firing condition. The same LogQL query the panel uses, with `> 3` appended. When the expression returns at least one series, the rule is matching.
+    - **`for: 30s`** — the condition must hold continuously for 30 seconds before the alert moves from `pending` (rule has matched but the duration hasn't elapsed) to `firing` (notification dispatched). Filters out transient noise.
+    - **`labels`** — attached to every firing instance. `severity` and `source` are what Alertmanager routes on; `device` / `interface` propagate the offending instance's identity through to the page.
+    - **`annotations`** — human-readable text rendered into notifications. `{{ $labels.x }}` interpolates from the firing series' labels.
+
+    **Where to see this rule live.** Loki has its own rule evaluator — the **Loki ruler**, a component inside Loki that runs LogQL-based alert rules on a schedule, mirroring what Prometheus does for PromQL rules. `PeerInterfaceFlapping` is evaluated by the Loki ruler, not Prometheus, so it does NOT show up on Prometheus `/alerts`:
+
+    - **When firing**: [Alertmanager](http://localhost:9093/#/alerts) — the Loki ruler pushes alerts here just like Prometheus does. Loki-evaluated rules and Prometheus-evaluated rules land in the same queue.
+    - **Always**: the rule lives in the repo at [`workshops/autocon5/loki/rules/alerting_rules.yml`](https://github.com/network-observability/workshops/blob/main/workshops/autocon5/loki/rules/alerting_rules.yml#L5) — that link jumps straight to the `PeerInterfaceFlapping` definition. There's no equivalent UI to Prometheus `/alerts` for Loki-defined rules — the Loki ruler doesn't ship one. The [Prometheus alerts page](../../../docs/workshop/tour.md#prometheus-the-metrics-store) in the Tour shows what that UI looks like for the rules Prometheus does evaluate.
+
+    Part 3 walks the full lifecycle — alert fires, Alertmanager routes, webhook hands off, Prefect flow decides what to do.
+
+Two transitions to keep in mind as you watch the rule fire:
 
 - **Match ≠ firing.** The query returning a series means the *condition* is true right now — but with `for: 30s` set, the alert sits in `pending` (matched, but not firing yet) for 30 seconds first. Only if the condition holds for the full 30s does it promote to `firing`.
 - **Resolved is also an event.** When the condition stops being true and stays gone, the alert flips to `resolved` and (after Alertmanager's `resolve_timeout` — the grace period it waits before treating the alert as definitely gone, default 5 min) ages out of the active alerts list.
