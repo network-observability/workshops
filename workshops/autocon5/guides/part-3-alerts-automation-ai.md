@@ -658,6 +658,23 @@ AI_RCA_PROVIDER=demo
 
 The `demo` provider works offline — it writes a templated narrative grounded in the same evidence the deterministic policy used. (If you have an OpenAI or Anthropic API key, swap `demo` for `openai` or `anthropic` and add the matching key — same flow, real LLM voice.)
 
+??? tip "Going further — three common gotchas when wiring up a real OpenAI or Anthropic key"
+
+    Worth a 30-second skim before you set a real API key.
+
+    **ChatGPT Plus is not the same product as the OpenAI API.** They share a login but have separate billing — a Plus subscription gives you ChatGPT.com access only; it does **not** include API credits or higher API rate limits. A fresh API key on an account that's never funded the API will return `429 Too Many Requests` on the very first call (the free-tier API quota is $0). Fix: go to <https://platform.openai.com/settings/organization/billing/overview>, add a payment method, prepay $5 (a single RCA call costs roughly $0.001–$0.01 depending on the model), wait ~1–2 minutes for the credit to propagate, then retry.
+
+    **`AI_RCA_MODEL` must be a real model identifier.** The string gets sent verbatim to the provider's `/chat/completions` (OpenAI) or `/messages` (Anthropic) endpoint, so a typo means a server-side error — usually `404 model_not_found`, sometimes wrapped as `429` depending on the account state. Use a real OpenAI model like `gpt-4o-mini`, `gpt-5`, or `gpt-5-mini`; for Anthropic, something like `claude-haiku-4-5-20251001`. If Loki shows `AI RCA call failed: HTTPError: 4xx ...`, the model string is the first thing to check.
+
+    **After any `.env` edit, re-run `nobs autocon5 up`** (or the underlying `docker compose --project-name autocon5 up -d --force-recreate prefect-flows`). A plain `docker compose restart prefect-flows` will *not* pick up the new value — `restart` reuses the container's existing env, while `up -d` recreates it against the current `.env`. If you swap an API key and then see `401 Unauthorized` in Loki, the container is almost certainly still holding the old (revoked) key. Quick check that the container actually got the new key — compare `tail=` against the last four chars of the key in your `.env`:
+
+    ```bash
+    docker compose --project-name autocon5 exec prefect-flows \
+      python3 -c "import os; k=os.environ.get('OPENAI_API_KEY',''); print(f'len={len(k)} head={k[:7]} tail={k[-4:]}')"
+    ```
+
+    If they don't match, the container is stale — re-run `nobs autocon5 up`.
+
 #### Step 2 · Reload the workflow
 
 The workflow runs inside a Docker container, and Docker only reads `.env` when a container is first *created* — a plain restart won't pick up your change. The command below recreates the container so the new settings take effect:
