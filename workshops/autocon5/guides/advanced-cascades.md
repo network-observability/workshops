@@ -51,7 +51,7 @@ First move from the couch: confirm the page is real and the alert is still firin
 nobs autocon5 alerts
 ```
 
-You'll see four alerts firing — the two `BgpSessionNotUp` rows (one per broken peer) and the two `InterfaceAdminUpOperDown` rows you met in Part 3. Tonight's page is the **srl1 → 10.1.99.2** row in the first group. The other three are the same steady-state noise that's been on the dashboard all day. **Stop and notice.** This isn't an alert a cascade we just started invented — it's the alert that's been firing since the lab started up, because the lab is set up with a deliberately broken peer wired in. The page is real in lab terms. So: what do you do next?
+You'll see four alerts firing — the two `BgpSessionNotUp` rows (one per broken peer) and the two `InterfaceAdminUpOperDown` rows you met in Part 2. Tonight's page is the **srl1 → 10.1.99.2** row in the first group. The other three are the same steady-state noise that's been on the dashboard all day. **Stop and notice.** This isn't an alert a cascade we just started invented — it's the alert that's been firing since the lab started up, because the lab is set up with a deliberately broken peer wired in. The page is real in lab terms. So: what do you do next?
 
 ### Act 2 — Triage with PromQL and LogQL
 
@@ -98,6 +98,16 @@ Admin reads `1` — the configured intent is "this peer should be up". Oper read
 You'll see BGP-related lines for that specific peer — fsm transitions, retry attempts, whatever the lab's continuous emitters are producing for the broken session. The metric told you *something* is wrong. The logs tell you *why*.
 
 **Stop and notice.** You narrowed down the problem from a single alert to a specific peer with a specific configured intent that reality isn't matching. This is the triage every on-call walks. The fact that it took four queries instead of one says you're doing it right — `count by` collapses noise, `bgp_oper_state` answers the targeted question, the LogQL bridge explains the why. You worked top-down: device, interface, peer, log evidence. Each layer ruled out a class of failure before you went deeper.
+
+!!! tip "Want to see what the automation already thinks about this alert?"
+
+    The workflow has been running on this alert in the background — it heard the same `BgpSessionNotUp` page you did, walked its own version of the triage tree, and wrote a narrative to Loki. Read it from the terminal:
+
+    ```bash
+    nobs autocon5 rca srl1 10.1.99.2
+    ```
+
+    Compare it against your own conclusion. Where does the narrative agree with what you just walked? Where does it surface something you missed — or miss something you caught? Useful framing for the rest of the investigation: automation does the routine work, the human does the judgment. (If the output reads *"AI RCA disabled..."* the AI step is off; that's expected unless someone flipped `ENABLE_AI_RCA=true` for this lab.)
 
 ### Act 3 — Diagnose: drive the cascade and walk the shape
 
@@ -220,60 +230,60 @@ Then re-read what you wrote.
 
 **Stop and notice.** Runbooks are the artefact every observability investment is ultimately for. Telemetry shapes you can query, dashboards you can read, alerts that fire at the right time — they all funnel into the runbook entries that make the next on-call's job survivable. You just walked through the shape; you wrote the entry. That's the loop.
 
-??? tip "Stretch goals — if you have time before lunch"
+## Stretch goals (optional — pick one if you have time)
 
-    - **Drive the same investigation on srl2.** The cascade you just walked was on srl1. Re-run it on srl2 and confirm your runbook stub still applies — if it doesn't, it was either too device-specific or you've found a real shape difference worth writing down.
+- **Drive the same investigation on srl2.** The cascade you just walked was on srl1. Re-run it on srl2 and confirm your runbook stub still applies — if it doesn't, it was either too device-specific or you've found a real shape difference worth writing down.
 
-        ??? success "Solution — command to run + what to expect on srl2"
+    ??? success "Solution — command to run + what to expect on srl2"
 
-            Run `nobs autocon5 incident --device srl2`. It produces the same cascade shape on srl2. The pre-existing `BgpSessionNotUp` alert for `srl2 → 10.1.11.1` (the deliberately-broken peer on the SNMP-shape device) was visible in Act 1 already.
+        Run `nobs autocon5 incident --device srl2`. It produces the same cascade shape on srl2. The pre-existing `BgpSessionNotUp` alert for `srl2 → 10.1.11.1` (the deliberately-broken peer on the SNMP-shape device) was visible in Act 1 already.
 
-            Act 2's triage queries all work the same way — just change the device label and adjust the peer:
+        Act 2's triage queries all work the same way — just change the device label and adjust the peer:
 
-            ```promql
-            bgp_oper_state{device="srl2", peer_address="10.1.11.1"}
-            ```
+        ```promql
+        bgp_oper_state{device="srl2", peer_address="10.1.11.1"}
+        ```
 
-            You'll see the same shape: `oper_state=5` (stuck in active) on a peer whose SoT says `expected_state=established`. The triage decision tree doesn't care about the device label — it's the same intent-vs-reality pattern.
+        You'll see the same shape: `oper_state=5` (stuck in active) on a peer whose SoT says `expected_state=established`. The triage decision tree doesn't care about the device label — it's the same intent-vs-reality pattern.
 
-            If your runbook stub *didn't* apply when you swapped to srl2, it was either too device-specific ("check srl1's config") or accidentally encoded a vendor-shape assumption that doesn't survive the SNMP path.
+        If your runbook stub *didn't* apply when you swapped to srl2, it was either too device-specific ("check srl1's config") or accidentally encoded a vendor-shape assumption that doesn't survive the SNMP path.
 
-    - **Predict the customer-impact window.** At what point in the cascade would a customer's response-time SLO break? Back the answer with data from Act 3's queries, not feel.
+- **Predict the customer-impact window.** At what point in the cascade would a customer's response-time SLO break? Back the answer with data from Act 3's queries, not feel.
 
-        ??? success "Solution — the math + customer-impact arithmetic"
+    ??? success "Solution — the math + customer-impact arithmetic"
 
-            Given the timing you observed (backup utilisation crossing 70% around t=2½ min, latency ramping from there toward 150ms over the next three minutes), linear interpolation on latency:
+        Given the timing you observed (backup utilisation crossing 70% around t=2½ min, latency ramping from there toward 150ms over the next three minutes), linear interpolation on latency:
 
-            - At t ≈ 2:30, latency starts at 5 ms.
-            - At t ≈ 5:30, latency hits 150 ms (3 min of ramp).
-            - `latency ≈ 5 + (t − 2:30) × (150 − 5) / 3` ms.
+        - At t ≈ 2:30, latency starts at 5 ms.
+        - At t ≈ 5:30, latency hits 150 ms (3 min of ramp).
+        - `latency ≈ 5 + (t − 2:30) × (150 − 5) / 3` ms.
 
-            A typical web-service SLO target is **p99 < 200 ms total**, with maybe 30–50 ms of that budget allowed for backend round-trips. So latency above ~50 ms consumes the SLO budget; above ~100 ms breaks it.
+        A typical web-service SLO target is **p99 < 200 ms total**, with maybe 30–50 ms of that budget allowed for backend round-trips. So latency above ~50 ms consumes the SLO budget; above ~100 ms breaks it.
 
-            - **50 ms reached at t ≈ 3:25** (start eating SLO budget — about 55 seconds after the primary's first DOWN edge).
-            - **100 ms reached at t ≈ 4:30** (SLO breach — about 2 minutes after the primary's first DOWN edge).
+        - **50 ms reached at t ≈ 3:25** (start eating SLO budget — about 55 seconds after the primary's first DOWN edge).
+        - **100 ms reached at t ≈ 4:30** (SLO breach — about 2 minutes after the primary's first DOWN edge).
 
-            The lesson: by the time customers complain (p99 broken), the primary uplink fault is **already 3–4 minutes old**. The alert needs to fire on a root-cause signal (the flap, or backup utilisation crossing threshold), not on the latency symptom — otherwise you're permanently 3 minutes behind the customer impact.
+        The lesson: by the time customers complain (p99 broken), the primary uplink fault is **already 3–4 minutes old**. The alert needs to fire on a root-cause signal (the flap, or backup utilisation crossing threshold), not on the latency symptom — otherwise you're permanently 3 minutes behind the customer impact.
 
-    - **Compare the investigation arc to the automated path.** Contrast the manual investigation you just walked against Part 3's automated flow. Where does each one belong in a real operation?
+- **Compare the investigation arc to the automated path.** Contrast the manual investigation you just walked against Part 3's automated flow. Where does each one belong in a real operation?
 
-        ??? success "Solution — command to run + the qualitative comparison"
+    ??? success "Solution — command to run + the qualitative comparison"
 
-            Run `nobs autocon5 try-it` from Part 3 — it walks the four alert paths automatically. `try-it` is the automation handling routine cases without you; the investigation game you just walked is what you do when *automation isn't enough* — when you need to know what the workflow would have done, why, and whether to override it.
+        Run `nobs autocon5 try-it` from Part 3 — it walks the four alert paths automatically. `try-it` is the automation handling routine cases without you; the investigation game you just walked is what you do when *automation isn't enough* — when you need to know what the workflow would have done, why, and whether to override it.
 
-            Two different jobs, both useful:
+        Two different jobs, both useful:
 
-            | Aspect | Investigation (Acts 1–6) | Automation (`try-it`) |
-            |---|---|---|
-            | When you do it | Reactive, post-page, under pressure | Pre-computed, in calm |
-            | Latency | Minutes per query, hours for the full arc | Seconds end-to-end |
-            | What it produces | A runbook entry, a hypothesis, a fix | A categorised decision + an audit annotation |
-            | When it scales | When you have time and a specific question | When the alert volume exceeds human attention |
-            | When it doesn't | At 2am with 50 alerts firing simultaneously | When the situation is novel — outside the policy's rule set |
+        | Aspect | Investigation (Acts 1–6) | Automation (`try-it`) |
+        |---|---|---|
+        | When you do it | Reactive, post-page, under pressure | Pre-computed, in calm |
+        | Latency | Minutes per query, hours for the full arc | Seconds end-to-end |
+        | What it produces | A runbook entry, a hypothesis, a fix | A categorised decision + an audit annotation |
+        | When it scales | When you have time and a specific question | When the alert volume exceeds human attention |
+        | When it doesn't | At 2am with 50 alerts firing simultaneously | When the situation is novel — outside the policy's rule set |
 
-            The lesson: automation handles routine cases (broken peer? mismatch? skip if in maintenance — one second per alert). Investigation handles the unusual cases — where you need to question the policy's reasoning, decide whether to override, or change the policy itself.
+        The lesson: automation handles routine cases (broken peer? mismatch? skip if in maintenance — one second per alert). Investigation handles the unusual cases — where you need to question the policy's reasoning, decide whether to override, or change the policy itself.
 
-            In production, both run in parallel: the flow handles 95% of alerts on autopilot, and the on-call human pays attention only to the 5% the policy escalates or that the human doesn't yet trust.
+        In production, both run in parallel: the flow handles 95% of alerts on autopilot, and the on-call human pays attention only to the 5% the policy escalates or that the human doesn't yet trust.
 
 ## What you took away
 
