@@ -54,6 +54,8 @@ When you save changes to this dashboard, they stick for the rest of your worksho
 
 You're adding a **flap rate** panel: how many UPDOWN log events per minute, broken out per interface, with thresholds that match the `PeerInterfaceFlapping` alert rule.
 
+[](){ #whats-an-alert-rule }
+
 ??? info "What's an alert rule?"
 
     An **alert rule** is five pieces of YAML that together say *"watch this; fire if this holds; tag the alert this way; describe it like this."* Let's break it down:
