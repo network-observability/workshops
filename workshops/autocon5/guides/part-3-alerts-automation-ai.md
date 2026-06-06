@@ -1050,7 +1050,21 @@ There's no single right answer. The point is that the same tool isn't equally va
 
     ??? success "Solution — how to switch providers + guidance on the comparison"
 
-        If you have an OpenAI or Anthropic key, set `AI_RCA_PROVIDER=openai` (or `anthropic`) in your environment (or the relevant `.env`), restart the Prefect flow worker, and re-run a path with `nobs autocon5 try-it --auto`.
+        If you have an OpenAI or Anthropic key, set `AI_RCA_PROVIDER=openai` (or `anthropic`) in `workshops/autocon5/.env` along with the matching `AI_RCA_MODEL` and `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`. Then run `nobs autocon5 up` to recreate the flow container against the new env (a plain `docker compose restart` won't pick the values up — see the **Going further — three common gotchas** fold under Step 1 above for the full why).
+
+        Trigger a quarantine path so the workflow runs end-to-end with AI RCA on:
+
+        ```bash
+        nobs autocon5 try-it --auto
+        ```
+
+        Path 1 (firing → quarantine on `srl1:10.1.99.2`) always invokes the AI RCA step, so the new narrative lands in Loki under `ai_rca="true"` regardless of whether the deterministic policy decided `proceed` or `skip`. Read it straight from the terminal — same data the Loki query in Step 3 returned, rendered as Markdown in a Rich panel:
+
+        ```bash
+        nobs autocon5 rca srl1 10.1.99.2
+        ```
+
+        Add `--last 3` to compare the most recent runs side by side — useful right after a provider swap to see the same evidence rendered by two different models.
 
         The demo provider produces a templated narrative — it stitches evidence-bundle fields into the same paragraph structure every time:
 
