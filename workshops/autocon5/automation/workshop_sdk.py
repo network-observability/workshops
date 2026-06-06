@@ -507,8 +507,10 @@ def _demo_rca(device: str, peer_address: str, evidence: dict[str, Any]) -> str:
         cause_lines.append(f"admin_state={admin_i} ({admin_txt})")
     if rx_raw is not None:
         cause_lines.append(f"received_routes={rx_raw}")
-    cause = ", ".join(cause_lines) + "." if cause_lines else (
-        f"Insufficient evidence to localize the fault on {device} peer {peer_address}."
+    cause = (
+        ", ".join(cause_lines) + "."
+        if cause_lines
+        else (f"Insufficient evidence to localize the fault on {device} peer {peer_address}.")
     )
 
     actions: list[str] = []
@@ -581,7 +583,7 @@ def llm_rca(device: str, peer_address: str, evidence: dict[str, Any]) -> str:
                 "https://api.openai.com/v1/chat/completions",
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                 json={"model": model, "messages": [{"role": "user", "content": prompt}]},
-                timeout=30,
+                timeout=60,
             )
             r.raise_for_status()
             return (r.json()["choices"][0]["message"].get("content") or "").strip() or _AI_DISABLED_MSG
@@ -602,7 +604,7 @@ def llm_rca(device: str, peer_address: str, evidence: dict[str, Any]) -> str:
                     "max_tokens": 600,
                     "messages": [{"role": "user", "content": prompt}],
                 },
-                timeout=30,
+                timeout=60,
             )
             r.raise_for_status()
             content = r.json().get("content") or []
