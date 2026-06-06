@@ -1,5 +1,5 @@
 ---
-title: Part 3 — Alerts, automation, AI
+title: Part 3 — Alert response, Automation and AI
 description: Late morning. A real alert lands and your senior narrates how the workflow handles it. Walk the four alert paths, toggle the AI RCA step.
 ---
 
@@ -7,7 +7,7 @@ description: Late morning. A real alert lands and your senior narrates how the w
 
 <span class="autocon5-section-hero__badge">Part 3 of 4 · Late morning</span>
 
-<h1 class="autocon5-section-hero__title">Alerts, automation, AI</h1>
+<h1 class="autocon5-section-hero__title">Alert response, Automation and AI</h1>
 
 <p class="autocon5-section-hero__subtitle">Observability is the feedback loop. Automation closes it.</p>
 
@@ -42,30 +42,13 @@ Parts 1 and 2 dropped you into **observability** — the feedback loop a network
 {%
   include-markdown "../../workshops/autocon5/guides/part-3-alerts-automation-ai.md"
   start="## What you'll do here"
-  end="## Stretch goals"
-%}
-
-??? tip "Stretch goals — pick one if you have time before lunch"
-
-    {%
-      include-markdown "../../workshops/autocon5/guides/part-3-alerts-automation-ai.md"
-      start="## Stretch goals"
-      end="## What you took away"
-      heading-offset=1
-    %}
-
-## What you took away
-
-{%
-  include-markdown "../../workshops/autocon5/guides/part-3-alerts-automation-ai.md"
-  start="## What you took away"
 %}
 
 <nav class="autocon5-nav-footer" markdown>
 
 <a href="../part-2/">
   <span class="autocon5-nav-footer__label">← Previous</span>
-  <span class="autocon5-nav-footer__title">Part 2 — Dashboards</span>
+  <span class="autocon5-nav-footer__title">Part 2 — Dashboards and Alerts</span>
 </a>
 
 <a class="autocon5-nav-footer__next" href="../advanced/">

@@ -50,7 +50,7 @@ Your senior buddy walks you through the lab's telemetry shape — what *normal* 
 
 <a class="autocon5-nav-footer__next" href="../part-2/">
   <span class="autocon5-nav-footer__label">Next →</span>
-  <span class="autocon5-nav-footer__title">Part 2 — Dashboards</span>
+  <span class="autocon5-nav-footer__title">Part 2 — Dashboards and Alerts</span>
 </a>
 
 </nav>

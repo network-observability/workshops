@@ -1,4 +1,4 @@
-# Part 2 — Dashboards
+# Part 2 — Dashboards and Alerts
 
 ## What you'll do here
 
@@ -20,7 +20,7 @@ Whoever's free, take it.
 
 A "flap" is an interface bouncing up and down in quick succession. The flap-rate panel counts UPDOWN log events per interface in a rolling window — a number that climbs fast when something is flapping and sits at the floor when it isn't.
 
-An **alert rule** here is a small query the lab runs on a schedule, with a "fires if this is true" condition attached — when the condition holds, the lab calls it an *active alert*. (Full anatomy in the *What's an alert rule?* fold inside the exercise below — for now, just know it's a query + a firing condition.)
+An **alert rule** here is a small query the lab runs on a schedule, with a "fires if this is true" condition attached — when the condition holds, the lab calls it an *active alert*. (Full anatomy comes up later when you walk the alert lifecycle — for now, just know it's a query + a firing condition.)
 
 Add one panel to the **Workshop Lab 2026** dashboard that answers a real operational question: *is this interface flapping right now?* You'll wire it to the dashboard's `device` variable so the same panel works for either device, set thresholds that match the actual alert rule, then drive a flap from the CLI and watch the panel react.
 
@@ -48,54 +48,11 @@ At the top of the dashboard there's a **Device** dropdown — that's the `$devic
 
 When you save changes to this dashboard, they stick for the rest of your workshop session — but they don't survive a full restart. If you run `nobs autocon5 restart grafana`, anything you customised resets back to the original layout the workshop ships with. Treat this dashboard as a scratchpad: experiment freely, but don't expect your changes to be permanent.
 
-??? info "Why your changes reset on restart — the provisioning details"
-
-    The Workshop Lab 2026 dashboard is *provisioned*: Grafana reads its definition from a YAML file (`grafana/dashboards/workshop-lab-1.json`) at startup rather than from its own database. The provisioning file sets `editable: true, allowUiUpdates: true`, which lets UI edits save back to Grafana for the session — but on every restart, Grafana re-reads the YAML and replaces whatever the UI saved. This is a common pattern for production dashboards: the YAML file is the source of truth, and the UI is just a convenience layer for trying things out.
+> Why this happens — the [Pre-provisioned dashboards section of the Tour](../../../docs/workshop/tour.md#pre-provisioned-dashboards) covers the provisioning model in detail.
 
 ## The exercise
 
 You're adding a **flap rate** panel: how many UPDOWN log events per minute, broken out per interface, with thresholds that match the `PeerInterfaceFlapping` alert rule.
-
-??? info "What's an alert rule?"
-
-    An **alert rule** is five pieces of YAML that together say *"watch this; fire if this holds; tag the alert this way; describe it like this."* Let's break it down:
-
-    - A **query** — the thing the rule keeps re-evaluating against your metrics or logs.
-    - A **firing condition** — what makes the query "true" (e.g., `> 3 events in 2 minutes`).
-    - An optional **`for:` duration** — how long the condition must hold before the rule actually fires. Filters out blips that come and go.
-    - **Labels** — key/value pairs attached to every firing instance, used downstream for routing and filtering.
-    - **Annotations** — human-readable text that travels with the alert into notifications. (Don't confuse these *Prometheus rule annotations* with the **alert markers** you'll add to a dashboard panel in section D — different system, same word; we'll come back to this.)
-
-    The thing that runs the rule on a schedule and decides when it's "matching" is called the **rule evaluator** — Prometheus has one for its PromQL-based rules, Loki has one (called the **Loki ruler**) for its LogQL-based rules.
-
-    Here's the `PeerInterfaceFlapping` rule the thresholds above are mirroring:
-
-    ```yaml
-    - alert: PeerInterfaceFlapping
-      expr: sum by(device, interface) (count_over_time({vendor_facility_process="UPDOWN"}[2m])) > 3
-      for: 30s
-      labels:
-        severity: critical
-        source: loki
-        environment: network-observability-lab
-        device: '{{ $labels.device }}'
-        interface: '{{ $labels.interface }}'
-      annotations:
-        summary: "[NET] Flapping interface in {{ $labels.device }}/{{ $labels.interface }}"
-        description: "The interface {{ $labels.device }}/{{ $labels.interface }} is flapping"
-    ```
-
-    - **`expr`** — the firing condition. The same LogQL query the panel uses, with `> 3` appended. When the expression returns at least one series, the rule is matching.
-    - **`for: 30s`** — the condition must hold continuously for 30 seconds before the alert moves from `pending` (rule has matched but the duration hasn't elapsed) to `firing` (notification dispatched). Filters out transient noise.
-    - **`labels`** — attached to every firing instance. `severity` and `source` are what Alertmanager routes on; `device` / `interface` propagate the offending instance's identity through to the page.
-    - **`annotations`** — human-readable text rendered into notifications. `{{ $labels.x }}` interpolates from the firing series' labels.
-
-    **Where to see this rule live.** Loki has its own rule evaluator — the **Loki ruler**, a component inside Loki that runs LogQL-based alert rules on a schedule, mirroring what Prometheus does for PromQL rules. `PeerInterfaceFlapping` is evaluated by the Loki ruler, not Prometheus, so it does NOT show up on Prometheus `/alerts`:
-
-    - **When firing**: [Alertmanager](http://localhost:9093/#/alerts) — the Loki ruler pushes alerts here just like Prometheus does. Loki-evaluated rules and Prometheus-evaluated rules land in the same queue.
-    - **Always**: the rule lives in the repo at [`workshops/autocon5/loki/rules/alerting_rules.yml`](https://github.com/network-observability/workshops/blob/main/workshops/autocon5/loki/rules/alerting_rules.yml#L5) — that link jumps straight to the `PeerInterfaceFlapping` definition. There's no equivalent UI to Prometheus `/alerts` for Loki-defined rules — the Loki ruler doesn't ship one. The [Prometheus alerts page](../../../docs/workshop/tour.md#prometheus-the-metrics-store) in the Tour shows what that UI looks like for the rules Prometheus does evaluate.
-
-    Part 3 walks the full lifecycle — alert fires, Alertmanager routes, webhook hands off, Prefect flow decides what to do.
 
 ### 1. Enter edit mode
 
@@ -118,13 +75,13 @@ Adding a panel in Grafana 13 takes a few clicks:
 3. Click **Panel**. An empty panel lands on the dashboard, and the right sidebar changes to show the new panel's settings — Title, Description, Transparent background, Repeat options.
 4. Click the big blue **Configure** button at the top of those settings to open the panel editor — query box at the bottom, panel preview at the top, visualization options on the right.
 
-> New to Grafana? The [Grafana section of the Tour](../../../docs/workshop/tour.md#grafana-dashboards-and-explore) walks you through the dashboards, the Explore mode, and what the UI is for — keep it open in another tab while you build.
+> New to Grafana? The [Grafana section of the Tour](../../../docs/workshop/tour.md#grafana-dashboards-and-explore) covers login, the pre-provisioned dashboards, Explore mode, and the restart-resets-your-edits caveat. For Grafana itself — panel editor internals, the time picker, dashboard variables — see the [upstream Grafana docs](https://grafana.com/docs/grafana/latest/). Keep one open in another tab while you build.
 
 ### 2. Pick the datasource
 
 > *"What datasource? Think about the data shape — flap rate is a count of log events, not a metric Prometheus is scraping for us."*
 
-Choose **`loki`** in the datasource picker. Flap rate is a *log-derived metric* — Loki counts log lines, not Prometheus samples. (Part 1 exercise 10 walks the same pattern if you want a refresher.)
+Choose **`loki`** in the datasource picker. Flap rate is a *log-derived metric* — Loki counts log lines, not Prometheus samples. (Part 1's [exercise 9 — log aggregation](../../../docs/workshop/part-1.md#9-aggregation-log-queries-that-produce-metrics) walks the same `count_over_time(...)` shape if you want a refresher.)
 
 ### 3. Write the query
 
@@ -194,9 +151,9 @@ In the right-hand options pane, scroll down to find the **Thresholds** section �
 
 | Color | Value | What it means |
 |-------|-------|---------------|
-| Green | base (default — keep it) | "everything's quiet" |
-| Orange | `2` | "early heads-up — activity above the always-broken `ethernet-1/11` baseline (which sits at 1)" |
-| Red | `3` | "alert firing — the `PeerInterfaceFlapping` rule's `> 3` condition has been crossed" |
+| :green_circle: Green | base (default — keep it) | "everything's quiet" |
+| :orange_circle: Orange | `2` | "early heads-up — activity above the always-broken `ethernet-1/11` baseline (which sits at 1)" |
+| :red_circle: Red | `3` | "alert firing — the `PeerInterfaceFlapping` rule's `> 3` condition has been crossed" |
 
 Then under **Graph styles** → **Show thresholds**, pick `As lines`. **You should now see two horizontal lines on the panel preview — orange at 2, red at 3.** Setting orange at `2` (rather than `1`) keeps the threshold line visually separate from the always-broken `ethernet-1/11` line that sits at `1` — they'd otherwise overlap. A flap rate above the red line means an alert is firing.
 
@@ -225,6 +182,10 @@ nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1
 ```
 
 This kicks off a 4-minute **cascade** — a scripted sequence of state changes the lab plays back to imitate a real incident. For this command the interface cycles `30s up, 60s down` for four minutes. UPDOWN log lines emit at a steady cadence (~one every two seconds) during each down window. Switch the dashboard's `Device` dropdown to `srl1` if you aren't already there.
+
+!!! tip "Turn on auto-refresh so the panel updates live"
+
+    By default the dashboard only re-queries when you reload it. To watch the flap climb in real time, click the circular **arrow icon** at the top-right of the dashboard (next to the time-range picker) and pick **5s** from the dropdown. The panel will re-query every 5 seconds — fast enough to catch the cascade as it unfolds, slow enough not to hammer the backends. Set it back to **Off** when you're done.
 
 <figure class="section-preview" markdown>
 
@@ -289,7 +250,52 @@ This walk uses every observability surface the workshop already has running — 
 
 ### A. The rule, live
 
-The `PeerInterfaceFlapping` rule you mirrored in the panel hasn't been hypothetical — it's been running against the same set of UPDOWN log lines you queried in the panel, this whole time. The yaml anatomy is in the [What's an alert rule?](#whats-an-alert-rule) fold above; what matters here is *when* it fires:
+The `PeerInterfaceFlapping` rule you mirrored in the panel hasn't been hypothetical — it's been running against the same set of UPDOWN log lines you queried in the panel, this whole time. Expand the fold below for the full yaml anatomy and where the rule lives in the repo; what matters for this walk is *when* it fires.
+
+<a id="whats-an-alert-rule"></a>
+
+??? info "What's an alert rule? — yaml anatomy and where to see it"
+
+    An **alert rule** is five pieces of YAML that together say *"watch this; fire if this holds; tag the alert this way; describe it like this."* Let's break it down:
+
+    - A **query** — the thing the rule keeps re-evaluating against your metrics or logs.
+    - A **firing condition** — what makes the query "true" (e.g., `> 3 events in 2 minutes`).
+    - An optional **`for:` duration** — how long the condition must hold before the rule actually fires. Filters out blips that come and go.
+    - **Labels** — key/value pairs attached to every firing instance, used downstream for routing and filtering.
+    - **Annotations** — human-readable text that travels with the alert into notifications. (Don't confuse these *Prometheus rule annotations* with the **alert markers** you'll add to a dashboard panel in section D — different system, same word; we'll come back to this.)
+
+    The thing that runs the rule on a schedule and decides when it's "matching" is called the **rule evaluator** — Prometheus has one for its PromQL-based rules, Loki has one (called the **Loki ruler**) for its LogQL-based rules.
+
+    Here's the `PeerInterfaceFlapping` rule the thresholds you set on the panel are mirroring:
+
+    ```yaml
+    - alert: PeerInterfaceFlapping
+      expr: sum by(device, interface) (count_over_time({vendor_facility_process="UPDOWN"}[2m])) > 3
+      for: 30s
+      labels:
+        severity: critical
+        source: loki
+        environment: network-observability-lab
+        device: '{{ $labels.device }}'
+        interface: '{{ $labels.interface }}'
+      annotations:
+        summary: "[NET] Flapping interface in {{ $labels.device }}/{{ $labels.interface }}"
+        description: "The interface {{ $labels.device }}/{{ $labels.interface }} is flapping"
+    ```
+
+    - **`expr`** — the firing condition. The same LogQL query the panel uses, with `> 3` appended. When the expression returns at least one series, the rule is matching.
+    - **`for: 30s`** — the condition must hold continuously for 30 seconds before the alert moves from `pending` (rule has matched but the duration hasn't elapsed) to `firing` (notification dispatched). Filters out transient noise.
+    - **`labels`** — attached to every firing instance. `severity` and `source` are what Alertmanager routes on; `device` / `interface` propagate the offending instance's identity through to the page.
+    - **`annotations`** — human-readable text rendered into notifications. `{{ $labels.x }}` interpolates from the firing series' labels.
+
+    **Where to see this rule live.** Loki has its own rule evaluator — the **Loki ruler**, a component inside Loki that runs LogQL-based alert rules on a schedule, mirroring what Prometheus does for PromQL rules. `PeerInterfaceFlapping` is evaluated by the Loki ruler, not Prometheus, so it does NOT show up on Prometheus `/alerts`:
+
+    - **When firing**: [Alertmanager](http://localhost:9093/#/alerts) — the Loki ruler pushes alerts here just like Prometheus does. Loki-evaluated rules and Prometheus-evaluated rules land in the same queue.
+    - **Always**: the rule lives in the repo at [`workshops/autocon5/loki/rules/alerting_rules.yml`](https://github.com/network-observability/workshops/blob/main/workshops/autocon5/loki/rules/alerting_rules.yml#L5) — that link jumps straight to the `PeerInterfaceFlapping` definition. There's no equivalent UI to Prometheus `/alerts` for Loki-defined rules — the Loki ruler doesn't ship one. The [Prometheus alerts page](../../../docs/workshop/tour.md#prometheus-the-metrics-store) in the Tour shows what that UI looks like for the rules Prometheus does evaluate.
+
+    Part 3 walks the full lifecycle — alert fires, Alertmanager routes, webhook hands off, Prefect flow decides what to do.
+
+Two transitions to keep in mind as you watch the rule fire:
 
 - **Match ≠ firing.** The query returning a series means the *condition* is true right now — but with `for: 30s` set, the alert sits in `pending` (matched, but not firing yet) for 30 seconds first. Only if the condition holds for the full 30s does it promote to `firing`.
 - **Resolved is also an event.** When the condition stops being true and stays gone, the alert flips to `resolved` and (after Alertmanager's `resolve_timeout` — the grace period it waits before treating the alert as definitely gone, default 5 min) ages out of the active alerts list.
@@ -425,7 +431,7 @@ This distinction matters: silencing isn't fixing. It's saying *"we know about th
 
 We'll silence one of the always-firing `InterfaceAdminUpOperDown` alerts. Safe target — silencing it doesn't break anything in the lab, and seeing it flip from `firing` to `suppressed` is the whole point of this step.
 
-1. In Alertmanager UI, click the **Silences** tab → **New Silence**.
+1. Open Alertmanager at <http://localhost:9093/#/silences> (the **Silences** tab) → **New Silence**.
 2. Add matchers (click **+ Add matcher** for each):
     - `alertname` = `InterfaceAdminUpOperDown`
     - `device` = `srl1`
@@ -434,7 +440,7 @@ We'll silence one of the always-firing `InterfaceAdminUpOperDown` alerts. Safe t
 5. **Comment**: `Testing silences in workshop`.
 6. Click **Confirm**.
 
-Return to the **Alerts** tab. The `InterfaceAdminUpOperDown(srl1)` row now shows as `suppressed`, not `firing`. Click it — labels and annotations are unchanged, but a new `silenced_by` field carries the silence ID.
+Return to the **Alerts** tab. The `InterfaceAdminUpOperDown(srl1)` row now shows as `suppressed`, not `firing`. Click it — labels and annotations are unchanged, but a new `silenced_by` field carries the silence ID. From the terminal you can confirm the same transition: re-run `nobs autocon5 alerts` and the row's `State` column now reads `suppressed` instead of `firing` — same data, two surfaces.
 
 Now flip it back: in **Silences**, find your silence, click **Expire**. Refresh Alerts — the row is back to `firing`.
 
@@ -468,41 +474,13 @@ Now flip it back: in **Silences**, find your silence, click **Expire**. Refresh 
 
 Three transitions every alert can make — and `resolved` isn't a dead end: if the condition starts matching again later, the alert re-enters `pending` and the cycle restarts. Memorise this shape, it's the same on every alerting stack worth using.
 
-### H. Preview Part 3
+??? info "Why has `BgpSessionNotUp` been sitting in `firing` this whole time? — preview of Part 3"
 
-`BgpSessionNotUp` has been sitting at `firing` for both devices the whole time you've been on this dashboard. They never resolved because the broken peers are *deliberately* broken — the lab keeps them that way as a steady-state target. In Part 3, a **workflow** (a small program that runs automatically when an alert fires) picks these alerts up via an **Alertmanager webhook** (an HTTP call Alertmanager makes to a configured URL every time an alert fires, so external systems can react to it), decides whether each one deserves human attention or can be silenced automatically, and applies the silence programmatically — exactly the same `firing → suppressed → firing` cycle you just walked by hand. Part 3 explains what the workflow is, how it's triggered, and what its decision policy looks like.
+    `BgpSessionNotUp` has been sitting at `firing` for both devices the whole time you've been on this dashboard. They never resolved because the broken peers are *deliberately* broken — the lab keeps them that way as a steady-state target. In Part 3, a **workflow** (a small program that runs automatically when an alert fires) picks these alerts up via an **Alertmanager webhook** (an HTTP call Alertmanager makes to a configured URL every time an alert fires, so external systems can react to it), decides whether each one deserves human attention or can be silenced automatically, and applies the silence programmatically — exactly the same `firing → suppressed → firing` cycle you just walked by hand. Part 3 explains what the workflow is, how it's triggered, and what its decision policy looks like.
 
 For now: you've seen the full alert surface. CLI, Alertmanager UI, Grafana ALERTS metric, manual silence. That's the substrate Part 3 builds on.
 
 ## Stretch goals (optional — pick one if you have time)
-
-### Group the dashboard into tabs
-
-The eight panels on **Workshop Lab 2026** are a lot to scroll past when you're triaging at 2am. Use Grafana 13's new **Group into tabs** feature to split the dashboard into a few tabs so each one answers one operational question instead of showing everything at once.
-
-??? success "Solution — steps + what the dashboard looks like after"
-
-    Grafana 13's **Group into tabs** works like browser tabs: only the active tab's panels render, so the page feels lighter and the queries run faster.
-
-    In **Edit** mode, click **`+`** in the right sidebar, then **Group into tabs**. Drag panels into each tab using the layout below — a useful split for a real on-call:
-
-    | Tab | Panels to include | What this tab answers |
-    |---|---|---|
-    | **Overview** | Devices · Interfaces · Firing alerts · Log lines (5m) | "Is anything wrong right now?" |
-    | **Interfaces** | Interface Admin State · Interface Operational Status · Interface Traffic · Interface Logs | "What's the state of the device's interfaces?" |
-    | **Flap** | Flap rate (per 2 minutes) · Flap history (the table you built above, if you did the table stretch goal) | "Which interface is flapping and how badly?" |
-
-    **Save** the dashboard. Click between the tabs and check:
-
-    - **Overview** shows the four stat panels (Devices · Interfaces · Firing alerts · Log lines).
-    - **Interfaces** shows Interface Admin State · Interface Operational Status · Interface Traffic · Interface Logs.
-    - **Flap** shows your Flap rate panel (and Flap history if you also did the table stretch goal).
-
-    Drive a flap (`nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1`) and click into the **Flap** tab — the view is exactly what an on-call would open on a `PeerInterfaceFlapping` page.
-
-    If a panel ended up in the wrong tab, drag it between tabs while in Edit mode. The provisioned YAML resets the layout on `nobs autocon5 restart grafana`, so don't worry about breaking anything permanently.
-
-    **Stop and notice.** Tabs only change how the dashboard is laid out — the panels and queries themselves don't change. What changes is *which questions the dashboard answers when you open it*. The Overview tab is for "is anything wrong"; the Flap tab is for "show me the symptom" — different operational questions, same dashboard, same data. Building this split before an incident means the page lands and the right view is already there.
 
 ### Extend the Interface Traffic panel with a per-device aggregate
 
@@ -621,6 +599,34 @@ Add a second panel: a table that summarises flap activity per device + interface
     - The `Total flaps` cells render as horizontal LCD gauges that fill green → orange → red as the count grows. Background noise (always-broken interfaces) sits around 28 (mostly green). An actively-flapping interface climbs past 60 in a few minutes and goes mostly red.
 
     **Stop and notice.** Tables are the dashboard equivalent of "a list of things to investigate, each row a one-click entry into deeper context". The time-series panel above tells you *something is flapping*. The table tells you *which one, how badly, and here's the next dashboard*. The data-link override is what binds the two dashboards into one navigation flow — no copy-pasting device names, no losing the time range.
+
+### Group the dashboard into tabs
+
+The eight panels on **Workshop Lab 2026** are a lot to scroll past when you're triaging at 2am. Use Grafana 13's new **Group into tabs** feature to split the dashboard into a few tabs so each one answers one operational question instead of showing everything at once.
+
+??? success "Solution — steps + what the dashboard looks like after"
+
+    Grafana 13's **Group into tabs** works like browser tabs: only the active tab's panels render, so the page feels lighter and the queries run faster.
+
+    In **Edit** mode, click **`+`** in the right sidebar, then **Group into tabs**. Drag panels into each tab using the layout below — a useful split for a real on-call:
+
+    | Tab | Panels to include | What this tab answers |
+    |---|---|---|
+    | **Overview** | Devices · Interfaces · Firing alerts · Log lines (5m) | "Is anything wrong right now?" |
+    | **Interfaces** | Interface Admin State · Interface Operational Status · Interface Traffic · Interface Logs | "What's the state of the device's interfaces?" |
+    | **Flap** | Flap rate (per 2 minutes) · Flap history (the table you built above, if you did the table stretch goal) | "Which interface is flapping and how badly?" |
+
+    **Save** the dashboard. Click between the tabs and check:
+
+    - **Overview** shows the four stat panels (Devices · Interfaces · Firing alerts · Log lines).
+    - **Interfaces** shows Interface Admin State · Interface Operational Status · Interface Traffic · Interface Logs.
+    - **Flap** shows your Flap rate panel (and Flap history if you also did the table stretch goal).
+
+    Drive a flap (`nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1`) and click into the **Flap** tab — the view is exactly what an on-call would open on a `PeerInterfaceFlapping` page.
+
+    If a panel ended up in the wrong tab, drag it between tabs while in Edit mode. The provisioned YAML resets the layout on `nobs autocon5 restart grafana`, so don't worry about breaking anything permanently.
+
+    **Stop and notice.** Tabs only change how the dashboard is laid out — the panels and queries themselves don't change. What changes is *which questions the dashboard answers when you open it*. The Overview tab is for "is anything wrong"; the Flap tab is for "show me the symptom" — different operational questions, same dashboard, same data. Building this split before an incident means the page lands and the right view is already there.
 
 ## What you took away
 

@@ -39,7 +39,7 @@ The optional capstone. Triage with PromQL and LogQL, contain with maintenance, f
 
 <a href="../part-3/">
   <span class="autocon5-nav-footer__label">← Previous</span>
-  <span class="autocon5-nav-footer__title">Part 3 — Alerts, automation, AI</span>
+  <span class="autocon5-nav-footer__title">Part 3 — Alert response, Automation and AI</span>
 </a>
 
 <a class="autocon5-nav-footer__next" href="https://github.com/network-observability/network-observability-lab">

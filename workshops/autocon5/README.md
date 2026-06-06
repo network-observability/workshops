@@ -89,13 +89,13 @@ Morning of your first deep day on the on-call rotation. Your senior buddy walks 
 
 Hands-on guide: [`guides/part-1-telemetry-and-queries.md`](guides/part-1-telemetry-and-queries.md).
 
-## Part 2 — Dashboards
+## Part 2 — Dashboards and Alerts
 
 Mid-morning — a post-mortem email lands. Last night's page lost ten minutes because a flap-rate panel didn't exist yet. You build it now, with thresholds matching the actual alert rule, while the team is still in the room.
 
 Hands-on guide: [`guides/part-2-dashboards.md`](guides/part-2-dashboards.md).
 
-## Part 3 — Alerts, automation, AI-assisted ops
+## Part 3 — Alert response, Automation and AI-assisted ops
 
 Late morning, before lunch — a real alert lands while your senior narrates. Walk the four paths the workflow handles, toggle the AI RCA step, and decide which paths you'd trust the LLM narrative on at 2am. As the lunch break lands your senior signs off and you're ready to take primary on the rotation tomorrow.
 

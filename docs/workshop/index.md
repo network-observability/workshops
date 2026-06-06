@@ -118,7 +118,7 @@ Six UIs, one URL each. **[Tour the stack](tour.md)** is the single reference for
 
     [:octicons-arrow-right-24: Open Part 1](part-1.md)
 
--   :material-view-dashboard-outline:{ .lg .middle } **Part 2 — Dashboards**
+-   :material-view-dashboard-outline:{ .lg .middle } **Part 2 — Dashboards and Alerts**
 
     ---
 
@@ -126,7 +126,7 @@ Six UIs, one URL each. **[Tour the stack](tour.md)** is the single reference for
 
     [:octicons-arrow-right-24: Open Part 2](part-2.md)
 
--   :material-bell-ring-outline:{ .lg .middle } **Part 3 — Alerts, automation, AI**
+-   :material-bell-ring-outline:{ .lg .middle } **Part 3 — Alert response, Automation and AI**
 
     ---
 

@@ -1,4 +1,4 @@
-# Part 3 — Alerts, automation, AI-assisted ops
+# Part 3 — Alert response, Automation and AI-assisted ops
 
 ## What you'll do here
 
@@ -341,6 +341,80 @@ The output is four panels. Each answers a different question:
 
     Read it back to the concepts: all four panels share one peer's worth of context — what the SoT believes, what the metrics measure, what the recent logs say, what the policy concluded. The `Policy hint` is the same answer the Prefect flow lands at in production; the difference is `nobs autocon5 evidence` shows it to you on the CLI before the flow runs, so you can predict the decision before triggering an alert.
 
+??? info "Curious how the workflow collects all this in Python? Three small calls"
+
+    Each of the three "fact" panels comes from one tiny method in [`workshops/autocon5/automation/workshop_sdk.py`](https://github.com/network-observability/workshops/blob/main/workshops/autocon5/automation/workshop_sdk.py). Snippets below — not the full module, just enough to feel the shape.
+
+    **Metrics — six instant PromQL reads:**
+
+    ```python
+    def bgp_metrics_snapshot(self, device, peer_address, afi_safi, instance_name) -> dict[str, float]:
+        qs = self.bgp_queries(device, peer_address, afi_safi, instance_name)
+        return {
+            "admin_state":     first_prom_value(self.prom.instant(qs["admin_state"]),     default=-1),
+            "oper_state":      first_prom_value(self.prom.instant(qs["oper_state"]),      default=-1),
+            "received_routes": first_prom_value(self.prom.instant(qs["received_routes"]), default=0),
+            # ... three more, same shape
+        }
+    ```
+
+    `self.prom.instant(...)` is a one-line HTTP GET to Prometheus's `/api/v1/query`; `first_prom_value` unwraps the JSON to a single float. Point-in-time reads, nothing clever.
+
+    **Logs — one LogQL query scoped to the peer:**
+
+    ```python
+    def bgp_logql(self, device, peer_address) -> str:
+        return (
+            f'{{device="{device}"}} '
+            f'!= "license" '
+            f'|~ "(bgp|BGP|neighbor|session|route|ipv4-unicast|{peer_address})"'
+        )
+
+    def bgp_logs(self, device, peer_address, minutes=10, limit=200) -> list[str]:
+        return self.loki.query_range(
+            self.bgp_logql(device, peer_address), minutes=minutes, limit=limit
+        )
+    ```
+
+    Stream selector pins the device; the regex line filter (`|~`) keeps anything BGP-shaped *or* mentioning the peer's IP. One query returns both device-emitted BGP errors and the workflow's earlier audit records — the mixed-stream payload you saw in panel three above.
+
+    **Intent — one GraphQL call to Infrahub:**
+
+    ```python
+    def bgp_gate(self, device, peer_address, afi_safi) -> dict:
+        return self.sot.build_bgp_intent_gate(
+            device=device, peer_address=peer_address, afi_safi=afi_safi,
+        )
+    ```
+
+    `self.sot` wraps an Infrahub HTTP client; `build_bgp_intent_gate` issues one typed GraphQL query and packs the result into a plain dict — `{"found": ..., "maintenance": ..., "expected_state": ..., "reason": ..., ...}`. No magic; just GraphQL with a schema on the other side.
+
+    **The decode step** — the `Decoded` column in panel two (`oper_state=5 → active`) comes from a tiny lookup table:
+
+    ```python
+    OPER_MAP = {0: "unknown", 1: "established", 2: "idle", 3: "connect", 4: "openconfirm", 5: "active"}
+
+    def decode_bgp_states(metrics: dict[str, float]) -> dict[str, str]:
+        oper = int(metrics["oper_state"])
+        return {"oper_state": OPER_MAP.get(oper, str(oper))}
+    ```
+
+    Numeric protocol enums are great on the wire and useless on a dashboard — this is the entire translation layer.
+
+    **All four wired together** — the only thing the Prefect task calls:
+
+    ```python
+    def collect_bgp_evidence(self, device, peer_address, afi_safi, instance_name, ...):
+        ev = EvidenceBundle(device=device, peer_address=peer_address, ...)
+        ev.sot     = self.bgp_gate(device, peer_address, afi_safi)
+        ev.metrics = self.bgp_metrics_snapshot(device, peer_address, afi_safi, instance_name)
+        ev.sot["decoded"] = decode_bgp_states(ev.metrics)
+        ev.logs    = self.bgp_logs(device, peer_address)
+        return ev
+    ```
+
+    Three reads, one decode, return a dataclass. The whole "evidence-gathering" step is roughly ten lines of orchestration; the rest of [`workshop_sdk.py`](https://github.com/network-observability/workshops/blob/main/workshops/autocon5/automation/workshop_sdk.py) is thin HTTP clients (`self.prom`, `self.loki`, `self.sot`, `self.am`) that talk to each store.
+
 The first two panels are the key pair:
 
 - **Source of truth** says **what should be true** — for this peer, `expected_state=established` means "should be up and exchanging routes."
@@ -367,13 +441,13 @@ Open Grafana, switch to the **Loki** datasource in Explore, and paste:
 {source="prefect", workflow="autocon5_quarantine_bgp", device="srl1"} | json
 ```
 
-The `| json` at the end is LogQL's way of saying *"parse each log line's body as JSON so I can read individual fields"* — the workflow writes its records as JSON, so this turns each line into a structured object Grafana can show in a side panel.
+The `| json` at the end is LogQL's way of saying *"parse each log line's body as JSON so I can read individual fields"* — the workflow writes its records as JSON, so this turns each line into a structured object Grafana renders inline (one field per row, right under the log line — no clicking needed).
 
 !!! tip "No records yet?"
 
     If the query returns *"No data"*, the workflow hasn't processed an alert on this peer yet. The workflow only runs when an alert fires at it — give the lab ~30–60 seconds after the setup-check reset for the always-firing alerts to make their way through, then re-run the query. (Or skip ahead to Phase 4 and come back; by then there'll be records.)
 
-You should see one log line per decision the workflow has made on `srl1` recently. Click the most recent one — Grafana opens a side panel parsing the JSON. The fields that matter:
+You should see one log line per decision the workflow has made on `srl1` recently. Look at the most recent one — Grafana parses the JSON inline, so every field is visible right under the row. The fields that matter:
 
 | Field | Value (for the broken peer) | What it means |
 |---|---|---|
@@ -584,6 +658,25 @@ AI_RCA_PROVIDER=demo
 
 The `demo` provider works offline — it writes a templated narrative grounded in the same evidence the deterministic policy used. (If you have an OpenAI or Anthropic API key, swap `demo` for `openai` or `anthropic` and add the matching key — same flow, real LLM voice.)
 
+??? tip "Going further — three common gotchas when wiring up a real OpenAI or Anthropic key"
+
+    Worth a 30-second skim before you set a real API key.
+
+    **ChatGPT Plus is not the same product as the OpenAI API.** They share a login but have separate billing — a Plus subscription gives you ChatGPT.com access only; it does **not** include API credits or higher API rate limits. A fresh API key on an account that's never funded the API will return `429 Too Many Requests` on the very first call (the free-tier API quota is $0). Fix: go to <https://platform.openai.com/settings/organization/billing/overview>, add a payment method, prepay $5 (a single RCA call costs roughly $0.001–$0.01 depending on the model), wait ~1–2 minutes for the credit to propagate, then retry.
+
+    **`AI_RCA_MODEL` must be a real model identifier.** The string gets sent verbatim to the provider's `/chat/completions` (OpenAI) or `/messages` (Anthropic) endpoint, so a typo means a server-side error — usually `404 model_not_found`, sometimes wrapped as `429` depending on the account state. Use a real OpenAI model like `gpt-4o-mini`, `gpt-5`, or `gpt-5-mini`; for Anthropic, something like `claude-haiku-4-5-20251001`. If Loki shows `AI RCA call failed: HTTPError: 4xx ...`, the model string is the first thing to check.
+
+    **After any `.env` edit, re-run `nobs autocon5 up`** (or the underlying `docker compose --project-name autocon5 up -d --force-recreate prefect-flows`). A plain `docker compose restart prefect-flows` will *not* pick up the new value — `restart` reuses the container's existing env, while `up -d` recreates it against the current `.env`. If you swap an API key and then see `401 Unauthorized` in Loki, the container is almost certainly still holding the old (revoked) key. Quick check that the container actually got the new key — compare `tail=` against the last four chars of the key in your `.env`:
+
+    ```bash
+    docker compose --project-name autocon5 exec prefect-flows \
+      python3 -c "import os; k=os.environ.get('OPENAI_API_KEY',''); print(f'len={len(k)} head={k[:7]} tail={k[-4:]}')"
+    ```
+
+    If they don't match, the container is stale — re-run `nobs autocon5 up`.
+
+    **Reasoning models (`gpt-5`, `o1`, `o3`) often exceed the workshop's HTTP timeout.** They think internally before answering and a single call can take 30–60+ seconds. The lab's HTTP client gives up after 60s and writes `AI RCA call failed: ReadTimeout: ...` to Loki. Stick with `gpt-4o-mini`, `gpt-5-mini`, or `claude-haiku-4-5-20251001` for the workshop — they respond in 1–3 seconds, the narrative is short and bounded, and you don't pay reasoning-model rates for output a faster model already nails.
+
 #### Step 2 · Reload the workflow
 
 The workflow runs inside a Docker container, and Docker only reads `.env` when a container is first *created* — a plain restart won't pick up your change. The command below recreates the container so the new settings take effect:
@@ -608,7 +701,7 @@ Wait ~2 minutes for `BgpSessionNotUp` to fire on the affected peer. Then in Graf
 {source="prefect", ai_rca="true"} | json
 ```
 
-You'll see one new line per workflow run. Click the most recent one. The `message` field contains a three-section paragraph:
+You'll see one new line per workflow run. Look at the most recent one — the parsed fields appear inline. The `message` field contains a three-section paragraph:
 
 ```text
 ## Most likely cause
@@ -621,6 +714,24 @@ admin_state=1 (enable), received_routes=0.
 ## What to verify next
 - Tail Loki for device=srl1 around the alert window for BGP state transitions
 ```
+
+!!! tip "Read the narrative in its rendered shape"
+
+    The query above shows each JSON field on its own row — handy for inspecting structure, but hard on the eyes for prose. To render `message` with its markdown headers and bullets intact, swap to:
+
+    ```logql
+    {source="prefect", ai_rca="true"} | json | line_format "{{ .message }}"
+    ```
+
+    The `line_format` directive replaces the rendered log line with just the unescaped `message` value (the `| json` parser has already turned the `\n` escapes into real newlines). Turn on **Wrap lines** in the Grafana Logs view toolbar so the multi-line narrative wraps instead of scrolling sideways.
+
+    Prefer the terminal? Same data, rendered as Markdown:
+
+    ```bash
+    nobs autocon5 rca srl1 10.1.99.2
+    ```
+
+    Most-recent narrative for that device/peer pair. Both args are optional (omit to see the latest record across the lab); add `--last 3` to compare several recent runs side by side, `--minutes 180` to widen the lookback window.
 
 ??? info "What the demo AI RCA narrative actually contains"
 
@@ -676,6 +787,16 @@ The `demo` provider writes a templated narrative — same three sections every t
 Swap `AI_RCA_PROVIDER` to `openai` or `anthropic` with a real API key, and you get a real model response: same three sections, but now with broader domain inference, BGP-specific reasoning, and calibrated uncertainty (*"most likely"*, *"consistent with"*). Same evidence in, different voice out.
 
 > **The big idea.** AI in an on-call loop should be a **narrative tool**, not a decision tool. The decision is what stays the same across replays and code reviews. The narrative is what reads well at 02:14. Keep them separate, keep them both grounded in the same evidence, and you get the best of both worlds.
+
+!!! tip "Done experimenting? Revert to the offline `demo` provider"
+
+    Two-line revert. In `workshops/autocon5/.env`:
+
+    ```bash
+    AI_RCA_PROVIDER=demo
+    ```
+
+    Then `nobs autocon5 up` to reload the container against the new env. The workflow keeps writing AI RCA annotations, but they're templated again — no API calls, no cost. (Leave your API key in `.env`; it's ignored when the provider is `demo`.) If you'd rather turn the step off entirely, set `ENABLE_AI_RCA=false` instead.
 
 ### 7. Your turn — find what the workflow actually did
 
@@ -844,7 +965,8 @@ There's no single right answer. The point is that the same tool isn't equally va
            stage1 SoT-only → ok (intended, not in maintenance)
            stage2 SoT + metrics → proceed (mismatch)
         [annotate] decision=proceed reason=SoT expects peer up, but metrics show mismatch
-        [ai_rca] annotated: AI RCA disabled ...
+        [ai_rca] running (gated by ENABLE_AI_RCA)
+        [ai_rca] annotated: AI RCA disabled ...   # or, with AI RCA on, the first line of the narrative
         [quarantine] silencing srl1:10.1.99.2 for 20m
         [flow] action=quarantine silence_id=...
         ```
@@ -879,20 +1001,25 @@ There's no single right answer. The point is that the same tool isn't equally va
 
     ??? success "Solution — commands + verify in Loki that the skip swapped device"
 
-        Run, in order:
+        `try-it --auto` only walks srl1 paths, so it won't exercise srl2. Use the same direct-trigger command you saw in Step 3 of Phase 5, but pointed at srl2's broken peer (`10.1.11.1`):
 
         ```bash
         nobs autocon5 maintenance --device srl2 --state
-        nobs autocon5 try-it --auto
+
+        docker compose --project-name autocon5 exec prefect-flows \
+          prefect deployment run alert-receiver/alert-receiver \
+          --param alertname=BgpSessionNotUp \
+          --param status=firing \
+          --param 'alert_group={"alerts":[{"labels":{"device":"srl2","peer_address":"10.1.11.1","afi_safi_name":"ipv4-unicast"}}],"groupLabels":{"alertname":"BgpSessionNotUp"},"status":"firing"}'
         ```
 
         Then in Grafana Explore on the Loki datasource:
 
         ```logql
-        {source="prefect", workflow="autocon5_quarantine_bgp", decision="skip"} | json
+        {source="prefect", workflow="autocon5_quarantine_bgp", decision="skip", device="srl2"} | json
         ```
 
-        The most recent `skip` audit record should now show `device="srl2"` instead of `srl1`. The `message` is still `"device under maintenance"` — only which device was being evaluated changed.
+        Within ~10 seconds a fresh `skip` audit record appears with `device="srl2"`. The `message` is `"device under maintenance"` — same reason the policy gave for srl1 earlier, only the subject changed.
 
         The point of the exercise: the policy is **device-agnostic**. It consults the SoT for whichever device the alert payload names. Flipping maintenance on any device routes that device's alerts to skip, automatically. The decision logic isn't hard-coded to a particular device.
 
@@ -908,7 +1035,7 @@ There's no single right answer. The point is that the same tool isn't equally va
         {source="prefect", workflow="autocon5_quarantine_bgp"} | json
         ```
 
-        Each record has this shape (Grafana parses the JSON into a side panel when you click a row):
+        Each record has this shape (Grafana parses the JSON inline, so every field renders right under the row):
 
         ```json
         {
@@ -933,7 +1060,21 @@ There's no single right answer. The point is that the same tool isn't equally va
 
     ??? success "Solution — how to switch providers + guidance on the comparison"
 
-        If you have an OpenAI or Anthropic key, set `AI_RCA_PROVIDER=openai` (or `anthropic`) in your environment (or the relevant `.env`), restart the Prefect flow worker, and re-run a path with `nobs autocon5 try-it --auto`.
+        If you have an OpenAI or Anthropic key, set `AI_RCA_PROVIDER=openai` (or `anthropic`) in `workshops/autocon5/.env` along with the matching `AI_RCA_MODEL` and `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`. Then run `nobs autocon5 up` to recreate the flow container against the new env (a plain `docker compose restart` won't pick the values up — see the **Going further — three common gotchas** fold under Step 1 above for the full why).
+
+        Trigger a quarantine path so the workflow runs end-to-end with AI RCA on:
+
+        ```bash
+        nobs autocon5 try-it --auto
+        ```
+
+        Path 1 (firing → quarantine on `srl1:10.1.99.2`) always invokes the AI RCA step, so the new narrative lands in Loki under `ai_rca="true"` regardless of whether the deterministic policy decided `proceed` or `skip`. Read it straight from the terminal — same data the Loki query in Step 3 returned, rendered as Markdown in a Rich panel:
+
+        ```bash
+        nobs autocon5 rca srl1 10.1.99.2
+        ```
+
+        Add `--last 3` to compare the most recent runs side by side — useful right after a provider swap to see the same evidence rendered by two different models.
 
         The demo provider produces a templated narrative — it stitches evidence-bundle fields into the same paragraph structure every time:
 

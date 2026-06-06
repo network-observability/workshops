@@ -43,7 +43,7 @@ You arrive on a new on-call rotation. Over four hours you learn the lab's teleme
 
     [:octicons-arrow-right-24: Open Part 1](workshop/part-1.md)
 
--   :material-view-dashboard-outline:{ .lg .middle } **Part 2 — Dashboards**
+-   :material-view-dashboard-outline:{ .lg .middle } **Part 2 — Dashboards and Alerts**
 
     ---
 
@@ -51,7 +51,7 @@ You arrive on a new on-call rotation. Over four hours you learn the lab's teleme
 
     [:octicons-arrow-right-24: Open Part 2](workshop/part-2.md)
 
--   :material-bell-ring-outline:{ .lg .middle } **Part 3 — Alerts, automation, AI**
+-   :material-bell-ring-outline:{ .lg .middle } **Part 3 — Alert response, Automation and AI**
 
     ---
 
