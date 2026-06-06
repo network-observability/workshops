@@ -429,7 +429,7 @@ This distinction matters: silencing isn't fixing. It's saying *"we know about th
 
 We'll silence one of the always-firing `InterfaceAdminUpOperDown` alerts. Safe target — silencing it doesn't break anything in the lab, and seeing it flip from `firing` to `suppressed` is the whole point of this step.
 
-1. In Alertmanager UI, click the **Silences** tab → **New Silence**.
+1. Open Alertmanager at <http://localhost:9093/#/silences> (the **Silences** tab) → **New Silence**.
 2. Add matchers (click **+ Add matcher** for each):
     - `alertname` = `InterfaceAdminUpOperDown`
     - `device` = `srl1`
@@ -438,7 +438,7 @@ We'll silence one of the always-firing `InterfaceAdminUpOperDown` alerts. Safe t
 5. **Comment**: `Testing silences in workshop`.
 6. Click **Confirm**.
 
-Return to the **Alerts** tab. The `InterfaceAdminUpOperDown(srl1)` row now shows as `suppressed`, not `firing`. Click it — labels and annotations are unchanged, but a new `silenced_by` field carries the silence ID.
+Return to the **Alerts** tab. The `InterfaceAdminUpOperDown(srl1)` row now shows as `suppressed`, not `firing`. Click it — labels and annotations are unchanged, but a new `silenced_by` field carries the silence ID. From the terminal you can confirm the same transition: re-run `nobs autocon5 alerts` and the row's `State` column now reads `suppressed` instead of `firing` — same data, two surfaces.
 
 Now flip it back: in **Silences**, find your silence, click **Expire**. Refresh Alerts — the row is back to `firing`.
 
