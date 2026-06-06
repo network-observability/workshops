@@ -42,23 +42,6 @@ Parts 1 and 2 dropped you into **observability** — the feedback loop a network
 {%
   include-markdown "../../workshops/autocon5/guides/part-3-alerts-automation-ai.md"
   start="## What you'll do here"
-  end="## Stretch goals"
-%}
-
-??? tip "Stretch goals — pick one if you have time before lunch"
-
-    {%
-      include-markdown "../../workshops/autocon5/guides/part-3-alerts-automation-ai.md"
-      start="## Stretch goals"
-      end="## What you took away"
-      heading-offset=1
-    %}
-
-## What you took away
-
-{%
-  include-markdown "../../workshops/autocon5/guides/part-3-alerts-automation-ai.md"
-  start="## What you took away"
 %}
 
 <nav class="autocon5-nav-footer" markdown>

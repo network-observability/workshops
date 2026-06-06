@@ -955,7 +955,8 @@ There's no single right answer. The point is that the same tool isn't equally va
            stage1 SoT-only → ok (intended, not in maintenance)
            stage2 SoT + metrics → proceed (mismatch)
         [annotate] decision=proceed reason=SoT expects peer up, but metrics show mismatch
-        [ai_rca] annotated: AI RCA disabled ...
+        [ai_rca] running (gated by ENABLE_AI_RCA)
+        [ai_rca] annotated: AI RCA disabled ...   # or, with AI RCA on, the first line of the narrative
         [quarantine] silencing srl1:10.1.99.2 for 20m
         [flow] action=quarantine silence_id=...
         ```
@@ -990,20 +991,25 @@ There's no single right answer. The point is that the same tool isn't equally va
 
     ??? success "Solution — commands + verify in Loki that the skip swapped device"
 
-        Run, in order:
+        `try-it --auto` only walks srl1 paths, so it won't exercise srl2. Use the same direct-trigger command you saw in Step 3 of Phase 5, but pointed at srl2's broken peer (`10.1.11.1`):
 
         ```bash
         nobs autocon5 maintenance --device srl2 --state
-        nobs autocon5 try-it --auto
+
+        docker compose --project-name autocon5 exec prefect-flows \
+          prefect deployment run alert-receiver/alert-receiver \
+          --param alertname=BgpSessionNotUp \
+          --param status=firing \
+          --param 'alert_group={"alerts":[{"labels":{"device":"srl2","peer_address":"10.1.11.1","afi_safi_name":"ipv4-unicast"}}],"groupLabels":{"alertname":"BgpSessionNotUp"},"status":"firing"}'
         ```
 
         Then in Grafana Explore on the Loki datasource:
 
         ```logql
-        {source="prefect", workflow="autocon5_quarantine_bgp", decision="skip"} | json
+        {source="prefect", workflow="autocon5_quarantine_bgp", decision="skip", device="srl2"} | json
         ```
 
-        The most recent `skip` audit record should now show `device="srl2"` instead of `srl1`. The `message` is still `"device under maintenance"` — only which device was being evaluated changed.
+        Within ~10 seconds a fresh `skip` audit record appears with `device="srl2"`. The `message` is `"device under maintenance"` — same reason the policy gave for srl1 earlier, only the subject changed.
 
         The point of the exercise: the policy is **device-agnostic**. It consults the SoT for whichever device the alert payload names. Flipping maintenance on any device routes that device's alerts to skip, automatically. The decision logic isn't hard-coded to a particular device.
 
