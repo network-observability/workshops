@@ -48,9 +48,7 @@ At the top of the dashboard there's a **Device** dropdown — that's the `$devic
 
 When you save changes to this dashboard, they stick for the rest of your workshop session — but they don't survive a full restart. If you run `nobs autocon5 restart grafana`, anything you customised resets back to the original layout the workshop ships with. Treat this dashboard as a scratchpad: experiment freely, but don't expect your changes to be permanent.
 
-??? info "Why your changes reset on restart — the provisioning details"
-
-    The Workshop Lab 2026 dashboard is *provisioned*: Grafana reads its definition from a YAML file (`grafana/dashboards/workshop-lab-1.json`) at startup rather than from its own database. The provisioning file sets `editable: true, allowUiUpdates: true`, which lets UI edits save back to Grafana for the session — but on every restart, Grafana re-reads the YAML and replaces whatever the UI saved. This is a common pattern for production dashboards: the YAML file is the source of truth, and the UI is just a convenience layer for trying things out.
+> Why this happens — the [Pre-provisioned dashboards section of the Tour](../../../docs/workshop/tour.md#pre-provisioned-dashboards) covers the provisioning model in detail.
 
 ## The exercise
 
@@ -118,13 +116,13 @@ Adding a panel in Grafana 13 takes a few clicks:
 3. Click **Panel**. An empty panel lands on the dashboard, and the right sidebar changes to show the new panel's settings — Title, Description, Transparent background, Repeat options.
 4. Click the big blue **Configure** button at the top of those settings to open the panel editor — query box at the bottom, panel preview at the top, visualization options on the right.
 
-> New to Grafana? The [Grafana section of the Tour](../../../docs/workshop/tour.md#grafana-dashboards-and-explore) walks you through the dashboards, the Explore mode, and what the UI is for — keep it open in another tab while you build.
+> New to Grafana? The [Grafana section of the Tour](../../../docs/workshop/tour.md#grafana-dashboards-and-explore) covers login, the pre-provisioned dashboards, Explore mode, and the restart-resets-your-edits caveat. For Grafana itself — panel editor internals, the time picker, dashboard variables — see the [upstream Grafana docs](https://grafana.com/docs/grafana/latest/). Keep one open in another tab while you build.
 
 ### 2. Pick the datasource
 
 > *"What datasource? Think about the data shape — flap rate is a count of log events, not a metric Prometheus is scraping for us."*
 
-Choose **`loki`** in the datasource picker. Flap rate is a *log-derived metric* — Loki counts log lines, not Prometheus samples. (Part 1 exercise 10 walks the same pattern if you want a refresher.)
+Choose **`loki`** in the datasource picker. Flap rate is a *log-derived metric* — Loki counts log lines, not Prometheus samples. (Part 1's [exercise 9 — log aggregation](../../../docs/workshop/part-1.md#9-aggregation-log-queries-that-produce-metrics) walks the same `count_over_time(...)` shape if you want a refresher.)
 
 ### 3. Write the query
 

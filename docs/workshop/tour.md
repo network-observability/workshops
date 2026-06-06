@@ -303,7 +303,11 @@ Useful when you just want a quick "what's firing right now?" without leaving the
 
 ### What this is
 
-**Grafana** is the visualization layer — dashboards, ad-hoc query exploration, and one UI on top of many backends. You've almost certainly seen one. In this workshop, Grafana at <http://localhost:3000> (login `admin` / `admin`, or whatever you set in `.env`) has three datasources pre-wired: **Prometheus** for metrics, **Loki** for logs, and **Infrahub** (GraphQL via the Infinity datasource) for intent. Dashboards and the Explore mode can query any of them without setup.
+**Grafana** is the visualization layer — dashboards, ad-hoc query exploration, and one UI on top of many backends. You've almost certainly seen one. In this workshop, Grafana at <http://localhost:3000> has three datasources pre-wired: **Prometheus** for metrics, **Loki** for logs, and **Infrahub** (GraphQL via the Infinity datasource) for intent. Dashboards and the Explore mode can query any of them without setup.
+
+### Logging in
+
+Default credentials are **`admin` / `admin`**. If you set `GRAFANA_ADMIN_PASSWORD` in `.env` before bringing the stack up, use that instead — see [`docs/env-lifecycle.md`](https://github.com/network-observability/workshops/blob/main/workshops/autocon5/docs/env-lifecycle.md) for how secrets flow in. On the very first login Grafana may prompt you to change the password; click **Skip** — the workshop guides assume the default password persists across restarts.
 
 ### Pre-provisioned dashboards
 
@@ -312,6 +316,12 @@ Useful when you just want a quick "what's firing right now?" without leaving the
 | **Workshop Home** | <http://localhost:3000/d/workshop-home> | The landing page. Currently firing alerts, recent event feed, a list of starter queries with one-click links into Explore. |
 | **Workshop Lab 2026** | <http://localhost:3000/d/dfb5dpyjbh2wwa> | Side-by-side panels for the day's exercises. Interface oper status timeline lives here. |
 | **Device Health** | <http://localhost:3000/d/c78e686b-138b-4deb-b6ae-3239dc10a162> | Per-device deep dive. BGP peer states, interface state, device-level CPU/memory/uptime. |
+
+!!! warning "Your edits don't survive a full restart"
+
+    All three dashboards are *provisioned*: Grafana reads their JSON definitions from `workshops/autocon5/grafana/dashboards/*.json` at startup rather than from its own database. The provisioning config sets `editable: true, allowUiUpdates: true`, so the UI lets you save changes — but those edits live only in Grafana's in-memory state. On any restart (`nobs autocon5 restart grafana`, `nobs autocon5 down`/`up`, container OOM, etc.) Grafana re-reads the YAML and your changes vanish.
+
+    This is the common production pattern: the YAML file is the source of truth, the UI is a scratchpad. The workshop guides assume the dashboards are in their shipped state, so if your panel layout starts looking weird, a `restart grafana` resets you cleanly.
 
 ### What the panels look like
 
@@ -360,6 +370,10 @@ The compass icon in the left nav opens **Explore**. Pick a datasource at the top
 - **Part 1** — Explore mode for PromQL and LogQL practice, Workshop Home for the firing alerts feed.
 - **Part 2** — you live in the dashboard editor adding the flap-rate panel.
 - **Part 3** — Workshop Home's "Currently firing alerts" panel is your hand-off into the Prefect flow.
+
+### Going deeper
+
+This Tour covers what you need for the workshop. For Grafana itself — panel editor internals, the time-picker, dashboard variables, transformations, plugin management — the [upstream Grafana docs](https://grafana.com/docs/grafana/latest/) are the proper reference. Keep them open alongside the workshop when you build outside the exercises.
 
 ## Prefect — workflows, deployments, runs
 
