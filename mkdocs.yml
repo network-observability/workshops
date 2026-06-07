@@ -7,6 +7,8 @@ edit_uri: edit/main/
 
 copyright: Part of the <a href="https://network-observability.github.io/" target="_blank" rel="noopener">Modern Network Observability</a> ecosystem &middot; Copyright &copy; 2026
 
+dev_addr: "127.0.0.1:8001"
+
 theme:
   name: material
   language: en
