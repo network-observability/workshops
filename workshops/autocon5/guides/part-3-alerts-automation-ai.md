@@ -8,6 +8,14 @@ Late morning. The clock is creeping toward lunch. The flap-rate panel you built 
 
 ## Setup check
 
+!!! warning "First time spinning up the lab?"
+
+    If you landed straight on Part 3 without running Quickstart, seed Infrahub once before continuing — the workflow reads from it on every alert:
+
+    ```bash
+    nobs autocon5 load-infrahub
+    ```
+
 Reset to known-good baseline first — this expires any silences a prior `try-it` run might have created and clears any maintenance flags from earlier exercises:
 
 ```bash

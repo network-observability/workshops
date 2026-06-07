@@ -106,15 +106,20 @@ def _render_alert_panel(am: AlertmanagerClient, device: str, peer: str) -> None:
         )
         return
 
+    # Alertmanager's API uses different state names than its UI / `nobs autocon5
+    # alerts`. Translate so the workshop has one consistent vocabulary.
+    _STATE_MAP = {"active": "firing", "suppressed": "suppressed", "unprocessed": "pending"}
+
     lines = []
     for a in alerts:
         labels = a.get("labels", {})
         status = a.get("status", {})
-        state = status.get("state", "?")
+        raw_state = status.get("state", "?")
+        state = _STATE_MAP.get(raw_state, raw_state)
         silenced = status.get("silencedBy") or []
         started = a.get("startsAt", "")
         age = _duration_since(started)
-        line = f"BgpSessionNotUp · {labels.get('severity', '?')} · state={state} · firing for {age}"
+        line = f"BgpSessionNotUp · {labels.get('severity', '?')} · state={state} · age {age}"
         if silenced:
             sid = silenced[0]
             short = sid[:12] + "…"
