@@ -29,7 +29,7 @@ from typing import Any
 
 from prefect import flow, tags, task
 from prefect.logging import get_run_logger
-from workshop_sdk import Decision, DecisionPolicy, EvidenceBundle, WorkshopSDK
+from workshop_sdk import Decision, DecisionPolicy, EvidenceBundle, WorkshopSDK, is_ai_rca_enabled
 
 # ---------------------------------------------------------------------------
 # Tasks
@@ -211,24 +211,29 @@ def quarantine_bgp_flow(
             decision=decision,
         )
 
-        # AI RCA runs ONLY when the policy decided `proceed`. On skip or any
-        # other non-act decision, we write a brief annotation explaining why
-        # the narrative step was skipped (saves compute / API cost and keeps
-        # the audit trail honest — the SoT said "don't act", so we don't act
-        # *anywhere*, including the LLM step).
-        if decision.decision == "proceed":
-            rca_text = ai_rca_task(
-                workflow="autocon5_quarantine_bgp",
-                device=device,
-                peer_address=peer_address,
-                ev=ev,
-            )
-        else:
+        # AI RCA branching:
+        #   1. ENABLE_AI_RCA=false  → ai_rca_task writes the "disabled" annotation
+        #      regardless of decision (the feature is off; that's the only honest
+        #      message to write).
+        #   2. ENABLE_AI_RCA=true + decision=proceed → real LLM narrative.
+        #   3. ENABLE_AI_RCA=true + decision != proceed → ai_rca_skipped_task
+        #      writes a brief "not run because policy said skip" annotation.
+        #      Skips the LLM call entirely (saves compute / API cost, keeps the
+        #      audit trail honest — SoT says "don't act", so we don't act
+        #      anywhere, including the LLM step).
+        if is_ai_rca_enabled() and decision.decision != "proceed":
             rca_text = ai_rca_skipped_task(
                 workflow="autocon5_quarantine_bgp",
                 device=device,
                 peer_address=peer_address,
                 decision=decision,
+            )
+        else:
+            rca_text = ai_rca_task(
+                workflow="autocon5_quarantine_bgp",
+                device=device,
+                peer_address=peer_address,
+                ev=ev,
             )
 
         if decision.decision != "proceed":
