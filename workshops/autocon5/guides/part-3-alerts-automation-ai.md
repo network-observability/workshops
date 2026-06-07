@@ -884,13 +884,13 @@ Worth noting for Phase 7: the AI narrative records share the workflow's Loki str
 
 You've walked every step of the cycle. Now use what you've seen.
 
-> *Without scrolling any dashboard, how many alerts has the workflow handled in the last hour, broken down by decision?*
+> *Without scrolling any dashboard, how many alerts has the workflow handled in the time range you're looking at, broken down by decision?*
 
 **The data:** Every decision the workflow makes lands in Loki under `source="prefect"`. The query you've used a few times now (`{source="prefect", workflow="autocon5_quarantine_bgp", device="srl1"} | json`) shows you the raw records. You need a query that *counts* them, grouped by `decision`.
 
 **Two hints if you get stuck:**
 
-- `count_over_time({...}[1h])` turns a Loki query into a number — same pattern as Part 1 exercise 10. A one-hour window catches anything you ran earlier in this part, even if you took a coffee break.
+- `count_over_time({...}[$__range])` turns a Loki query into a number — same pattern as Part 1 exercise 9. `$__range` is a Grafana template variable that resolves to whatever your time picker is set to, so the query adapts to the window you're looking at instead of being hard-coded to a literal like `[1h]`.
 - `sum by (label) (...)` collapses everything except the label you list. Pick the label that gives the most informative breakdown — try `workflow` first (one row, not useful), then try `decision` (a few rows, much more useful).
 
 Have a go before scrolling to the solution. One extra hint: **drop the `device="srl1"` filter** from Phases 3 and 5 — this question asks about the workflow's full activity across both devices, not just one.
@@ -898,10 +898,10 @@ Have a go before scrolling to the solution. One extra hint: **drop the `device="
 ??? success "Solution and what your query should return"
 
     ```logql
-    sum by (decision) (count_over_time({source="prefect", workflow="autocon5_quarantine_bgp"}[1h]))
+    sum by (decision) (count_over_time({source="prefect", workflow="autocon5_quarantine_bgp"}[$__range]))
     ```
 
-    You should land on something like:
+    With Explore set to a range that covers your walk (say "Last 30 minutes"), you should land on something like:
 
     | Decision | Count |
     |---|---|
