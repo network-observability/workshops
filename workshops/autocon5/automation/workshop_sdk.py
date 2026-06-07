@@ -448,6 +448,11 @@ _AI_DISABLED_MSG = (
 )
 
 
+def is_ai_rca_enabled() -> bool:
+    """True iff `ENABLE_AI_RCA` is set to a truthy value in the environment."""
+    return os.environ.get("ENABLE_AI_RCA", "false").lower() in {"1", "true", "yes"}
+
+
 def _build_rca_prompt(device: str, peer_address: str, evidence: dict[str, Any]) -> str:
     return (
         "You are a network ops assistant supporting an on-call SRE.\n"
