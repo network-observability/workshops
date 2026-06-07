@@ -11,7 +11,7 @@ description: Late morning. A real alert lands and your senior narrates how the w
 
 <p class="autocon5-section-hero__subtitle">Observability is the feedback loop. Automation closes it.</p>
 
-Parts 1 and 2 dropped you into **observability** — the feedback loop a network engineer reaches for when something looks wrong, the half of the picture made of metrics and logs streaming off the live system. Part 3 is the other half: **automation as the action that closes the loop**. A real `BgpSessionNotUp` alert lands. An **orchestrator** picks it up, asks the **source of truth** what *should* be true, holds it against the observability stream, and acts on the gap. SoT · observability · orchestrator — the trio every network automation framework names — wired here with [Infrahub](tour.md#infrahub-source-of-truth), [Prometheus](tour.md#prometheus-the-metrics-store) + Loki, and [Prefect](tour.md#prefect-workflows-deployments-runs).
+Parts 1 and 2 dropped you into **observability** — the first half of the feedback loop a network engineer reaches for when something looks wrong, built from metrics and logs streaming off the live system. Part 3 is the other half: **automation as the action that closes the loop**. A real `BgpSessionNotUp` alert lands. An **orchestrator** picks it up, asks the **source of truth** what *should* be true, holds it against the observability stream, and acts on the gap. SoT · observability · orchestrator — the trio every network automation framework names — wired here with [Infrahub](tour.md#infrahub-source-of-truth), [Prometheus](tour.md#prometheus-the-metrics-store) + Loki, and [Prefect](tour.md#prefect-workflows-deployments-runs).
 
 <p class="autocon5-section-hero__meta">
   <span>~75 minutes</span>
