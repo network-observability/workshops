@@ -230,6 +230,8 @@ The bigger point — and the reason this matters even outside this lab — is th
 
 ## Walk the cycle
 
+> In a hurry, or want to re-walk this later without re-reading the explanations? There's a [cheat-code](#cheat-code) at the end of this guide — six CLI commands that drive the whole arc in about five minutes.
+
 ### 1. Alert — see it fire
 
 The workflow can't do anything until an alert exists. Start here: confirm the lab has alerts to work with.
@@ -255,6 +257,8 @@ Three things to notice:
 - **The State column.** All four should read `firing`. If a row shows `suppressed` instead, the workflow already muted it temporarily — `suppressed` means *"the alert is still active but a silence is muting the page"*. Either state is fine for this part; Phase 4 walks the details.
 
 Prefer the browser? Open Alertmanager at <http://localhost:9093/#/alerts>. Same four rows, with click-to-expand details. (If you skipped Part 2's "From panel to alert" section, the alert lifecycle — `pending → firing → suppressed → resolved` — is walked in detail there.)
+
+The same alert + suppressed state + silencing ID also shows in the **Alert panel** of `nobs autocon5 cycle srl1 10.1.99.2` — useful if you'll be re-observing this step later.
 
 The path from "alert in Alertmanager" to "workflow running" looks like this:
 
@@ -483,7 +487,7 @@ The `| json` at the end is LogQL's way of saying *"parse each log line's body as
 
     If the query returns *"No data"*, the workflow hasn't processed an alert on this peer yet. The workflow only runs when an alert fires at it — give the lab ~30–60 seconds after the setup-check reset for the always-firing alerts to make their way through, then re-run the query. (Or skip ahead to Phase 4 and come back; by then there'll be records.)
 
-You should see one log line per decision the workflow has made on `srl1` recently. Look at the most recent one — Grafana parses the JSON inline, so every field is visible right under the row. The fields that matter:
+You should see one log line per decision the workflow has made on `srl1` recently. Look at the most recent one — Grafana parses the JSON inline, so every field is visible right under the row. The same record is the **Most-recent-decision panel** in `nobs autocon5 cycle srl1 10.1.99.2` if you'd rather read it from the terminal. The fields that matter:
 
 | Field | Value (for the broken peer) | What it means |
 |---|---|---|
@@ -593,7 +597,7 @@ Open Alertmanager at <http://localhost:9093/#/alerts>. In the filter bar at the 
 
 #### B · The audit record — memory in Loki
 
-You already saw this in Phase 3 — the workflow wrote a `decision=proceed` log line to Loki with the reason. This is the **institutional memory**: it survives long after the silence expires, the alert resolves, and the next person on the rotation logs in. One log line per decision, every decision, forever.
+You already saw this in Phase 3 — the workflow wrote a `decision=proceed` log line to Loki with the reason. This is the **institutional memory**: it survives long after the silence expires, the alert resolves, and the next person on the rotation logs in. One log line per decision, every decision, forever. (The same record renders as the Most-recent-decision panel in `nobs autocon5 cycle srl1 10.1.99.2`.)
 
 #### C · The dashboard mark — visibility in Grafana
 
@@ -1177,3 +1181,22 @@ There's no single right answer. The point is that the same tool isn't equally va
 - Maintenance windows aren't a separate alerting layer. They're a label the flow consults at decision time. One source of truth, one decision point.
 - AI RCA is opt-in narrative around the same evidence. It's a paragraph stapled next to the decision, not the decision itself. Human judgment still owns the "act / don't act" call.
 - The four paths are the recipe: mismatch → proceed, healthy → skip, maintenance → skip, resolved → audit. Memorise them — they generalise to any alert your team writes.
+
+<a id="cheat-code"></a>
+
+??? tip "Cheat-code — the whole Part 3 cycle from the CLI in 6 commands"
+
+    For a live demo, a quick re-walk, or just confirming you can still drive the cycle after coming back to it later, you can run the whole arc from the terminal in about five minutes. Each command's output maps onto the system layer the corresponding phase above walks through in detail.
+
+    ```bash
+    nobs autocon5 cycle srl1 10.1.99.2                      # Phase 1: observe baseline (alert + silences + flows + decision)
+    nobs autocon5 evidence srl1 10.1.99.2                   # Phase 2: see what the workflow sees (SoT + metrics + logs)
+    nobs autocon5 cycle srl1 10.1.99.2 --trigger            # Phases 3 + 4: drive the proceed path; fresh silence appears
+    nobs autocon5 maintenance --device srl1 --state         # Phase 5 setup: flip the SoT flag
+    nobs autocon5 cycle srl1 10.1.99.2 --trigger            # Phase 5: same alert → opposite decision (skip; no new silence)
+    nobs autocon5 maintenance --device srl1 --clear         # cleanup
+    ```
+
+    The punchline lives in the **Flow runs panel** of the last `cycle` output: two adjacent rows for the same alert, one `decision=proceed` (from the third command), one `decision=skip` (from the fifth). The **Silences panel** grows by one row only on the proceed run — the absence of a silence on the skip run is the visible proof that *the policy decided not to act*. Same alert, same evidence, opposite decisions, driven by one field in the source of truth.
+
+    The phases above explain *why* each panel reads the way it does, and walk the same story through Alertmanager, Loki, and Prefect's own UIs.
