@@ -31,6 +31,25 @@ The two `BgpSessionNotUp` rows are what this part is about. Once you walk Step 3
 
 If you see fewer than two `BgpSessionNotUp` rows, give the stack 60 seconds and try again — the rule has a `for: 30s` clause, so you might have caught it before promotion. A `PeerInterfaceFlapping` row from Part 2's flap cascade ages out within ~5 minutes.
 
+### Enable AI RCA (demo provider)
+
+Alongside every workflow decision, the lab can write a short markdown narrative explaining what was seen — useful for the rest of this part because you'll see one in Loki at every step. Enable it now with the **demo** provider so no API key or budget is required:
+
+Edit `workshops/autocon5/.env` and set:
+
+```bash
+ENABLE_AI_RCA=true
+AI_RCA_PROVIDER=demo
+```
+
+Then reload the workflow container so the new env takes effect (a plain `docker compose restart` won't pick up `.env` changes):
+
+```bash
+nobs autocon5 up
+```
+
+The demo provider stitches a templated narrative from the same evidence the policy reads — deterministic, free, and offline. Phase 6 covers the *concept* in detail and walks the optional upgrade to a real LLM provider; for now just know that **every workflow run on a `proceed` decision will write one of these records to Loki with the `ai_rca="true"` label**.
+
 ??? info "What's a workflow?"
 
     A **workflow** here is code that runs in response to an event. The event is an Alertmanager webhook delivery; the code is a Prefect *flow* — a sequence of named tasks that collect evidence, evaluate a policy, and either silence the alert or escalate it.
@@ -487,7 +506,11 @@ The `| json` at the end is LogQL's way of saying *"parse each log line's body as
 
     If the query returns *"No data"*, the workflow hasn't processed an alert on this peer yet. The workflow only runs when an alert fires at it — give the lab ~30–60 seconds after the setup-check reset for the always-firing alerts to make their way through, then re-run the query. (Or skip ahead to Phase 4 and come back; by then there'll be records.)
 
-You should see one log line per decision the workflow has made on `srl1` recently. Look at the most recent one — Grafana parses the JSON inline, so every field is visible right under the row. The same record is the **Most-recent-decision panel** in `nobs autocon5 cycle srl1 10.1.99.2` if you'd rather read it from the terminal. The fields that matter:
+You should see one log line per decision the workflow has made on `srl1` recently. Look at the most recent one — Grafana parses the JSON inline, so every field is visible right under the row. The same record is the **Most-recent-decision panel** in `nobs autocon5 cycle srl1 10.1.99.2` if you'd rather read it from the terminal.
+
+You'll also see records with the `ai_rca="true"` label mixed into the same stream — those are the AI narrative the workflow writes alongside each `proceed` decision (you enabled the demo provider in Setup). [Phase 6](#6-optional-swap-to-a-real-llm-provider-for-the-narrative) covers them in detail; for now, just note they're there.
+
+The fields that matter on the *decision* record:
 
 | Field | Value (for the broken peer) | What it means |
 |---|---|---|
@@ -720,24 +743,13 @@ nobs autocon5 maintenance --device srl1 --clear
 
 > **The big idea.** Maintenance isn't a separate alerting layer. It's not a config you stash in the workflow code. It's a *label in the source of truth* that the workflow consults at decision time. One label flip, opposite decision, same evidence. That's what makes context-aware alerting actually work in production — the workflow doesn't *guess* whether to act; it *looks up* whether to act.
 
-### 6. AI RCA — same evidence, different voice
+### 6. (Optional) Swap to a real LLM provider for the narrative
 
 Every decision you've seen so far has been **deterministic**: the workflow looks at the evidence and makes a yes/no call based on a fixed rule. *Same inputs, same outputs, every time.* That's by design — the workflow has to be replayable, reviewable, auditable.
 
-But there's a second thing the workflow can do alongside the deterministic decision: **ask an AI to write a short narrative explaining the situation in plain language**. We call this the **AI RCA** step — RCA stands for *Root Cause Analysis*.
+What you've *also* been seeing since Setup is the **AI RCA** step — a short narrative the workflow writes alongside each `proceed` decision (the records with `ai_rca="true"` in your Loki queries). RCA stands for *Root Cause Analysis*. **The AI does not decide what to do.** The deterministic policy still picks `proceed` or `skip`. The AI just writes a paragraph alongside the decision — think of it as the on-call's first-draft writeup, generated automatically and stapled to the audit record.
 
-Important: the AI **does not decide what to do**. The deterministic policy still picks `proceed` or `skip`. The AI just writes a paragraph alongside the decision. Think of it as the on-call's first-draft writeup — *"here's what's going on, here are some likely causes, here are some next steps"* — generated automatically and stapled to the audit record.
-
-#### Step 1 · Enable the demo provider
-
-By default the AI step is off. Open the workshop's `.env` file at `workshops/autocon5/.env` and flip these two lines:
-
-```bash
-ENABLE_AI_RCA=true
-AI_RCA_PROVIDER=demo
-```
-
-The `demo` provider works offline — it writes a templated narrative grounded in the same evidence the deterministic policy used. (If you have an OpenAI or Anthropic API key, swap `demo` for `openai` or `anthropic` and add the matching key — same flow, real LLM voice.)
+The `demo` provider you enabled in Setup writes a *templated* narrative — deterministic, free, offline, but only as smart as the evidence dict it stitches together. **This phase is the optional upgrade**: swap to a real LLM (OpenAI or Anthropic) with an API key, and the workflow makes a real model call. Same evidence in, real reasoning out. Skip this phase if you don't have a key — none of Part 3's lessons depend on it.
 
 ??? tip "Going further — three common gotchas when wiring up a real OpenAI or Anthropic key"
 
@@ -758,45 +770,38 @@ The `demo` provider works offline — it writes a templated narrative grounded i
 
     **Reasoning models (`gpt-5`, `o1`, `o3`) often exceed the workshop's HTTP timeout.** They think internally before answering and a single call can take 30–60+ seconds. The lab's HTTP client gives up after 60s and writes `AI RCA call failed: ReadTimeout: ...` to Loki. Stick with `gpt-4o-mini`, `gpt-5-mini`, or `claude-haiku-4-5-20251001` for the workshop — they respond in 1–3 seconds, the narrative is short and bounded, and you don't pay reasoning-model rates for output a faster model already nails.
 
-#### Step 2 · Reload the workflow
+#### Step 1 · Swap the provider and key in `.env`
 
-The workflow runs inside a Docker container, and Docker only reads `.env` when a container is first *created* — a plain restart won't pick up your change. The command below recreates the container so the new settings take effect:
+Edit `workshops/autocon5/.env` — `ENABLE_AI_RCA=true` stays as-is from Setup; you're only swapping the provider and adding a key:
+
+```bash
+AI_RCA_PROVIDER=openai          # or anthropic
+AI_RCA_MODEL=gpt-4o-mini        # or claude-haiku-4-5-20251001
+OPENAI_API_KEY=sk-...           # or ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Then reload the workflow container so the new env takes effect (a plain `docker compose restart` won't — see the gotchas fold above for why):
 
 ```bash
 nobs autocon5 up
 ```
 
-Wait about 30 seconds for the workflow to come back online.
-
-#### Step 3 · Trigger an alert and read the AI narrative
-
-The fastest way to see the AI run is to drive an interface flap. `flap-interface` triggers a 4-minute scenario where the interface bounces up and down — that drags the BGP session down with the interface, which in turn causes a fresh `BgpSessionNotUp` alert to fire and the workflow to run on it (this time with AI RCA enabled).
+#### Step 2 · Trigger a fresh cycle and read the new narrative
 
 ```bash
-nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1
+nobs autocon5 cycle srl1 10.1.99.2 --trigger
+nobs autocon5 rca srl1 10.1.99.2
 ```
 
-Wait ~2 minutes for `BgpSessionNotUp` to fire on the affected peer. Then in Grafana Explore on the Loki datasource:
+The first command posts a fresh alert payload (bypassing Alertmanager's `repeat_interval`) and re-renders the cycle state once the new flow run lands. The second renders the latest AI narrative for that peer as Markdown in the terminal.
 
-```logql
-{source="prefect", ai_rca="true"} | json
-```
+Compare the rendered narrative to the demo voice you've been seeing all along. A real LLM (OpenAI or Anthropic) typically adds:
 
-You'll see one new line per workflow run. Look at the most recent one — the parsed fields appear inline. The `message` field contains a three-section paragraph:
+- **Domain inference** — translates raw metric values into operational hypotheses ("`oper_state=5` with `received_routes=0` is consistent with a TCP reachability failure or AS-number mismatch — the FSM is trying but not authenticating") instead of just restating them.
+- **Wider context** — references the BGP state machine, common causes for "stuck in active", suggested next debug steps (traceroute, configured remote-as check).
+- **Calibrated uncertainty** — phrases like "most likely" or "consistent with" rather than confident pronouncements.
 
-```text
-## Most likely cause
-SoT expects peer 10.1.2.2 on srl1 to be established, but oper_state=5 (active),
-admin_state=1 (enable), received_routes=0.
-
-## Immediate actions
-- Inspect reachability and timers between srl1 and 10.1.2.2
-
-## What to verify next
-- Tail Loki for device=srl1 around the alert window for BGP state transitions
-- Compare received_routes=10.0 against expected_prefixes_received in the SoT
-- Re-read the 40 captured log lines for repeated error signatures
-```
+The deterministic policy decision is **unchanged** between demo and real provider. The narrative is the only thing that swapped — different voice, identical evidence, identical decision.
 
 !!! tip "Read the narrative in its rendered shape"
 
@@ -862,12 +867,6 @@ The AI narrative sits **next to** the deterministic decision in Loki, not in pla
 You'll see *two* recent records for the same alert: one with `decision=proceed` (the deterministic outcome) and one with `ai_rca=true` (the AI narrative). Both are grounded in the same evidence the workflow gathered in Phase 2.
 
 Worth noting for Phase 7: the AI narrative records share the workflow's Loki stream but **don't carry a `decision` label** (since they're not decisions — they're narratives). So if you later query by `decision`, the AI records will land in an empty/unlabeled bucket rather than alongside `proceed` / `skip` / `resolved`. Phase 7 walks the query that surfaces this.
-
-#### What changes if you use a real LLM
-
-The `demo` provider writes a templated narrative — same three sections every time, filled in from the evidence fields. It can't draw on outside knowledge; it only has what the workflow handed it.
-
-Swap `AI_RCA_PROVIDER` to `openai` or `anthropic` with a real API key, and you get a real model response: same three sections, but now with broader domain inference, BGP-specific reasoning, and calibrated uncertainty (*"most likely"*, *"consistent with"*). Same evidence in, different voice out.
 
 > **The big idea.** AI in an on-call loop should be a **narrative tool**, not a decision tool. The decision is what stays the same across replays and code reviews. The narrative is what reads well at 02:14 am. Keep them separate, keep them both grounded in the same evidence, and you get the best of both worlds.
 
