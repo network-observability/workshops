@@ -256,6 +256,41 @@ Three things to notice:
 
 Prefer the browser? Open Alertmanager at <http://localhost:9093/#/alerts>. Same four rows, with click-to-expand details. (If you skipped Part 2's "From panel to alert" section, the alert lifecycle — `pending → firing → suppressed → resolved` — is walked in detail there.)
 
+The path from "alert in Alertmanager" to "workflow running" looks like this:
+
+```text
+   Prometheus / Loki rule evaluator
+              │
+              ▼  ALERT fires once
+    ┌──────────────────────────────────────────┐
+    │              Alertmanager                │
+    │  Holds active alerts in its own memory.  │
+    │  Sends ONE webhook on first fire (~5s),  │
+    │  then again only every repeat_interval   │
+    │  (30 min in this lab).                   │
+    └──────────────────┬───────────────────────┘
+                       │ HTTP POST
+                       ▼
+            Prefect alert_receiver flow
+                       │ dispatches per alertname
+                       ▼
+              quarantine_bgp_flow
+                       │
+                       ▼  Evidence → Policy → Action
+```
+
+!!! warning "Heads-up for the rest of Part 3 — Alertmanager's `repeat_interval`"
+
+    Once Alertmanager has fired the webhook for an alert, it won't fire again for the **same alert** for 30 minutes (the `repeat_interval` line in the diagram). That's normal — it stops pager spam for humans. But it does mean that if you want to *re-observe* a step in the next phases, you can't just wait it out, and `nobs autocon5 reset` won't help either (it clears state but doesn't reset Alertmanager's per-alert timer).
+
+    Instead, use:
+
+    ```bash
+    nobs autocon5 cycle srl1 10.1.99.2 --trigger
+    ```
+
+    It posts the alert payload straight to Prefect, bypassing Alertmanager's timer. Fresh cycle, predictable timing, no waiting. With no `--trigger` flag it just renders the current state (alerts, silences, recent flow runs, latest decision) — useful any time you want to capture "where is the workflow right now?" in one command.
+
 For Part 3, we focus on what happens *after* the alert is `firing`: the workflow picks it up and decides what to do. That starts with gathering facts.
 
 ### 2. Evidence — what the workflow collected
@@ -519,6 +554,23 @@ Phase 3 showed you the workflow decided `proceed` on the broken peer. The word `
 
 The workflow asks Alertmanager to **silence** the alert for 20 minutes. Same kind of silence you created by hand in Part 2's "Create a silence by hand" section — only this one was created automatically, scoped to the specific peer.
 
+To see all silences scoped to this peer (plus the current alert state and recent flow runs) in one shot:
+
+```bash
+nobs autocon5 cycle srl1 10.1.99.2
+```
+
+That'll show you a row for the workflow's freshly-created 20-minute silence, with its `Starts` / `Ends` / `Remaining` columns.
+
+!!! info "Why a silence sometimes reads shorter than 20 minutes in the UI"
+
+    The silence is **created** with a 20-minute `endsAt`, but a few things can shorten the visible duration:
+
+    - **`nobs autocon5 reset`** truncates every workshop-related silence to NOW as part of clearing state. After a reset, an Alertmanager UI lookup will show the silence as already-expired (or near it).
+    - **Re-running the workflow on the same alert** (via `cycle --trigger` or a real Alertmanager re-push) creates a *new* 20-minute silence. The old one continues to expire on its original timeline; both are visible if you list silences with `--show-expired`.
+
+    If the silence you're looking at reads ~3 minutes instead of 20, you most likely just ran `reset` — the workflow wrote a 20-minute silence and `reset` immediately truncated its `endsAt`.
+
 Run `nobs autocon5 alerts` — the `BgpSessionNotUp` row for `srl1 → 10.1.99.2` should now show `suppressed` in the State column. Let's look at that silence in Alertmanager.
 
 Open Alertmanager at <http://localhost:9093/#/alerts>. In the filter bar at the top, check the **Silenced** tickbox — silenced alerts are hidden by default. Find the row for `BgpSessionNotUp` on `srl1 → 10.1.99.2`. Expand the row — the header will show **silenced** highlighted. Click the **silenced** icon to land on the silence detail page. Three things worth noticing:
@@ -529,7 +581,13 @@ Open Alertmanager at <http://localhost:9093/#/alerts>. In the filter bar at the 
 
 !!! tip "Don't see `suppressed`?"
 
-    If the row shows `firing` instead, the silence may have expired — silences last 20 minutes, and the workflow re-silences each time the alert fires again. Wait 30 seconds for Alertmanager to push another delivery to the workflow, then refresh the page. The row should flip back to `suppressed`.
+    If the row shows `firing` instead, the previous silence has expired. Alertmanager won't re-push the alert to the workflow for up to 30 minutes (the `repeat_interval` from Phase 1's diagram), so don't wait it out — drive a fresh cycle yourself:
+
+    ```bash
+    nobs autocon5 cycle srl1 10.1.99.2 --trigger
+    ```
+
+    Within ~10 seconds a new 20-minute silence is in place; refresh the Alertmanager page and the row should flip to `suppressed`.
 
 > Why silence and not fix? Silencing stops the *page* from firing again for 20 minutes — the same alert won't wake the on-call up twice for the same issue. The underlying problem is still happening (the rule keeps matching); the silence just mutes the notification path. Part 2's "What's a silence?" section walks the silence-vs-fixing distinction in detail.
 
@@ -597,17 +655,27 @@ This is the same field the workflow's evidence panel showed you in Phase 2 — w
 
 #### Step 3 · Re-trigger the workflow
 
-The workflow only runs when something pushes an alert at it. The natural way to do that is to wait for the alert to fire again — but if the silence from Phase 4 is still active, that's a 20-minute wait, and Alertmanager's own re-fire timing adds more on top. For this exercise we trigger the workflow directly so the re-evaluation lands within seconds:
+The workflow only runs when something pushes an alert at it. Waiting for Alertmanager to re-fire takes up to 30 minutes (the `repeat_interval` from Phase 1). For this exercise we drive the workflow directly so the re-evaluation lands within seconds:
 
 ```bash
-docker compose --project-name autocon5 exec prefect-flows \
-  prefect deployment run alert-receiver/alert-receiver \
-  --param alertname=BgpSessionNotUp \
-  --param status=firing \
-  --param 'alert_group={"alerts":[{"labels":{"device":"srl1","peer_address":"10.1.99.2","afi_safi_name":"ipv4-unicast"}}],"groupLabels":{"alertname":"BgpSessionNotUp"},"status":"firing"}'
+nobs autocon5 cycle srl1 10.1.99.2 --trigger
 ```
 
-This sends the same alert payload Alertmanager would have sent — same shape, same workflow, same decision logic — without waiting on Alertmanager's notification timing. (The full reasoning behind this command lives in the *"Trigger the workflow directly without an alert"* fold under [Optional deep dives](#optional-deep-dives).)
+Same alert payload, same workflow, same decision logic — just bypassing Alertmanager's timer. The command also re-renders the four-panel cycle state once the new flow run lands, so you'll see the fresh decision in the same shot.
+
+??? info "What's the wrapper doing under the hood?"
+
+    `cycle --trigger` posts an alert payload directly to the Prefect `alert_receiver` flow's webhook (the same one Alertmanager calls). The raw command is:
+
+    ```bash
+    docker compose --project-name autocon5 exec prefect-flows \
+      prefect deployment run alert-receiver/alert-receiver \
+      --param alertname=BgpSessionNotUp \
+      --param status=firing \
+      --param 'alert_group={"alerts":[{"labels":{"device":"srl1","peer_address":"10.1.99.2","afi_safi_name":"ipv4-unicast"}}],"groupLabels":{"alertname":"BgpSessionNotUp"},"status":"firing"}'
+    ```
+
+    `cycle --trigger` builds the same payload, posts it, polls Prefect until a fresh flow run appears for this peer, then renders the resulting state. Use the wrapper for the workshop walk; the raw command is the right tool when you're scripting outside the lab.
 
 #### Step 4 · Read the new decision in Loki
 
@@ -886,7 +954,15 @@ The phases above walk one full cycle with all the concepts spelled out. If you w
 
 ??? tip "Trigger the workflow directly without an alert"
 
-    The webhook is one way to drive the workflow. You can also drive it manually from the CLI — useful when you want to test a payload shape, iterate on the policy, or skip the alert lifecycle entirely.
+    The webhook is one way to drive the workflow. You can also drive it manually from the CLI — useful when you want to skip the alert lifecycle entirely (no Alertmanager `repeat_interval` wait), test a payload shape, or iterate on the policy.
+
+    The workshop wrapper is:
+
+    ```bash
+    nobs autocon5 cycle srl1 10.1.99.2 --trigger
+    ```
+
+    Under the hood, the wrapper posts an `AlertmanagerAlert`-shaped payload to the Prefect `alert_receiver` flow's webhook, polls Prefect until a fresh flow run appears for this peer, then renders the resulting state. The raw `prefect deployment run` equivalent (useful when scripting outside the lab) is:
 
     ```bash
     docker compose --project-name autocon5 exec prefect-flows \
@@ -896,7 +972,7 @@ The phases above walk one full cycle with all the concepts spelled out. If you w
       --param 'alert_group={"alerts":[{"labels":{"device":"srl1","peer_address":"10.1.99.2","afi_safi_name":"ipv4-unicast"}}],"groupLabels":{"alertname":"BgpSessionNotUp"},"status":"firing"}'
     ```
 
-    Same workflow, same decision logic, no alert. Useful as a fallback when a leftover silence is damping the natural alert path.
+    Same workflow, same decision logic, no alert. To exercise the resolved-bgp branch instead of quarantine, use `cycle --status resolved`.
 
 ??? tip "Flap without the BGP cascade"
 
@@ -1004,25 +1080,20 @@ There's no single right answer. The point is that the same tool isn't equally va
 
     ??? success "Solution — commands + verify in Loki that the skip swapped device"
 
-        `nobs autocon5 try-it --auto` only walks srl1 paths, so it won't exercise srl2. Use the same direct-trigger command you saw in Step 3 of Phase 5, but pointed at srl2's broken peer (`10.1.11.1`):
+        `nobs autocon5 try-it --auto` only walks srl1 paths, so it won't exercise srl2. Use `cycle --trigger` pointed at srl2's broken peer instead:
 
         ```bash
         nobs autocon5 maintenance --device srl2 --state
-
-        docker compose --project-name autocon5 exec prefect-flows \
-          prefect deployment run alert-receiver/alert-receiver \
-          --param alertname=BgpSessionNotUp \
-          --param status=firing \
-          --param 'alert_group={"alerts":[{"labels":{"device":"srl2","peer_address":"10.1.11.1","afi_safi_name":"ipv4-unicast"}}],"groupLabels":{"alertname":"BgpSessionNotUp"},"status":"firing"}'
+        nobs autocon5 cycle srl2 10.1.11.1 --trigger
         ```
 
-        Then in Grafana Explore on the Loki datasource:
+        The `cycle` command renders the fresh state once the flow run lands — you should see `decision=skip` in the Most-recent-decision panel with the reason `"device under maintenance"`. To confirm in Loki directly:
 
         ```logql
         {source="prefect", workflow="autocon5_quarantine_bgp", decision="skip", device="srl2"} | json
         ```
 
-        Within ~10 seconds a fresh `skip` audit record appears with `device="srl2"`. The `message` is `"device under maintenance"` — same reason the policy gave for srl1 earlier, only the subject changed.
+        Same record. The `message` is `"device under maintenance"` — same reason the policy gave for srl1 earlier, only the subject changed.
 
         The point of the exercise: the policy is **device-agnostic**. It consults the SoT for whichever device the alert payload names. Flipping maintenance on any device routes that device's alerts to skip, automatically. The decision logic isn't hard-coded to a particular device.
 

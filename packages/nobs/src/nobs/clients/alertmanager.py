@@ -35,6 +35,12 @@ class AlertmanagerClient:
         r.raise_for_status()
         return r.json()
 
+    def silences(self) -> list[dict]:
+        """Return AM /api/v2/silences (active + expired + pending)."""
+        r = requests.get(f"{self.base_url}/api/v2/silences", timeout=self.timeout)
+        r.raise_for_status()
+        return r.json()
+
     def create_silence(
         self,
         matchers: list[dict[str, Any]],
