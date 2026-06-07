@@ -698,6 +698,14 @@ The **most recent line** now reads:
 
 Same broken peer, same metrics, same evidence as Phase 3 — but a `skip` decision instead of `proceed`. The change happened because the *intent* in the source of truth changed.
 
+There's a second, more subtle side-effect worth seeing — **the AI RCA step also skipped**. The workflow only runs AI RCA when the policy decided `proceed`; running an LLM on a decision the policy has already chosen *not* to act on wastes compute (and real money on a paid provider) and contradicts the lesson — *if the SoT says "don't act", we don't act anywhere, including the narrative step*. Confirm with:
+
+```logql
+{source="prefect", ai_rca="true", device="srl1"} | json
+```
+
+The most recent line reads `AI RCA not run — policy decided skip (device under maintenance). Conserves compute / API cost when the policy has already decided not to act.` Same `ai_rca="true"` label as a real narrative, but an explanatory message instead of a multi-section RCA. That's the SoT → observability → automation triangle closing all the way: one label flip in Infrahub propagates through every step of the workflow's behavior, including the parts that cost money.
+
 !!! warning "Don't clear maintenance until you've seen the `skip` audit record"
 
     Step 5 below clears the maintenance flag. If you race ahead and clear it before the workflow has actually re-evaluated, it'll re-read `maintenance=false` and return `proceed` instead of `skip`. Confirm the `skip` log line has landed in Loki first, then continue.
@@ -1146,7 +1154,7 @@ There's no single right answer. The point is that the same tool isn't equally va
         nobs autocon5 try-it --auto
         ```
 
-        Path 1 (firing → quarantine on `srl1:10.1.99.2`) always invokes the AI RCA step, so the new narrative lands in Loki under `ai_rca="true"` regardless of whether the deterministic policy decided `proceed` or `skip`. Read it straight from the terminal — same data the Loki query in Step 3 returned, rendered as Markdown in a Rich panel:
+        Path 1 (firing → quarantine on `srl1:10.1.99.2`) lands on `decision=proceed`, which is the only decision that invokes AI RCA — so the new narrative lands in Loki under `ai_rca="true"`. (Paths that resolve to `skip` write a brief annotation instead, explaining why the LLM was not run — same `ai_rca="true"` label.) Read it straight from the terminal — same data the Loki query in Step 3 returned, rendered as Markdown in a Rich panel:
 
         ```bash
         nobs autocon5 rca srl1 10.1.99.2
@@ -1197,6 +1205,6 @@ There's no single right answer. The point is that the same tool isn't equally va
     nobs autocon5 maintenance --device srl1 --clear         # cleanup
     ```
 
-    The punchline lives in the **Flow runs panel** of the last `cycle` output: two adjacent rows for the same alert, one `decision=proceed` (from the third command), one `decision=skip` (from the fifth). The **Silences panel** grows by one row only on the proceed run — the absence of a silence on the skip run is the visible proof that *the policy decided not to act*. Same alert, same evidence, opposite decisions, driven by one field in the source of truth.
+    The punchline lives in the **Flow runs panel** of the last `cycle` output: two adjacent rows for the same alert, one `decision=proceed` (from the third command), one `decision=skip` (from the fifth). The **Silences panel** grows by one row only on the proceed run — the absence of a silence on the skip run is the visible proof that *the policy decided not to act*. A third side-effect lives in Loki: querying `{source="prefect", ai_rca="true"} | json` shows the proceed run produced a multi-section narrative, while the skip run wrote *"AI RCA not run — policy decided skip…"*. **Same alert, same evidence, opposite decisions, the entire workflow behavior (silence + LLM call + audit trail) flipped by one field in the source of truth.**
 
     The phases above explain *why* each panel reads the way it does, and walk the same story through Alertmanager, Loki, and Prefect's own UIs.

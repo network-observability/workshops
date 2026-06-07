@@ -117,6 +117,35 @@ def ai_rca_task(workflow: str, device: str, peer_address: str, ev: EvidenceBundl
     return rca_text
 
 
+@task(log_prints=True, task_run_name="ai_rca_skipped[{device}:{peer_address}]")
+def ai_rca_skipped_task(workflow: str, device: str, peer_address: str, decision: Decision) -> str:
+    """Write a brief annotation explaining why AI RCA was not run for this decision.
+
+    Called when the policy decided anything other than `proceed`. Running an LLM
+    on a decision the policy has already chosen *not* to act on wastes compute
+    (and real money with a paid provider) and muddies the audit trail. We still
+    write an `ai_rca=true` record so the existing Loki query surfaces *what was
+    considered* — just with an explanatory message instead of a multi-section RCA.
+    """
+    msg = (
+        f"AI RCA not run — policy decided {decision.decision} ({decision.reason}). "
+        "Conserves compute / API cost when the policy has already decided not to act."
+    )
+    print(f"⏭️  [ai_rca] skipped (decision={decision.decision})")
+    sdk = WorkshopSDK()
+    sdk.annotate(
+        labels={
+            "source": "prefect",
+            "workflow": workflow,
+            "device": device,
+            "peer_address": peer_address,
+            "ai_rca": "true",
+        },
+        message=msg,
+    )
+    return msg
+
+
 @task(log_prints=True, task_run_name="quarantine[{device}:{peer_address}]")
 def quarantine_task(device: str, peer_address: str, minutes: int) -> str:
     print(f"🔕 [quarantine] silencing {device}:{peer_address} for {minutes}m")
@@ -182,15 +211,25 @@ def quarantine_bgp_flow(
             decision=decision,
         )
 
-        # AI RCA runs regardless of decision so the user can see the LLM's
-        # take alongside the deterministic policy outcome. The function is a
-        # no-op (returns a clear sentinel) when ENABLE_AI_RCA is false.
-        rca_text = ai_rca_task(
-            workflow="autocon5_quarantine_bgp",
-            device=device,
-            peer_address=peer_address,
-            ev=ev,
-        )
+        # AI RCA runs ONLY when the policy decided `proceed`. On skip or any
+        # other non-act decision, we write a brief annotation explaining why
+        # the narrative step was skipped (saves compute / API cost and keeps
+        # the audit trail honest — the SoT said "don't act", so we don't act
+        # *anywhere*, including the LLM step).
+        if decision.decision == "proceed":
+            rca_text = ai_rca_task(
+                workflow="autocon5_quarantine_bgp",
+                device=device,
+                peer_address=peer_address,
+                ev=ev,
+            )
+        else:
+            rca_text = ai_rca_skipped_task(
+                workflow="autocon5_quarantine_bgp",
+                device=device,
+                peer_address=peer_address,
+                decision=decision,
+            )
 
         if decision.decision != "proceed":
             print(f"✅ [flow] no action ({decision.decision} — {decision.reason})")
