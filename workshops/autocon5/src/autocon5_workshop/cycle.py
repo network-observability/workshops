@@ -116,10 +116,11 @@ def _render_alert_panel(am: AlertmanagerClient, device: str, peer: str) -> None:
         age = _duration_since(started)
         line = f"BgpSessionNotUp · {labels.get('severity', '?')} · state={state} · firing for {age}"
         if silenced:
+            sid = silenced[0]
+            short = sid[:12] + "…"
+            link = f"[link={am.base_url}/#/silences/{sid}]{short}[/link]"
             line += (
-                f"\nsilencedBy: {silenced[0][:12]}… (+{len(silenced) - 1} more)"
-                if len(silenced) > 1
-                else f"\nsilencedBy: {silenced[0][:12]}…"
+                f"\nsilencedBy: {link} (+{len(silenced) - 1} more)" if len(silenced) > 1 else f"\nsilencedBy: {link}"
             )
         else:
             line += "\nsilencedBy: [dim](none)[/]"
@@ -170,8 +171,11 @@ def _render_silences_panel(am: AlertmanagerClient, device: str, peer: str) -> No
         except Exception:
             remaining = "?"
         state_style = {"active": "bold green", "pending": "yellow", "expired": "dim"}.get(state, "")
+        full_id = s.get("id", "")
+        short_id = full_id[:12] + "…" if full_id else "?"
+        id_cell = f"[link={am.base_url}/#/silences/{full_id}]{short_id}[/link]" if full_id else short_id
         table.add_row(
-            s.get("id", "")[:12] + "…",
+            id_cell,
             f"[{state_style}]{state}[/]" if state_style else state,
             s.get("startsAt", "")[11:19],
             s.get("endsAt", "")[11:19],
@@ -205,8 +209,12 @@ def _render_flow_runs_panel(prefect_url: str, device: str, peer: str, minutes: i
     for r in runs[:5]:
         state = r.get("state", {}).get("type", "?")
         state_style = {"COMPLETED": "green", "FAILED": "red", "RUNNING": "yellow"}.get(state, "")
+        run_id = r.get("id", "")
+        started_cell = r.get("start_time", "")[11:19]
+        if run_id:
+            started_cell = f"[link={prefect_url}/runs/flow-run/{run_id}]{started_cell}[/link]"
         table.add_row(
-            r.get("start_time", "")[11:19],
+            started_cell,
             f"[{state_style}]{state}[/]" if state_style else state,
             r.get("name", "?"),
         )
