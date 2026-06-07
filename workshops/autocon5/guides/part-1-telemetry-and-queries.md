@@ -146,21 +146,21 @@ Now click into a result on each side and compare the full label set — `device`
 
 That alignment is what "normalization" actually buys you:
 
-- The query layer doesn't see the dialects. `bgp_oper_state{device="srl1"}` and `bgp_oper_state{device="srl2"}` return rows in the same shape, even though one came in as gNMI and the other as SNMP.
+- The query layer doesn't see the dialects. `interface_oper_state{device="srl1"}` and `interface_oper_state{device="srl2"}` return rows in the same shape, even though one came in as gNMI and the other as SNMP.
 - Real fleets are mixed. Nokia SR Linux via gNMI, Cisco IOS-XR via Model-Driven Telemetry, Juniper via OpenConfig, legacy boxes via SNMP — each speaks its own dialect. Without normalization, every dashboard, alert rule, and runbook fragments per vendor. With it, the *query layer* doesn't see the dialects at all.
 - Telegraf is doing the renaming work for both devices in this lab. In production it might be Telegraf, OpenTelemetry collectors, custom processors — different tools, same job.
 
 Prove the normalization holds end-to-end:
 
 ```promql
-bgp_oper_state
+interface_oper_state
 ```
 
-Returns rows for *both* devices, *both* collection types. A dashboard panel querying `bgp_oper_state{device="$device"}` doesn't care which protocol delivered the data — it asks for the shared name and gets it.
+Returns rows for *both* devices, *both* collection types. A dashboard panel querying `interface_oper_state{device="$device"}` doesn't care which protocol delivered the data — it asks for the shared name and gets it.
 
 > Your senior closes the laptop slightly. *"You'll meet engineers who hate normalization because it abstracts away vendor specifics. They're not wrong about the cost — but the cost of not normalizing, in this lab and in production, is that every alert rule has to be written six times and every dashboard has six panels for the same thing. Pick your trade. We've picked normalization."*
 
-**Stop and notice.** The `collection_type` label is for inspecting the normalization itself: *"which raw shape did this sample come from, is that path healthy?"* It's not for branching your query logic. If you write `bgp_oper_state{collection_type="gnmi"}` into a dashboard, you've narrowed to one vendor — useful for debugging that pipeline, but you'll miss every device whose data arrives via any other protocol. Default to collection-type-agnostic queries; reach for the label when you're debugging the normalization, not the network.
+**Stop and notice.** The `collection_type` label is for inspecting the normalization itself: *"which raw shape did this sample come from, is that path healthy?"* It's not for branching your query logic. If you write `interface_oper_state{collection_type="gnmi"}` into a dashboard, you've narrowed to one vendor — useful for debugging that pipeline, but you'll miss every device whose data arrives via any other protocol. Default to collection-type-agnostic queries; reach for the label when you're debugging the normalization, not the network.
 
 #### 3. Rate of change on a counter
 
