@@ -235,6 +235,8 @@ You should get one row per device — `ethernet-1/11` on each, the deliberately 
 
 #### 5. Find the broken peer — BGP
 
+The same normalization idea applies to BGP session state. `bgp_oper_state` and `bgp_admin_state` are collected from both devices — one via gNMI, one via SNMP — and normalized into the same metric names with the same label set. That matters here because the on-call alert covers the whole fleet: if the query had to branch by vendor, a broken peer on a device using the other collection path would silently slip through.
+
 > Your senior swivels toward you. *"Same pattern. Same join operator. Different metric pair. Apply it to BGP."*
 
 ```promql
@@ -255,6 +257,12 @@ You should get **exactly two rows**:
 ### Recording rules — composed metrics
 
 > Your senior opens a file. *"Every query you just wrote in Explore can be baked into Prometheus as a recording rule. Instead of recomputing it on every dashboard load, Prometheus evaluates it on a schedule and stores the result as a new metric. Dashboards and alerts reference the pre-computed name — fast, consistent, one definition."*
+
+A **recording rule** is Prometheus evaluating a PromQL expression on a fixed interval (typically every 15–60 seconds) and writing the result back as a new, named metric. You then query that name instead of the full expression. Three reasons this matters in practice:
+
+- **Dashboards stay fast.** A `sum by (device) (rate(...)[5m])` over a large fleet scans thousands of raw samples on every panel refresh. The recording rule pays that cost once per interval; the dashboard reads a single pre-computed row.
+- **Alerts are consistent.** When an alert rule and a dashboard panel reference the same recording rule name, they're looking at the same computed value — no drift from re-evaluating the same expression independently with slightly different timing.
+- **Complex expressions get a stable name.** The intent-vs-reality join you just wrote is seven lines of PromQL. Wrapping it in a recording rule gives it a short, searchable name that runbooks and incident comments can reference.
 
 The naming convention is `<aggregation_labels>:<metric_name>:<time_window>`. This lab ships two traffic recording rules and one that fans a Loki-derived UPDOWN rate back into Prometheus:
 
@@ -279,13 +287,22 @@ Try querying the pre-computed metric directly in Explore:
 device:network_traffic_in_bps:rate_2m
 ```
 
-Two rows — one per device, total inbound throughput in bits/sec, already computed. No `rate()`, no `sum by` needed at query time. The dashboard panel that shows device traffic references this name, not the raw expression.
+Two rows — one per device, total inbound throughput in bits/sec, already computed. This is the same result you got in exercise 3 with `sum by (device) (rate(interface_in_octets{name!~"mgmt0.*"}[5m])) * 8` — but the PromQL complexity is gone from the query site. No `rate()`, no `sum by` needed at query time. The dashboard panel that shows device traffic references this name, not the raw expression.
 
 **Stop and notice.** A recording rule is just a query that Prometheus runs on a schedule and stores. The result is a first-class metric — you can filter it, alert on it, and reference it from other rules. The naming convention is a readability contract, not a technical requirement: `aggregation:source_metric:window` tells you at a glance what the number represents and over what window it was computed.
 
 ### Alerts
 
 > Your senior closes the rules file. *"A query answers a question. An alert is the same query with one addition: if the answer is true, act. That's all an alert rule is."*
+
+A **Prometheus alert rule** is a PromQL expression evaluated on a schedule — the same way a recording rule is — but instead of storing the result as a metric, Prometheus watches whether the expression returns any rows. If it does, the alert is *firing*; if it returns nothing, it's *inactive*. When an alert fires, Prometheus forwards it to **Alertmanager**, which handles routing, deduplication, and silencing before sending a notification to the on-call channel.
+
+Two fields shape how the alert behaves in practice:
+
+- **`for:`** — how long the condition must stay true before the alert actually fires. Without it, a single bad scrape triggers a page. With `for: 2m`, transient flaps and brief collection gaps are silently ignored.
+- **`labels:` / `annotations:`** — labels route the alert (Alertmanager uses them to decide who gets paged and how); annotations carry human-readable context that lands in the notification itself.
+
+You already have the PromQL for this — the intent-vs-reality query from exercise 4. Wrapping it in an alert rule is the mechanical step that turns a query you ran once in Explore into something that watches the network continuously.
 
 #### The expression
 
@@ -337,7 +354,7 @@ groups:
 
 The `InterfaceAdminUpOperDown` alert is already loaded. The lab's deliberately broken interfaces (`ethernet-1/11` on both devices) satisfy the expression right now.
 
-1. **Prometheus** — open [http://localhost:9090/#/alerts](http://localhost:9090/#/alerts) and find `InterfaceAdminUpOperDown`. It should be in `FIRING` state with one entry per device.
+1. **Prometheus** — open [http://localhost:9090](http://localhost:9090), paste `ALERTS{alertname="InterfaceAdminUpOperDown"}` into the expression bar and run it. You should see one row per device with `alertstate="firing"`. If the lab just started, wait two minutes for the `for: 2m` window to elapse — until then the expression returns no rows because the alert is still in its pending period.
 
 2. **Grafana Explore** — the `ALERTS` metric exposes firing alerts as a queryable time series:
 
@@ -410,9 +427,9 @@ Aggregating logs over time turns a log query into a metric:
 sum by (device) (count_over_time({vendor_facility_process="UPDOWN"}[5m]))
 ```
 
-Switch the panel to `Time series`. You should see two lines (one per device) showing UPDOWN events per 5-minute window. With the lab in steady state the count sits at **a handful per device** — sonda emits a slow trickle, well below the `PeerInterfaceFlapping` alert's `> 3 events in 2 minutes` threshold.
+Switch the panel to `Time series`. You should see two lines (one per device) showing UPDOWN events per 5-minute window. With the lab in steady state the count sits at **a handful per device** — sonda emits a slow trickle.
 
-**Stop and notice.** This is exactly how the `PeerInterfaceFlapping` alert reads logs in Part 3 — same shape, just with a `> 3` threshold and a `for: 30s` clause. Any LogQL aggregation query is a candidate alert rule.
+**Stop and notice.** This is the bridge between logs and alerting. Raw log lines are strings — you can search them, but you can't alert on them directly. Aggregating them over time produces a number, and a number can be compared against a threshold in an alert rule. Any LogQL aggregation query — count of error lines, rate of state changes, volume of dropped packets per device — is a candidate alert rule. Logs stop being a post-mortem tool and become part of your real-time detection layer.
 
 ??? tip "Want to see the line jump now?"
 
@@ -439,11 +456,9 @@ You should see streams from both devices. The `device`, `vendor_facility_process
 
 **Stop and notice.** Two normalization stories in this lab — `collection_type=gnmi/snmp` on metrics, `pipeline=direct/vector` on logs — but they share the same payoff: queries don't have to know which transport delivered the signal. The label that tags the source path exists for *debugging* the pipeline, not for *branching* your queries.
 
-### The bridge — metric to log
+#### 11. The bridge — metric to log
 
 > Your senior looks over. *"This is the move that pays off most often under pressure. Find the broken thing in metrics, then jump to logs with the same labels and read the why. If you only remember one thing from this morning, remember this."*
-
-#### 11. Why is the peer down?
 
 This is the payoff exercise. Use the broken-peer query from #5 to find a mismatched peer, then jump to logs to find out *why*.
 
