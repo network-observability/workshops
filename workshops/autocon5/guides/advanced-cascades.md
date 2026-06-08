@@ -157,7 +157,7 @@ Empty even longer — latency only starts emitting once the backup has saturated
 
 The cascade is still unfolding. Latency is climbing, the backup is saturating, the primary is still flapping. The temptation under pressure is to open Grafana's panel editor and start building — *don't*. Real on-call doesn't build dashboards during a fire; you read what's already there.
 
-> *"Your dashboards earned their keep this morning, when you built them in calm. Tonight, you just read them."*
+> *"Your dashboards earned their keep this morning, when you built them in peacetime. Tonight, you just read them."*
 
 Open **Workshop Lab 2026** and walk the panels you already have.
 
@@ -203,7 +203,7 @@ The `BgpSessionNotUp` row is still in the firing list — that's expected. The a
 
     Either surface shows the `decision=skip` / `reason=device under maintenance` record the workflow just wrote.
 
-**Stop and notice.** Maintenance isn't a static config attribute on the device — it's a *containment lever* the on-call uses live during an incident. Flipping the flag tells the automation "I'm in here; please don't fire automated actions while I'm working." The flow consults the source of truth at decision time, so the change has effect on the very next alert that arrives. This is what the workshop's source-of-truth integration was for.
+**Stop and notice.** Maintenance isn't a static config attribute on the device — it's a *containment lever* the on-call engineer uses live during an incident. Setting the flag signals to the automation: "someone is actively working here; hold off on automated actions." The flow consults the source of truth at decision time, so the change takes effect on the very next alert that arrives. This is the source-of-truth integration paying off.
 
 ### Act 6 — Fix and recover
 
@@ -294,15 +294,15 @@ Then re-read what you wrote.
         | When you do it | Reactive, post-page, under pressure | Pre-computed, in calm |
         | Latency | Minutes per query, hours for the full arc | Seconds end-to-end |
         | What it produces | A runbook entry, a hypothesis, a fix | A categorised decision + an audit annotation |
-        | When it scales | When you have time and a specific question | When the alert volume exceeds human attention |
-        | When it doesn't | At 2am with 50 alerts firing simultaneously | When the situation is novel — outside the policy's rule set |
+        | Where it excels | When you have time and a specific question | When alert volume exceeds human attention |
+        | Where it falls short | At 2am with 50 alerts firing simultaneously | When the situation is novel — outside the policy's rule set |
 
-        The lesson: automation handles routine cases (broken peer? mismatch? skip if in maintenance — one second per alert). Investigation handles the unusual cases — where you need to question the policy's reasoning, decide whether to override, or change the policy itself.
+        The lesson: automation handles routine cases (broken peer, BGP mismatch, device in maintenance — one second per alert). Investigation handles the unusual cases — where you need to question the policy's reasoning, decide whether to override, or change the policy itself.
 
-        In production, both run in parallel: the flow handles 95% of alerts on autopilot, and the on-call human pays attention only to the 5% the policy escalates or that the human doesn't yet trust.
+        In production, both run in parallel: the flow handles 95% of alerts on autopilot, and the on-call engineer steps in only for the 5% the policy escalates or can't confidently classify.
 
 ## What you took away
 
 - The shape of an interface-degradation incident — primary fault → failover → backup pressure → latency — is universal. Latency is almost always a symptom; walk back through the cascade to find the cause.
 - Same labels on metrics and logs means correlation is one query change away. Metric tells you *what*; log tells you *why*. The metric-to-log bridge is the single most useful pattern under pressure.
-- Dashboards are built in calm and read in fire; runbooks are the durable artefact every observability investment funnels into. Five good lines, written while the memory is fresh, are worth more than a polished page nobody can find at 02:14.
+- Dashboards are built in peacetime and read in crisis; runbooks are the durable artefact every observability investment funnels into. Five good lines, written while the memory is fresh, are worth more than a polished page nobody can find at 02:14.
