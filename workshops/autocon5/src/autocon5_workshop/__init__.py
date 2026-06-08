@@ -12,7 +12,20 @@ from pathlib import Path
 
 from nobs.workshops import Workshop, register
 
-from . import bootstrap, evidence, flap, incident, load, page, rca, reset, scenarios, try_it
+from . import (
+    bootstrap,
+    cycle,
+    evidence,
+    flap,
+    incident,
+    load,
+    page,
+    rca,
+    reset,
+    scenarios,
+    silences,
+    try_it,
+)
 from .preflight import runner as preflight_runner
 
 __version__ = "0.1.0"
@@ -28,6 +41,8 @@ WORKSHOP = Workshop(
         load.load_infrahub,
         evidence.evidence,
         rca.rca,
+        cycle.cycle,
+        silences.silences,
         try_it.try_it,
         flap.flap_interface,
         incident.incident,

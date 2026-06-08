@@ -203,7 +203,14 @@ services:
 
   grafana:
     container_name: grafana
-    image: ${GRAFANA_IMAGE:-docker.io/grafana/grafana:13.0.1-security-01}
+    # Build a workshop-local image with plugins baked in so the lab boots
+    # without internet. `docker compose build grafana` (one-time, with
+    # internet) downloads the plugins via grafana-cli; subsequent `up` runs
+    # are fully offline. See ./grafana/Dockerfile for the plugin list.
+    build:
+      context: ./grafana
+      dockerfile: Dockerfile
+    image: ${GRAFANA_IMAGE:-autocon5/grafana:13.0.1-security-01-plugins}
     ports:
       - "3000:3000"
     volumes:
@@ -213,7 +220,8 @@ services:
       - ./grafana/grafana.ini:/etc/grafana/grafana.ini
       - grafana_data:/grafana
     environment:
-      GF_INSTALL_PLUGINS: natel-discrete-panel,yesoreyeram-infinity-datasource,volkovlabs-echarts-panel
+      # Plugins are baked into the image (see ./grafana/Dockerfile); no
+      # runtime install needed. GF_INSTALL_PLUGINS deliberately omitted.
       # Disable Grafana 13's bundled promo apps so the dashboards aren't
       # cluttered with Pyroscope / DrillDown nav entries the workshop never uses.
       # Note: this does NOT suppress the Grafana 13 "What's new" splash modal —
@@ -297,6 +305,12 @@ services:
       # Distinct from the admin token; same-value pairs are rejected.
       INFRAHUB_INITIAL_AGENT_TOKEN: a4f3c1d2-9b8e-4a7f-8c5d-1e2f3a4b5c6d
       INFRAHUB_LOG_LEVEL: INFO
+    healthcheck:
+      test: curl -sf http://localhost:8000/health || exit 1
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
     volumes:
       - infrahub_storage_data:/opt/infrahub/storage
       - infrahub_data:/opt/infrahub
@@ -330,7 +344,7 @@ services:
       INFRAHUB_API_TOKEN: ${INFRAHUB_API_TOKEN}
     depends_on:
       infrahub-server:
-        condition: service_started
+        condition: service_healthy
       infrahub-message-queue:
         condition: service_healthy
 
@@ -395,6 +409,7 @@ services:
     environment:
       PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://prefect:prefect@prefect-postgres:5432/prefect
       PREFECT_SERVER_API_HOST: 0.0.0.0
+      PREFECT_UI_API_URL: http://localhost:4200/api
       PREFECT_MESSAGING_BROKER: prefect_redis.messaging
       PREFECT_MESSAGING_CACHE: prefect_redis.messaging
       PREFECT_REDIS_MESSAGING_HOST: prefect-redis

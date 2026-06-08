@@ -185,30 +185,20 @@ Verify the alert flow's response will now change for this device:
 nobs autocon5 alerts
 ```
 
-The `BgpSessionNotUp` row is still in the firing list — that's expected. The alert isn't "fixed" by going into maintenance; what changes is the *response* path. The webhook flow consults Infrahub on every alert it receives, sees `srl1.maintenance=true`, and decides `skip` (reason: `device under maintenance`) instead of `quarantine`. Open Workshop Home and look at the **Recent events** feed: the next time Alertmanager's webhook fires for this alert, the new annotation reads `skip` rather than `quarantine`. Alertmanager's `repeat_interval` for this alert is 20 minutes, so you may not see the `skip` annotation appear within the time you spend in this guide. Part 3's `try-it` tour, Path 2, walks exactly this transition with an immediate replay if you want to see it land.
+The `BgpSessionNotUp` row is still in the firing list — that's expected. The alert isn't "fixed" by going into maintenance; what changes is the *response* path. The webhook flow consults Infrahub on every alert it receives, sees `srl1.maintenance=true`, and decides `skip` (reason: `device under maintenance`) instead of `quarantine`. Open Workshop Home and look at the **Recent events** feed: the next time Alertmanager's webhook fires for this alert, the new annotation reads `skip` rather than `quarantine`. Alertmanager's `repeat_interval` for this alert is 30 minutes (covered in Part 3 Phase 1), so you may not see the `skip` annotation appear within the time you spend in this guide.
 
 !!! tip "Want to see the skip annotation land *now*?"
 
-    Bypass Alertmanager's `repeat_interval` and post the alert payload directly to the workflow — same shape Alertmanager would have sent, no notification-timing wait:
+    Drive a fresh cycle directly, bypassing Alertmanager's `repeat_interval`:
 
     ```bash
-    docker compose --project-name autocon5 exec prefect-flows \
-      prefect deployment run alert-receiver/alert-receiver \
-      --param alertname=BgpSessionNotUp \
-      --param status=firing \
-      --param 'alert_group={"alerts":[{"labels":{"device":"srl1","peer_address":"10.1.99.2","afi_safi_name":"ipv4-unicast"}}],"groupLabels":{"alertname":"BgpSessionNotUp"},"status":"firing"}'
+    nobs autocon5 cycle srl1 10.1.99.2 --trigger
     ```
 
-    Within ~15 seconds a fresh audit record lands in Loki:
+    Within ~15 seconds the four-panel cycle view re-renders with the fresh `decision=skip` audit record. For the AI narrative side of the same evidence:
 
     ```bash
-    nobs autocon5 rca srl1 10.1.99.2   # AI narrative for the same evidence
-    ```
-
-    Or query the deterministic decision directly:
-
-    ```logql
-    {source="prefect", workflow="autocon5_quarantine_bgp", decision="skip", device="srl1"} | json
+    nobs autocon5 rca srl1 10.1.99.2
     ```
 
     Either surface shows the `decision=skip` / `reason=device under maintenance` record the workflow just wrote.
