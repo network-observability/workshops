@@ -898,7 +898,7 @@ You've walked every step of the cycle. Now use what you've seen.
 
 **Two hints if you get stuck:**
 
-- `count_over_time({...}[$__range])` turns a Loki query into a number — same pattern as Part 1 exercise 9. `$__range` is a Grafana template variable that resolves to whatever your time picker is set to, so the query adapts to the window you're looking at instead of being hard-coded to a literal like `[1h]`.
+- `count_over_time({...}[$__range])` turns a Loki query into a number — same pattern as Part 1 exercise 11. `$__range` is a Grafana template variable that resolves to whatever your time picker is set to, so the query adapts to the window you're looking at instead of being hard-coded to a literal like `[1h]`.
 - `sum by (label) (...)` collapses everything except the label you list. Pick the label that gives the most informative breakdown — try `workflow` first (one row, not useful), then try `decision` (a few rows, much more useful).
 
 Have a go before scrolling to the solution. One extra hint: **drop the `device="srl1"` filter** from Phases 3 and 5 — this question asks about the workflow's full activity across both devices, not just one.

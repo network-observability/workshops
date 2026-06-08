@@ -31,40 +31,9 @@ Open the **Workshop Home** dashboard once (`/d/workshop-home`) so you've seen th
 
 ### Metrics — PromQL
 
-> Your senior taps the screen. *"Pull up Explore. Before we touch anything else this morning, you need to know what's even talking to us right now. Start with the metric name everything in this lab keys off of."*
+> Your senior taps the screen. *"Before we touch anything else this morning, you need to know what's even talking to us — and what shape it arrives in. Two devices, two telemetry dialects on the wire, and yet every query you write today is going to treat them as one shape. Let's start at the source, before any of it is cleaned up. This is the part that bites every operator who jumps from one vendor's network to another."*
 
-#### 1. Discover what's in the lab
-
-In Explore, pick the `prometheus` datasource. In the query bar, run:
-
-```promql
-interface_oper_state
-```
-
-Click `Run query`. **You should see exactly 6 results** — three interfaces per device, two devices. Click any row's labels and the inspector shows the full label set:
-
-- `device` — `srl1` or `srl2`
-- `name` — interface name (`ethernet-1/1`, `ethernet-1/10`, `ethernet-1/11`)
-- `intf_role` — `peer` for the three real ones
-- `collection_type` — `gnmi` (srl1) or `snmp` (srl2)
-- `pipeline` — `telegraf` (both devices route through Telegraf today)
-- `host`, `instance`, `job` — where Prometheus scraped from
-
-> Your senior nods at the screen. *"Notice anything? Same metric name, same value semantics on both sides — but the `collection_type` label says one device emits gNMI and the other emits SNMP. That's the workshop's normalization story. We'll come back to it. For now: the metric is the same downstream regardless."*
-
-**Stop and notice.** The metric *name* tells you what (operational state of an interface). The *labels* tell you which one and where it came from. Every query you write from now on is a filter or aggregation on labels.
-
-Now try an aggregation. How many peer interfaces are operationally up per device?
-
-```promql
-count by (device) (interface_oper_state{intf_role="peer"} == 1)
-```
-
-`== 1` filters to only up interfaces (1 = UP, 2 = DOWN). `count by (device)` collapses every label *except* `device` — list the labels you want to keep and everything else flattens. You should see `srl1` returning `2` and `srl2` returning `2` — two healthy peer interfaces per device, with one down on each.
-
-#### 2. Normalization — two raw shapes, one shared schema
-
-> Your senior swivels their laptop toward you. *"Before we go further — notice that `intf_role` label on every series? That didn't come from the device. It was added by Telegraf during normalization. Let me show you what the raw shape looks like before it's touched. This is the part that bites every operator who jumps from one vendor's network to another."*
+#### 1. Normalization — two raw shapes, one shared schema
 
 The two devices speak different protocols at the source:
 
@@ -128,21 +97,14 @@ interface_oper_state{intf_role="peer"}
 
 Six rows, all `interface_oper_state{device=..., name=..., intf_role="peer", ...}`. Same metric name, same label keys, regardless of whether the upstream was `srl_interface_oper_state{source=srl1}` or `ifOperStatus{agent_host=srl2}`. That's the rename rules in `telegraf-{srl1,srl2}.conf.toml` doing the lift.
 
-The label that records which raw shape a series came from is `collection_type`. Run this once per device:
+But look closer at the filter you just ran. `interface_oper_state` and `device` are *renames* — the raw stream already carried that fact (`srl_interface_oper_state`, `source=srl1`), Telegraf just relabelled it to the canonical schema. `intf_role="peer"`, though, is a label that *did not exist on the wire at all*. No SR Linux gNMI message and no SNMP MIB emits an "interface role." Telegraf derives it from the interface name with a regex processor (`telegraf-{srl1,srl2}.conf.toml`, the `[[processors.regex]]` block with `result_key = "intf_role"`). That's a second, distinct operation:
 
-```promql
-count by (collection_type) (interface_oper_state{device="srl1"})
-```
+- **Normalization** — *renaming* what's already there to a shared shape. `srl_interface_oper_state` → `interface_oper_state`, `source` → `device`. No new facts, just a common vocabulary. Lossless and mechanical.
+- **Enrichment** — *adding* context the device never sent. `intf_role="peer"` is inferred here from the name; in a real fleet it more often comes from a source of truth (which interface is a peer link, which site a device sits in, who owns it). New facts, joined in at ingest.
 
-You should see one row: `collection_type=gnmi` returning `3`.
+You filter on both kinds of label the same way in PromQL — `{device="srl1"}` (normalized) and `{intf_role="peer"}` (enriched) read identically. The difference is in *where the value came from*: one was renamed off the wire, the other was attached by the pipeline. Keep the two straight, because they fail differently — a broken rename means a vendor's data goes missing from a query; broken enrichment means the data is all there but you can't slice it by the business context you expected. (Part 3 leans hard on enrichment: alerts get routed and annotated using exactly this kind of source-of-truth context.)
 
-```promql
-count by (collection_type) (interface_oper_state{device="srl2"})
-```
-
-One row: `collection_type=snmp` returning `3`. Same metric, same number of series, different vendor shape upstream.
-
-Now click into a result on each side and compare the full label set — `device`, `name`, `intf_role`, `collection_type`. The *only* meaningful difference is the `collection_type` value. Everything else lines up.
+The one label that records which raw shape a series came from is `collection_type` — `gnmi` for srl1, `snmp` for srl2. Click into a srl1 result and a srl2 result and compare the full label set — `device`, `name`, `intf_role`, `collection_type`. The *only* meaningful difference is the `collection_type` value. Everything else lines up: same metric name, same label keys, three peer interfaces on each side. The same fact two vendor dialects were carrying, now expressed once.
 
 That alignment is what "normalization" actually buys you:
 
@@ -150,17 +112,38 @@ That alignment is what "normalization" actually buys you:
 - Real fleets are mixed. Nokia SR Linux via gNMI, Cisco IOS-XR via Model-Driven Telemetry, Juniper via OpenConfig, legacy boxes via SNMP — each speaks its own dialect. Without normalization, every dashboard, alert rule, and runbook fragments per vendor. With it, the *query layer* doesn't see the dialects at all.
 - Telegraf is doing the renaming work for both devices in this lab. In production it might be Telegraf, OpenTelemetry collectors, custom processors — different tools, same job.
 
-Prove the normalization holds end-to-end:
+> Your senior closes the laptop slightly. *"You'll meet engineers who hate normalization because it abstracts away vendor specifics. They're not wrong about the cost — but the cost of not normalizing, in this lab and in production, is that every alert rule has to be written six times and every dashboard has six panels for the same thing. Pick your trade. We've picked normalization."*
+
+**Stop and notice.** The `collection_type` label is for inspecting the normalization itself: *"which raw shape did this sample come from, is that path healthy?"* It's not for branching your query logic. If you write `interface_oper_state{collection_type="gnmi"}` into a dashboard, you've narrowed to one vendor — useful for debugging that pipeline, but you'll miss every device whose data arrives via any other protocol. Default to collection-type-agnostic queries; reach for the label when you're debugging the normalization, not the network.
+
+#### 2. Discover what's in the lab
+
+You've watched the metric get *built* — raw dialects in, one canonical shape out. Now work with the finished article. Switch to Grafana **Explore**, pick the `prometheus` datasource, and run the bare metric with no filter:
 
 ```promql
 interface_oper_state
 ```
 
-Returns rows for *both* devices, *both* collection types. A dashboard panel querying `interface_oper_state{device="$device"}` doesn't care which protocol delivered the data — it asks for the shared name and gets it.
+Click `Run query`. **You should see exactly 6 results** — three interfaces per device, two devices, both collection types, all in the same shape. That one query returning rows for both vendors *is* the normalization paying off end-to-end: a dashboard panel querying `interface_oper_state{device="$device"}` doesn't care which protocol delivered the data — it asks for the shared name and gets it.
 
-> Your senior closes the laptop slightly. *"You'll meet engineers who hate normalization because it abstracts away vendor specifics. They're not wrong about the cost — but the cost of not normalizing, in this lab and in production, is that every alert rule has to be written six times and every dashboard has six panels for the same thing. Pick your trade. We've picked normalization."*
+Click any row's labels and the inspector shows the full label set:
 
-**Stop and notice.** The `collection_type` label is for inspecting the normalization itself: *"which raw shape did this sample come from, is that path healthy?"* It's not for branching your query logic. If you write `interface_oper_state{collection_type="gnmi"}` into a dashboard, you've narrowed to one vendor — useful for debugging that pipeline, but you'll miss every device whose data arrives via any other protocol. Default to collection-type-agnostic queries; reach for the label when you're debugging the normalization, not the network.
+- `device` — `srl1` or `srl2`
+- `name` — interface name (`ethernet-1/1`, `ethernet-1/10`, `ethernet-1/11`)
+- `intf_role` — `peer` for the three real ones
+- `collection_type` — `gnmi` (srl1) or `snmp` (srl2)
+- `pipeline` — `telegraf` (both devices route through Telegraf today)
+- `host`, `instance`, `job` — where Prometheus scraped from
+
+**Stop and notice.** The metric *name* tells you what (operational state of an interface). The *labels* tell you which one and where it came from — some renamed off the wire, some enriched in, as you just traced. Every query you write from now on is a filter or aggregation on labels.
+
+Now try an aggregation. How many peer interfaces are operationally up per device?
+
+```promql
+count by (device) (interface_oper_state{intf_role="peer"} == 1)
+```
+
+`== 1` filters to only up interfaces (1 = UP, 2 = DOWN). `count by (device)` collapses every label *except* `device` — list the labels you want to keep and everything else flattens. You should see `srl1` returning `2` and `srl2` returning `2` — two healthy peer interfaces per device, with one down on each.
 
 #### 3. Rate of change on a counter
 
@@ -256,6 +239,8 @@ You should get **exactly two rows**:
 
 ### Recording rules — composed metrics
 
+#### 6. Query a pre-computed metric
+
 > Your senior opens a file. *"Every query you just wrote in Explore can be baked into Prometheus as a recording rule. Instead of recomputing it on every dashboard load, Prometheus evaluates it on a schedule and stores the result as a new metric. Dashboards and alerts reference the pre-computed name — fast, consistent, one definition."*
 
 A **recording rule** is Prometheus evaluating a PromQL expression on a fixed interval (typically every 15–60 seconds) and writing the result back as a new, named metric. You then query that name instead of the full expression. Three reasons this matters in practice:
@@ -293,6 +278,8 @@ Two rows — one per device, total inbound throughput in bits/sec, already compu
 
 ### Alerts
 
+#### 7. Wrap a query in an alert rule
+
 > Your senior closes the rules file. *"A query answers a question. An alert is the same query with one addition: if the answer is true, act. That's all an alert rule is."*
 
 A **Prometheus alert rule** is a PromQL expression evaluated on a schedule — the same way a recording rule is — but instead of storing the result as a metric, Prometheus watches whether the expression returns any rows. If it does, the alert is *firing*; if it returns nothing, it's *inactive*. When an alert fires, Prometheus forwards it to **Alertmanager**, which handles routing, deduplication, and silencing before sending a notification to the on-call channel.
@@ -304,7 +291,7 @@ Two fields shape how the alert behaves in practice:
 
 You already have the PromQL for this — the intent-vs-reality query from exercise 4. Wrapping it in an alert rule is the mechanical step that turns a query you ran once in Explore into something that watches the network continuously.
 
-#### The expression
+##### The expression
 
 Start from the intent-vs-reality query you already know. The operational question is: *"Alert when a peer interface is configured UP but operationally DOWN."*
 
@@ -318,7 +305,7 @@ count by (device, name) (
 
 `> 0` is the firing condition — the alert fires whenever at least one interface matches. The `count by (device, name)` keeps the `device` and `name` labels in the alert so the notification knows *which* interface.
 
-#### The rule
+##### The rule
 
 Wrap the expression in an alert rule and add three things that make it operationally useful:
 
@@ -350,11 +337,11 @@ groups:
 - **`labels:`** — static key-value pairs attached to the alert. `severity` and `category` are what Alertmanager routes on in Part 3.
 - **`annotations:`** — human-readable context. `{{ $labels.name }}` and `{{ $labels.device }}` are template variables that expand to the alert's label values — the notification tells you exactly which interface on which device.
 
-#### Lab: see this alert in the stack
+##### Lab: see this alert in the stack
 
 The `InterfaceAdminUpOperDown` alert is already loaded. The lab's deliberately broken interfaces (`ethernet-1/11` on both devices) satisfy the expression right now.
 
-1. **Prometheus** — open [http://localhost:9090](http://localhost:9090), paste `ALERTS{alertname="InterfaceAdminUpOperDown"}` into the expression bar and run it. You should see one row per device with `alertstate="firing"`. If the lab just started, wait two minutes for the `for: 2m` window to elapse — until then the expression returns no rows because the alert is still in its pending period.
+1. **Prometheus** — open [http://localhost:9090](http://localhost:9090), paste `ALERTS{alertname="InterfaceAdminUpOperDown"}` into the expression bar and run it. You should see one row per device with `alertstate="firing"`. If the lab just started, wait two minutes for the `for: 2m` window to elapse — until then the expression returns no rows because the alert is still in its pending period. (Prefer the rendered list? The [alerts page](http://localhost:9090/alerts) shows the same alert with its `INACTIVE`/`PENDING`/`FIRING` state without writing any PromQL.)
 
 2. **Grafana Explore** — the `ALERTS` metric exposes firing alerts as a queryable time series:
 
@@ -374,7 +361,7 @@ The `InterfaceAdminUpOperDown` alert is already loaded. The lab's deliberately b
 
 Switch the Explore datasource to `loki`.
 
-#### 6. Stream selection
+#### 8. Stream selection
 
 ```logql
 {device="srl1"}
@@ -384,7 +371,7 @@ Run it. You'll see a stream of recent log lines from `srl1`. The dropdown on the
 
 **Stop and notice.** Curly braces with label selectors look like Prometheus, but they pick *log streams*, not metric series. A LogQL query always starts with `{...}`. Without label selectors Loki doesn't know what to query.
 
-#### 7. Line filter
+#### 9. Line filter
 
 ```logql
 {device="srl1"} |~ "BGP"
@@ -401,7 +388,7 @@ Run it. You'll see a stream of recent log lines from `srl1`. The dropdown on the
 
 **Stop and notice.** Stream selectors filter *which streams* Loki reads. Line filters filter *which lines* inside those streams. Always narrow the streams first — line filters scan, stream selectors index.
 
-#### 8. JSON parse
+#### 10. JSON parse
 
 Sonda emits structured logs. You can query parsed fields, not just substrings:
 
@@ -419,7 +406,7 @@ The `| json` stage parses each line as JSON; `| severity="warn"` filters on a pa
 
 **Stop and notice.** Structured logs let you query and reshape; unstructured logs force regex against text. The pipelines in this lab emit JSON on purpose.
 
-#### 9. Aggregation — log queries that produce metrics
+#### 11. Aggregation — log queries that produce metrics
 
 Aggregating logs over time turns a log query into a metric:
 
@@ -435,7 +422,7 @@ Switch the panel to `Time series`. You should see two lines (one per device) sho
 
     If you're running ahead or want to verify the query before the capstone, trigger a quick flap: `nobs autocon5 flap-interface --device srl1 --interface ethernet-1/10`. Within ~30 seconds the `srl1` line climbs. The capstone exercise (12) drives a full cascade that will show this too — no need to run it twice.
 
-#### 10. Pipeline awareness on logs
+#### 12. Pipeline awareness on logs
 
 The same normalization story plays out on the log side, with one important difference from metrics: logs don't go through Telegraf. Telegraf is a metrics pipeline — it scrapes and normalizes time-series samples. Logs are a different data shape (timestamped text streams), so the lab uses a dedicated log shipper instead: **Vector** for `srl2`, and a direct push path for `srl1`.
 
@@ -456,7 +443,7 @@ You should see streams from both devices. The `device`, `vendor_facility_process
 
 **Stop and notice.** Two normalization stories in this lab — `collection_type=gnmi/snmp` on metrics, `pipeline=direct/vector` on logs — but they share the same payoff: queries don't have to know which transport delivered the signal. The label that tags the source path exists for *debugging* the pipeline, not for *branching* your queries.
 
-#### 11. The bridge — metric to log
+#### 13. The bridge — metric to log
 
 > Your senior looks over. *"This is the move that pays off most often under pressure. Find the broken thing in metrics, then jump to logs with the same labels and read the why. If you only remember one thing from this morning, remember this."*
 
@@ -498,7 +485,7 @@ You'll see BGP-related lines for that specific peer. Add a filter to narrow:
 
 ## Capstone — everything at once
 
-#### 12. Trigger a cascade and watch metrics, logs, and alerts react
+#### 14. Trigger a cascade and watch metrics, logs, and alerts react
 
 > Your senior gestures at the keyboard. *"You've now seen metrics, normalization, recording rules, alerts, and logs as separate concepts. This exercise puts them all on screen at the same time. One command, one cascade — you watch every layer respond in causal order."*
 
@@ -508,7 +495,7 @@ This is the capstone exercise for Part 1. Open four browser tabs before you run 
 |-----|-------------|
 | Metrics | Grafana Explore — `prometheus` datasource |
 | Logs | Grafana Explore — `loki` datasource |
-| Alerts | [Prometheus alerts](http://localhost:9090/#/alerts) |
+| Alerts | [Prometheus alerts](http://localhost:9090/alerts) |
 | Alertmanager | [http://localhost:9093](http://localhost:9093) |
 
 **Step 1 — set up your metric queries.** In the metrics tab, load these four queries (use split view or separate tabs):
