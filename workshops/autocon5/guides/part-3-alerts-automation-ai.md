@@ -33,7 +33,7 @@ You should see four alerts firing — same shape you saw in Part 2:
 | InterfaceAdminUpOperDown | warning  | srl2             |  firing |  ... |
 ```
 
-If you skipped Part 2's [From panel to alert — walk the full lifecycle](../../../docs/workshop/part-2.md#from-panel-to-alert-walk-the-full-lifecycle), skim it now — the `nobs autocon5 alerts` CLI command, the Alertmanager UI, the `ALERTS` metric, and what `firing ↔ suppressed` means are all explained there. Part 3 picks up where that leaves off.
+If you skipped Part 2's [Walk the alert lifecycle](../../../docs/workshop/part-2.md#walk-the-alert-lifecycle), skim it now — the `nobs autocon5 alerts` CLI command, the Alertmanager UI, the `ALERTS` metric, and what `firing ↔ suppressed` means are all explained there. Part 3 picks up where that leaves off.
 
 The two `BgpSessionNotUp` rows are what this part is about. Once you walk Step 3, you'll see each cycle `firing` → `suppressed` (the workflow silences it for 20 minutes) → `firing` again (the silence expires). `InterfaceAdminUpOperDown` is steady-state noise that never moves; ignore it.
 
