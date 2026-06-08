@@ -40,6 +40,7 @@
     .pill-silence  { fill: #f0abfc; }
     .pill-audit    { fill: #c4b5fd; }
     .pill-panel    { fill: #fda4af; }
+    .pill-rca      { fill: #c7d2fe; }
 
     .icon          { fill: none; stroke: #0e1a1d; stroke-width: 1.7;
                      stroke-linecap: round; stroke-linejoin: round; }
@@ -83,9 +84,18 @@
       <polyline class="icon" points="-9,4 -5,-1 -1,2 3,-4 9,-1"/>
       <line class="icon" x1="3" y1="-9" x2="3" y2="8" stroke-dasharray="2 2"/>
     </symbol>
+    <symbol id="ic-sparkle" viewBox="-12 -12 24 24">
+      <path class="icon" d="M 0 -9 L 2 -2 L 9 0 L 2 2 L 0 9 L -2 2 L -9 0 L -2 -2 Z"/>
+    </symbol>
   </defs>
 
   <rect class="bg" x="0" y="0" width="1400" height="560" rx="0"/>
+
+  <!-- Orchestration (Prefect) wrapper — visually groups phases 2-4 inside Prefect -->
+  <rect x="325" y="135" width="1045" height="325" rx="14"
+        fill="none" stroke="#7c8a91" stroke-width="2"
+        stroke-dasharray="9 6" opacity="0.6"/>
+  <text x="848" y="122" class="phase-label" text-anchor="middle">Orchestration · Prefect</text>
 
   <text x="170"  y="60" class="phase-label" text-anchor="middle">1 · alert fires</text>
   <text x="560"  y="60" class="phase-label" text-anchor="middle">2 · gather evidence</text>
@@ -136,7 +146,7 @@
   <line class="arrow" x1="1070" y1="260" x2="1130" y2="260" marker-end="url(#ah)"/>
 
   <!-- Phase 4 -->
-  <rect class="box box-action" x="1135" y="160" width="220" height="220" rx="14"/>
+  <rect class="box box-action" x="1135" y="160" width="220" height="272" rx="14"/>
   <text x="1245" y="210" class="box-title" text-anchor="middle">ACTION</text>
 
   <g>
@@ -154,11 +164,16 @@
     <use href="#ic-chartmark" x="1165" y="331" width="20" height="20"/>
     <text x="1257" y="346" class="pill-text" text-anchor="middle">dashboard mark</text>
   </g>
+  <g>
+    <rect class="pill-rca" x="1155" y="366" width="180" height="34" rx="8"/>
+    <use href="#ic-sparkle" x="1165" y="373" width="20" height="20"/>
+    <text x="1257" y="388" class="pill-text" text-anchor="middle">AI narrative</text>
+  </g>
 
   <text x="170"  y="385" class="annot" text-anchor="middle">one trigger</text>
   <text x="560"  y="405" class="annot" text-anchor="middle">three sources, one bundle</text>
   <text x="955"  y="385" class="annot" text-anchor="middle">deterministic rule</text>
-  <text x="1245" y="405" class="annot" text-anchor="middle">silence + record + visible</text>
+  <text x="1245" y="450" class="annot" text-anchor="middle">silence · audit · narrative</text>
 
   <text x="700" y="485" class="footer" text-anchor="middle">
     one alert  ·  one decision per alert  ·  <tspan class="footer-emph">one record of why</tspan>
