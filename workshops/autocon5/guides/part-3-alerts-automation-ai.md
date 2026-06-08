@@ -548,7 +548,7 @@ Open Grafana, switch to the **Loki** datasource in Explore, and paste:
 {source="prefect", workflow="autocon5_quarantine_bgp", device="srl1", decision=~"proceed|skip|resolved"} | json
 ```
 
-The `decision=~"proceed|skip|resolved"` matcher keeps the result tight: only the workflow's decision audit records. The same Loki stream also carries AI narrative records (`ai_rca="true"`) and action confirmations (`QUARANTINE applied …`); the explicit decision filter hides those for now so the focus is just on the policy outcome. [Phase 6 "Where it lands"](#6-optional-swap-to-a-real-llm-provider-for-the-narrative) shows what the stream looks like without the filter.
+The `decision=~"proceed|skip|resolved"` matcher keeps the result tight: only the workflow's decision audit records. The same Loki stream also carries AI narrative records (`ai_rca="true"`) and action confirmations (`QUARANTINE applied …`); the explicit decision filter hides those for now so the focus is just on the policy outcome. Phase 4 [§D · The AI narrative](#d-the-ai-narrative-same-evidence-different-voice) shows what the stream looks like without the filter.
 
 The `| json` at the end is LogQL's way of saying *"parse each log line's body as JSON so I can read individual fields"* — the workflow writes its records as JSON, so this turns each line into a structured object Grafana renders inline (one field per row, right under the log line — no clicking needed).
 
@@ -648,7 +648,7 @@ Under the hood, the action stage forks into two parallel sub-stages once the pol
 
 (`resolved` decisions go through a separate `resolved_bgp_flow` — same shape, different path; it's covered in the Optional deep dives fold below.)
 
-Phase 3 showed you the workflow decided `proceed` on the broken peer. The word `proceed` only means something if you know what it triggers. Here's what **actually happens** in the lab when the workflow returns `proceed` — three concrete things, each in a different system.
+Phase 3 showed you the workflow decided `proceed` on the broken peer. The word `proceed` only means something if you know what it triggers. Here's what **actually happens** in the lab when the workflow returns `proceed` — four concrete things, each in a different system (the first three are the *deterministic action*, the fourth is the *AI narrative*).
 
 #### A · The silence — containment in Alertmanager
 
@@ -707,15 +707,45 @@ ALERTS{alertname="BgpSessionNotUp", alertstate="firing"}
 
 This step is optional — the silence and the audit record are already enough to verify the workflow's action. The dashboard mark is the third *type* of action the diagram showed, and the pattern is worth knowing whether you add the second annotation now or later.
 
+#### D · The AI narrative — same evidence, different voice
+
+Alongside the deterministic action, the workflow also writes a short narrative explaining the situation in plain language — what we call an **AI RCA record** (RCA = *Root Cause Analysis*). This step always runs, but the content depends on the decision:
+
+| Decision | What lands in Loki |
+|---|---|
+| `proceed` | Multi-section narrative the AI produced (Severity & confidence / Most likely cause / Immediate actions / What to verify next) |
+| `skip` | Brief annotation: *"AI RCA not run — policy decided skip (reason)"* |
+| `ENABLE_AI_RCA=false` | Brief annotation: *"AI RCA disabled"* |
+
+These records sit in the same Loki stream as the decision records, but carry an `ai_rca="true"` label instead of a `decision=…` label. The Phase 3 query's `decision=~"…"` filter hides them; drop that filter to see both kinds of record together:
+
+```logql
+{source="prefect", workflow="autocon5_quarantine_bgp", device="srl1"} | json
+```
+
+You'll see *two* recent records for the same alert: one with `decision=proceed` (the deterministic outcome) and one with `ai_rca="true"` (the AI narrative). Both are grounded in the same evidence the workflow gathered in Phase 2.
+
+Or render the latest narrative as Markdown directly in the terminal:
+
+```bash
+nobs autocon5 rca srl1 10.1.99.2
+```
+
+> **The big idea.** AI in an on-call loop should be a **narrative tool**, not a decision tool. The decision is what stays the same across replays and code reviews. The narrative is what reads well at 02:14 am. Keep them separate, keep them both grounded in the same evidence, and you get the best of both worlds.
+
+Worth noting for Phase 7: the AI narrative records share the workflow's Loki stream but **don't carry a `decision` label** (since they're not decisions — they're narratives). So if you later count records grouped by `decision`, the AI records will land in an empty/unlabeled bucket rather than alongside `proceed` / `skip` / `resolved`. Phase 7 walks the query that surfaces this.
+
+By default the lab ships with the **demo** provider — a deterministic templated narrative stitched from the evidence dict. Phase 6 walks the optional upgrade to a real LLM (OpenAI / Anthropic) with an API key.
+
 #### What `proceed` doesn't do
 
 Worth saying out loud, so it doesn't trip you up:
 
 - It does **not** fix the underlying problem on the device. The broken peer stays broken until a human (or a separate remediation flow) addresses it.
-- It does **not** open a ticket or page the on-call directly. In production this is where you'd hook in PagerDuty, OpsGenie, Jira, Slack — in this lab, the silence + audit record + dashboard mark is the full chain.
+- It does **not** open a ticket or page the on-call directly. In production this is where you'd hook in PagerDuty, OpsGenie, Jira, Slack — in this lab, the silence + audit record + dashboard mark + AI narrative is the full chain.
 - It does **not** decide *what to do next*. That's a human's job: read the audit record, look at the dashboard, walk the runbook.
 
-What `proceed` *does* do is contain the noise (silence), explain what was seen (audit record), and make the moment visible (dashboard mark). Three observable outcomes from one decision — the loop closing for this alert.
+What `proceed` *does* do is contain the noise (silence), explain what was seen (audit record), make the moment visible (dashboard mark), and stitch a plain-language summary (AI narrative). Four observable outcomes from one decision — the loop closing for this alert.
 
 ### 5. Maintenance branch — same drill, opposite decision
 
@@ -929,19 +959,7 @@ The deterministic policy decision is **unchanged** between demo and real provide
 
     The narrative is grounded in the *same* evidence the deterministic policy used — SoT's `expected_state`, the metric values, the prefix counter. The template doesn't invent facts; it stitches the evidence into prose. When you flip `AI_RCA_PROVIDER` to `openai` or `anthropic` later, the model gets that same evidence dict and writes its own three-section response — different voice, identical inputs. The `ai_rca="true"` label is what distinguishes these records from the deterministic `decision=...` records in the same Loki stream.
 
-#### Where it lands — alongside the decision, never inside it
-
-The AI narrative sits **next to** the deterministic decision in Loki, not in place of it. Drop the `decision=~"..."` filter from the Phase 3 query so both record types come through in one stream:
-
-```logql
-{source="prefect", workflow="autocon5_quarantine_bgp", device="srl1"} | json
-```
-
-You'll see *two* recent records for the same alert: one with `decision=proceed` (the deterministic outcome) and one with `ai_rca=true` (the AI narrative). Both are grounded in the same evidence the workflow gathered in Phase 2.
-
-Worth noting for Phase 7: the AI narrative records share the workflow's Loki stream but **don't carry a `decision` label** (since they're not decisions — they're narratives). So if you later query by `decision`, the AI records will land in an empty/unlabeled bucket rather than alongside `proceed` / `skip` / `resolved`. Phase 7 walks the query that surfaces this.
-
-> **The big idea.** AI in an on-call loop should be a **narrative tool**, not a decision tool. The decision is what stays the same across replays and code reviews. The narrative is what reads well at 02:14 am. Keep them separate, keep them both grounded in the same evidence, and you get the best of both worlds.
+The split between **decision** (deterministic) and **narrative** (AI) is the lesson the workshop is most insistent about — see [Phase 4 §D](#d-the-ai-narrative-same-evidence-different-voice) for the *big idea* framing. With a real LLM provider, the narrative side gets richer; the deterministic decision is unchanged.
 
 !!! tip "Done experimenting? Revert to the offline `demo` provider"
 
