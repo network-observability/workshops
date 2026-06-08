@@ -50,7 +50,7 @@ When you save changes to this dashboard, they stick for the rest of your worksho
 
 > Why this happens — the [Pre-provisioned dashboards section of the Tour](../../../docs/workshop/tour.md#pre-provisioned-dashboards) covers the provisioning model in detail.
 
-## The exercise
+## Build the dashboard panel
 
 You're adding a **flap rate** panel: how many UPDOWN log events per minute, broken out per interface, with thresholds that match the `PeerInterfaceFlapping` alert rule.
 
@@ -240,7 +240,7 @@ Worth noting: `srl1` and `srl2` arrive through different upstream pipelines (gNM
 
 > Your senior nods at the screen. *"That's the panel. Six hours from now when somebody on the rotation gets paged on a similar shape, this view is on screen the moment they open the dashboard. Ten minutes saved off the next triage. That's the work."*
 
-## From panel to alert — walk the full lifecycle
+## Walk the alert lifecycle
 
 You've made the panel react to a flap. The line crossed the orange and red thresholds; visually you got both the early heads-up and the page moment. Now the question every on-call asks themselves at 02:14: *did anything else actually fire?* Where does that information live, and what happens to it next?
 
@@ -248,7 +248,7 @@ This walk uses every observability surface the workshop already has running — 
 
 > Heads-up: this section is foundational for Part 3. Take the 10 extra minutes here and Part 3's automation walk will feel obvious. Skip it and Part 3 will refer back here anyway.
 
-### A. The rule, live
+### 1. The rule, live
 
 The `PeerInterfaceFlapping` rule you mirrored in the panel hasn't been hypothetical — it's been running against the same set of UPDOWN log lines you queried in the panel, this whole time. Expand the fold below for the full yaml anatomy and where the rule lives in the repo; what matters for this walk is *when* it fires.
 
@@ -262,7 +262,7 @@ The `PeerInterfaceFlapping` rule you mirrored in the panel hasn't been hypotheti
     - A **firing condition** — what makes the query "true" (e.g., `> 3 events in 2 minutes`).
     - An optional **`for:` duration** — how long the condition must hold before the rule actually fires. Filters out blips that come and go.
     - **Labels** — key/value pairs attached to every firing instance, used downstream for routing and filtering.
-    - **Annotations** — human-readable text that travels with the alert into notifications. (Don't confuse these *Prometheus rule annotations* with the **alert markers** you'll add to a dashboard panel in section D — different system, same word; we'll come back to this.)
+    - **Annotations** — human-readable text that travels with the alert into notifications. (Don't confuse these *Prometheus rule annotations* with the **alert markers** you'll add to a dashboard panel in step 4 of the next section — different system, same word; we'll come back to this.)
 
     The thing that runs the rule on a schedule and decides when it's "matching" is called the **rule evaluator** — Prometheus has one for its PromQL-based rules, Loki has one (called the **Loki ruler**) for its LogQL-based rules.
 
@@ -302,7 +302,7 @@ Two transitions to keep in mind as you watch the rule fire:
 
 You flapped `srl1/ethernet-1/1` a minute ago. The condition is matching. After 30s it'll be `firing`. Let's confirm.
 
-### B. Inspect alerts from the CLI
+### 2. Inspect alerts from the CLI
 
 The lab ships a small CLI that prints the current alert state in a table — same data Alertmanager has, just rendered for terminal use:
 
@@ -335,18 +335,18 @@ Four steady-state rows + one transient — and the last column (`Age`) tells you
 
 > Your senior glances at the screen. *"Two-tier shape — the always-broken stuff sits there forever, and the things you actually want to know about come and go. Both are useful. The always-broken alerts tell you the lab knows about a problem someone hasn't fixed. The transient ones tell you something happened just now."*
 
-### C. Inspect alerts in the Alertmanager UI
+### 3. Inspect alerts in the Alertmanager UI
 
-Open <http://localhost:9093/#/alerts>. This is the central queue every rule evaluator (the **Loki ruler** for LogQL-based rules, the **Prometheus rule evaluator** for PromQL-based rules — both defined in section A's fold above) pushes firing alerts into.
+Open <http://localhost:9093/#/alerts>. This is the central queue every rule evaluator (the **Loki ruler** for LogQL-based rules, the **Prometheus rule evaluator** for PromQL-based rules — both defined in step 1's fold above) pushes firing alerts into.
 
 What to look at:
 
 - **The alerts list** — same rows you saw from the CLI, grouped by label set. Click any row to expand and see all its labels (`device`, `interface`, `severity`, …) and annotations (`summary`, `description`).
 - **The filter box** at the top — paste `alertname="PeerInterfaceFlapping"` to scope down. Filters use the same label-matcher syntax as PromQL/LogQL selectors.
 - **The generator URL** on an expanded alert — the link back to the rule that fired this alert. For `PeerInterfaceFlapping` it points at the Loki ruler's evaluation.
-- **The Silences tab** in the top nav — currently empty. You'll create one in step F.
+- **The Silences tab** in the top nav — currently empty. You'll create one in step 6.
 
-### D. See alerts in Grafana — and overlay them on your panel
+### 4. See alerts in Grafana — and overlay them on your panel
 
 Prometheus exposes alert state as a metric. In Grafana Explore, pick the **prometheus** datasource and paste:
 
@@ -366,7 +366,7 @@ There's a second way to put `ALERTS` to work on a dashboard: as an **alert marke
 
 !!! info "Naming heads-up: 'alert marker' = Grafana 'annotation'"
 
-    Grafana's UI calls this feature **annotations** — confusingly, the same word the Prometheus alert rule yaml uses for its `annotations:` block (the human-readable text travelling with each firing alert; you saw that in section A's fold). They're **two different systems** that happen to share a name. To avoid the collision, this guide uses **alert marker** when we mean the Grafana panel overlay, and **annotation** only when you literally need to type the word in Grafana's UI. (Part 3 uses **audit record** for the workflow's Loki log lines — a third related-but-different concept.)
+    Grafana's UI calls this feature **annotations** — confusingly, the same word the Prometheus alert rule yaml uses for its `annotations:` block (the human-readable text travelling with each firing alert; you saw that in step 1's fold). They're **two different systems** that happen to share a name. To avoid the collision, this guide uses **alert marker** when we mean the Grafana panel overlay, and **annotation** only when you literally need to type the word in Grafana's UI. (Part 3 uses **audit record** for the workflow's Loki log lines — a third related-but-different concept.)
 
 Add one now (Grafana 13 split the alert-marker editor across a right-panel pane and a query-editor modal — both steps are below):
 
@@ -414,7 +414,7 @@ Two ways to read this once you have it on every panel:
 
 (To scope the marker to a single panel instead of `All panels`, set **Show in** → **Selected panels** and pick the panel — useful when a marker only makes sense for one panel's question.)
 
-### E. What's a silence?
+### 5. What's a silence?
 
 A **silence** is a per-label-set mute applied at the Alertmanager layer. It has four pieces:
 
@@ -427,7 +427,7 @@ What a silence does *not* do: stop the rule from matching. The condition is stil
 
 This distinction matters: silencing isn't fixing. It's saying *"we know about this, stop paging us about it for the next N minutes."* The rule keeps watching; the page just doesn't fire.
 
-### F. Create a silence by hand
+### 6. Create a silence by hand
 
 We'll silence one of the always-firing `InterfaceAdminUpOperDown` alerts. Safe target — silencing it doesn't break anything in the lab, and seeing it flip from `firing` to `suppressed` is the whole point of this step.
 
@@ -446,7 +446,7 @@ Now flip it back: in **Silences**, find your silence, click **Expire**. Refresh 
 
 > *"That's the dance the on-call does every time something fires while a known maintenance is in progress. Whoever takes the alert clicks Silence, picks the right matchers, sets a duration, writes a comment. The rule keeps watching, the pager stops yelling, the audit trail shows who silenced what and why."*
 
-### G. The lifecycle in one diagram
+### 7. The lifecycle in one diagram
 
 ```text
    rule starts matching
