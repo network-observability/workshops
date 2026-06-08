@@ -293,21 +293,25 @@ The path from "alert in Alertmanager" to "workflow running" looks like this:
    Prometheus / Loki rule evaluator
               │
               ▼  ALERT fires once
-    ┌──────────────────────────────────────────┐
-    │              Alertmanager                │
-    │  Holds active alerts in its own memory.  │
-    │  Sends ONE webhook on first fire (~5s),  │
-    │  then again only every repeat_interval   │
-    │  (30 min in this lab).                   │
-    └──────────────────┬───────────────────────┘
-                       │ HTTP POST
-                       ▼
-            Prefect alert_receiver flow
-                       │ dispatches per alertname
-                       ▼
-              quarantine_bgp_flow
-                       │
-                       ▼  Evidence → Policy → Action
+   ┌──────────────────────────────────────────┐ ◄── nobs autocon5 alerts
+   │              Alertmanager                │     (reads /api/v2/alerts)
+   │  Holds active alerts in its own memory.  │
+   │  Sends ONE webhook on first fire (~5s),  │
+   │  then again only every repeat_interval   │
+   │  (30 min in this lab).                   │
+   └──────────────────┬───────────────────────┘
+                      │ HTTP POST (webhook)
+   ┌── Orchestration (Prefect) ────────────────┐
+   │                  ▼                         │
+   │      alert_receiver flow                  │
+   │              │ dispatches by alertname    │
+   │              ▼                            │
+   │      quarantine_bgp_flow                  │
+   │              │                            │
+   │              ▼                            │
+   │      Evidence (§2) ─► Policy (§3) ─► Action (§4)
+   │                                            │
+   └────────────────────────────────────────────┘
 ```
 
 !!! warning "Heads-up for the rest of Part 3 — Alertmanager's `repeat_interval`"
@@ -325,6 +329,24 @@ The path from "alert in Alertmanager" to "workflow running" looks like this:
 For Part 3, we focus on what happens *after* the alert is `firing`: the workflow picks it up and decides what to do. That starts with gathering facts.
 
 ### 2. Evidence — what the workflow collected
+
+Under the hood, gathering evidence looks like this:
+
+```text
+   ┌── Orchestration (Prefect) ──────────────────────────────────┐
+   │                                                              │
+   │   collect_evidence task                                     │
+   │       │                                                      │
+   │       ├──► Infrahub    · GraphQL: WorkshopDevice (intent)   │
+   │       ├──► Prometheus  · PromQL:  bgp_*_state, routes       │ ◄── nobs autocon5 evidence
+   │       └──► Loki        · LogQL:   BGP-filtered log lines    │     (same three sources,
+   │       │                                                      │      run ad-hoc, no flow)
+   │       ▼  EvidenceBundle                                     │
+   │                                                              │
+   │   evaluate_policy task ──► §3 Policy                        │
+   │                                                              │
+   └──────────────────────────────────────────────────────────────┘
+```
 
 Before the workflow decides anything, it gathers facts about the peer the alert is firing on. We call this the **evidence**: three pieces of information about the peer, plus a preview of what the workflow's decision rule would say given those facts.
 
@@ -498,6 +520,24 @@ You can see the same source-of-truth data in the Infrahub browser UI. Open <http
 
 ### 3. Policy — what was decided and why
 
+Under the hood, the policy stage looks like this:
+
+```text
+   ┌── Orchestration (Prefect) ──────────────────────────────┐
+   │                                                          │
+   │   evaluate_policy task                                  │
+   │       │ DecisionPolicy.evaluate(EvidenceBundle)         │
+   │       ▼                                                  │
+   │     Decision { proceed | skip | resolved }              │
+   │       │                                                  │
+   │       ├──► annotate_decision (writes Loki audit record) │ ◄── nobs autocon5 rca
+   │       │                                                  │     (renders the latest
+   │       ▼                                                  │      audit record as MD)
+   │     §4 Action                                            │
+   │                                                          │
+   └──────────────────────────────────────────────────────────┘
+```
+
 Phase 2 showed you the *facts* the workflow gathered. Phase 3 looks at the **decision** the workflow made from those facts — and where to find a written record of it.
 
 When the workflow finishes looking at a peer, it writes one line to the **log store (Loki)** describing what it decided. We call this an **audit record** — same shape as a normal log line, with extra labels saying which workflow ran, which peer it was for, and what it decided. The record survives long after the alert is gone, so you can ask Loki *"what did the workflow do an hour ago?"* or *"what did it decide on srl1 last week?"* and get an answer.
@@ -582,6 +622,27 @@ Three different decisions, all written to the same audit trail, all queryable wi
 > Why write the decision instead of just doing the action? Because in a real on-call rotation, the next person who looks at this peer needs to know *what was decided and why* — not just *what happened*. A silenced alert tells you "someone or something muted this" but doesn't tell you the reasoning. An audit record carries the reasoning forward, queryable, forever.
 
 ### 4. Action — what `proceed` actually does
+
+Under the hood, the action stage branches on the decision from §3:
+
+```text
+   ┌── Orchestration (Prefect) ──────────────────────────────────────┐
+   │                                                                  │
+   │   Decision (from §3)                                            │
+   │       │                                                          │
+   │       ├── proceed ──► quarantine_task                           │
+   │       │                  ├──► Alertmanager (silence 20m)        │
+   │       │                  └──► Loki (QUARANTINE applied)         │
+   │       │              ai_rca_task                                 │ ◄── nobs autocon5 cycle
+   │       │                  └──► Loki + LLM (AI narrative)         │     (one panel per row:
+   │       │                                                          │      alert · silences ·
+   │       ├── skip    ──► ai_rca_skipped_task                       │      flow runs · decision)
+   │       │                  └──► Loki ("not run — skip")           │
+   │       │                                                          │
+   │       └── resolved ─► resolved_bgp_flow                         │
+   │                                                                  │
+   └──────────────────────────────────────────────────────────────────┘
+```
 
 Phase 3 showed you the workflow decided `proceed` on the broken peer. The word `proceed` only means something if you know what it triggers. Here's what **actually happens** in the lab when the workflow returns `proceed` — three concrete things, each in a different system.
 

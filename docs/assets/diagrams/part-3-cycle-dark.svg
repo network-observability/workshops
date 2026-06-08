@@ -87,6 +87,12 @@
 
   <rect class="bg" x="0" y="0" width="1400" height="560" rx="0"/>
 
+  <!-- Orchestration (Prefect) wrapper — visually groups phases 2-4 inside Prefect -->
+  <rect x="325" y="135" width="1045" height="300" rx="14"
+        fill="none" stroke="#7c8a91" stroke-width="2"
+        stroke-dasharray="9 6" opacity="0.6"/>
+  <text x="848" y="122" class="phase-label" text-anchor="middle">Orchestration · Prefect</text>
+
   <text x="170"  y="60" class="phase-label" text-anchor="middle">1 · alert fires</text>
   <text x="560"  y="60" class="phase-label" text-anchor="middle">2 · gather evidence</text>
   <text x="955"  y="60" class="phase-label" text-anchor="middle">3 · decide</text>
