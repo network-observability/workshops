@@ -623,26 +623,30 @@ Three different decisions, all written to the same audit trail, all queryable wi
 
 ### 4. Action — what `proceed` actually does
 
-Under the hood, the action stage branches on the decision from §3:
+Under the hood, the action stage forks into two parallel sub-stages once the policy decides — a **deterministic action** (only fires on `proceed`) and an **AI narrative** (always fires, content varies by decision):
 
 ```text
-   ┌── Orchestration (Prefect) ──────────────────────────────────────┐
-   │                                                                  │
-   │   Decision (from §3)                                            │
-   │       │                                                          │
-   │       ├── proceed ──► quarantine_task                           │
-   │       │                  ├──► Alertmanager (silence 20m)        │
-   │       │                  └──► Loki (QUARANTINE applied)         │
-   │       │              ai_rca_task                                 │ ◄── nobs autocon5 cycle
-   │       │                  └──► Loki + LLM (AI narrative)         │     (one panel per row:
-   │       │                                                          │      alert · silences ·
-   │       ├── skip    ──► ai_rca_skipped_task                       │      flow runs · decision)
-   │       │                  └──► Loki ("not run — skip")           │
-   │       │                                                          │
-   │       └── resolved ─► resolved_bgp_flow                         │
-   │                                                                  │
-   └──────────────────────────────────────────────────────────────────┘
+   ┌── Orchestration (Prefect) ──────────────────────────────────────────┐
+   │                                                                      │
+   │   Decision (from §3)                                                │
+   │       │                                                              │
+   │       │   ┌── Deterministic action (only on `proceed`) ────────────┐│
+   │       ├──►│  quarantine_task                                        ││
+   │       │   │      ├──► Alertmanager  · silence (20m)                ││
+   │       │   │      └──► Loki          · QUARANTINE applied audit     ││
+   │       │   └──────────────────────────────────────────────────────────┘│
+   │       │                                                              │
+   │       │   ┌── AI narrative (always runs; content varies) ───────────┐│ ◄── nobs autocon5 cycle
+   │       └──►│  ai_rca_task / ai_rca_skipped_task                      ││     (renders the cycle's
+   │           │      ├─ proceed   → Loki + LLM call (RCA narrative)    ││      four panels in one
+   │           │      ├─ skip      → Loki ("not run — policy=skip")     ││      command)
+   │           │      └─ disabled  → Loki ("AI RCA disabled")           ││
+   │           └──────────────────────────────────────────────────────────┘│
+   │                                                                      │
+   └──────────────────────────────────────────────────────────────────────┘
 ```
+
+(`resolved` decisions go through a separate `resolved_bgp_flow` — same shape, different path; it's covered in the Optional deep dives fold below.)
 
 Phase 3 showed you the workflow decided `proceed` on the broken peer. The word `proceed` only means something if you know what it triggers. Here's what **actually happens** in the lab when the workflow returns `proceed` — three concrete things, each in a different system.
 
