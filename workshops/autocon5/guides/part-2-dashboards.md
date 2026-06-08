@@ -81,7 +81,7 @@ Adding a panel in Grafana 13 takes a few clicks:
 
 > *"What datasource? Think about the data shape — flap rate is a count of log events, not a metric Prometheus is scraping for us."*
 
-Choose **`loki`** in the datasource picker. Flap rate is a *log-derived metric* — Loki counts log lines, not Prometheus samples. (Part 1's [exercise 9 — log aggregation](../../../docs/workshop/part-1.md#9-aggregation-log-queries-that-produce-metrics) walks the same `count_over_time(...)` shape if you want a refresher.)
+Choose **`loki`** in the datasource picker. Flap rate is a *log-derived metric* — Loki counts log lines, not Prometheus samples. (Part 1's [exercise 11 — log aggregation](../../../docs/workshop/part-1.md#11-aggregation-log-queries-that-produce-metrics) walks the same `count_over_time(...)` shape if you want a refresher.)
 
 ### 3. Write the query
 
