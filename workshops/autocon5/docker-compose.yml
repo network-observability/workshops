@@ -203,7 +203,14 @@ services:
 
   grafana:
     container_name: grafana
-    image: ${GRAFANA_IMAGE:-docker.io/grafana/grafana:13.0.1-security-01}
+    # Build a workshop-local image with plugins baked in so the lab boots
+    # without internet. `docker compose build grafana` (one-time, with
+    # internet) downloads the plugins via grafana-cli; subsequent `up` runs
+    # are fully offline. See ./grafana/Dockerfile for the plugin list.
+    build:
+      context: ./grafana
+      dockerfile: Dockerfile
+    image: ${GRAFANA_IMAGE:-autocon5/grafana:13.0.1-security-01-plugins}
     ports:
       - "3000:3000"
     volumes:
@@ -213,7 +220,8 @@ services:
       - ./grafana/grafana.ini:/etc/grafana/grafana.ini
       - grafana_data:/grafana
     environment:
-      GF_INSTALL_PLUGINS: natel-discrete-panel,yesoreyeram-infinity-datasource,volkovlabs-echarts-panel
+      # Plugins are baked into the image (see ./grafana/Dockerfile); no
+      # runtime install needed. GF_INSTALL_PLUGINS deliberately omitted.
       # Disable Grafana 13's bundled promo apps so the dashboards aren't
       # cluttered with Pyroscope / DrillDown nav entries the workshop never uses.
       # Note: this does NOT suppress the Grafana 13 "What's new" splash modal —
