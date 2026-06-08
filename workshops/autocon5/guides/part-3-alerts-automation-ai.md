@@ -545,8 +545,10 @@ When the workflow finishes looking at a peer, it writes one line to the **log st
 Open Grafana, switch to the **Loki** datasource in Explore, and paste:
 
 ```logql
-{source="prefect", workflow="autocon5_quarantine_bgp", device="srl1"} | json
+{source="prefect", workflow="autocon5_quarantine_bgp", device="srl1", decision=~"proceed|skip|resolved"} | json
 ```
+
+The `decision=~"proceed|skip|resolved"` matcher keeps the result tight: only the workflow's decision audit records. The same Loki stream also carries AI narrative records (`ai_rca="true"`) and action confirmations (`QUARANTINE applied …`); the explicit decision filter hides those for now so the focus is just on the policy outcome. Phase 4 [§D · The AI narrative](#d-the-ai-narrative-same-evidence-different-voice) shows what the stream looks like without the filter.
 
 The `| json` at the end is LogQL's way of saying *"parse each log line's body as JSON so I can read individual fields"* — the workflow writes its records as JSON, so this turns each line into a structured object Grafana renders inline (one field per row, right under the log line — no clicking needed).
 
@@ -555,8 +557,6 @@ The `| json` at the end is LogQL's way of saying *"parse each log line's body as
     If the query returns *"No data"*, the workflow hasn't processed an alert on this peer yet. The workflow only runs when an alert fires at it — give the lab ~30–60 seconds after the setup-check reset for the always-firing alerts to make their way through, then re-run the query. (Or skip ahead to Phase 4 and come back; by then there'll be records.)
 
 You should see one log line per decision the workflow has made on `srl1` recently. Look at the most recent one — Grafana parses the JSON inline, so every field is visible right under the row. The same record is the **Most-recent-decision panel** in `nobs autocon5 cycle srl1 10.1.99.2` if you'd rather read it from the terminal.
-
-You'll also see records with the `ai_rca="true"` label mixed into the same stream — those are the AI narrative the workflow writes alongside each `proceed` decision (you enabled the demo provider in Setup). [Phase 6](#6-optional-swap-to-a-real-llm-provider-for-the-narrative) covers them in detail; for now, just note they're there.
 
 The fields that matter on the *decision* record:
 
@@ -648,7 +648,7 @@ Under the hood, the action stage forks into two parallel sub-stages once the pol
 
 (`resolved` decisions go through a separate `resolved_bgp_flow` — same shape, different path; it's covered in the Optional deep dives fold below.)
 
-Phase 3 showed you the workflow decided `proceed` on the broken peer. The word `proceed` only means something if you know what it triggers. Here's what **actually happens** in the lab when the workflow returns `proceed` — three concrete things, each in a different system.
+Phase 3 showed you the workflow decided `proceed` on the broken peer. The word `proceed` only means something if you know what it triggers. Here's what **actually happens** in the lab when the workflow returns `proceed` — three concrete things, each in a different system (the first two are the *deterministic action*, the third is the *AI narrative*).
 
 #### A · The silence — containment in Alertmanager
 
@@ -691,31 +691,63 @@ Open Alertmanager at <http://localhost:9093/#/alerts>. In the filter bar at the 
 
 > Why silence and not fix? Silencing stops the *page* from firing again for 20 minutes — the same alert won't wake the on-call up twice for the same issue. The underlying problem is still happening (the rule keeps matching); the silence just mutes the notification path. Part 2's "What's a silence?" section walks the silence-vs-fixing distinction in detail.
 
-#### B · The audit record — memory in Loki
+#### B · The action audit + dashboard mark — Loki record, optionally visualised in Grafana
 
-You already saw this in Phase 3 — the workflow wrote a `decision=proceed` log line to Loki with the reason. This is the **institutional memory**: it survives long after the silence expires, the alert resolves, and the next person on the rotation logs in. One log line per decision, every decision, forever. (The same record renders as the Most-recent-decision panel in `nobs autocon5 cycle srl1 10.1.99.2`.)
+When the workflow finishes acting, it writes a second Loki record specifically about the action it just took:
 
-#### C · The dashboard mark — visibility in Grafana
-
-In Part 2's "See alerts in Grafana — and overlay them on your panel" section you added a Grafana **alert marker** that draws a red shaded region on the **Flap rate (2 min)** panel whenever `PeerInterfaceFlapping` is firing. The **same pattern** works for any alert exposed in the `ALERTS` metric — change the alertname filter to `BgpSessionNotUp` and you get the same red region on a different panel marking exactly when this alert was firing.
-
-If you'd like to see it for `BgpSessionNotUp` too, add a second alert marker using the same Part 2 walk, with this query instead:
-
-```promql
-ALERTS{alertname="BgpSessionNotUp", alertstate="firing"}
+```text
+QUARANTINE applied (silence_id=<uuid>)
 ```
 
-This step is optional — the silence and the audit record are already enough to verify the workflow's action. The dashboard mark is the third *type* of action the diagram showed, and the pattern is worth knowing whether you add the second annotation now or later.
+The labels are `source=prefect`, `workflow=autocon5_quarantine_bgp`, `device=srl1`, `peer_address=10.1.99.2` — note the **absence** of a `decision` label. Phase 3's record carries `decision=proceed`; this one carries the silence ID. Two records, two roles: §3's says *what was decided*, this one says *what was done*. Query the action audit specifically:
+
+```logql
+{source="prefect", workflow="autocon5_quarantine_bgp", device="srl1"} |~ "QUARANTINE applied"
+```
+
+You'll see one row per `proceed` cycle, each pinpointing *when the workflow took action*.
+
+**Drawing this on a Grafana panel.** The same query can drive a Grafana **annotation** — a vertical line on any panel marking the exact moment the workflow acted. In Grafana, open any dashboard, **Edit → Dashboard options → Annotations → New annotation**, datasource Loki, query as above. From then on, every panel on that dashboard gets a vertical line at every action-applied timestamp. That's the real "dashboard mark" — *when the workflow acted*, not (as the Part 2 ALERTS overlay shows) *when the alert was firing*. Different signals; the action mark is far more useful for post-incident review because it answers "what did the automation do, and when?"
+
+#### C · The AI narrative — same evidence, different voice
+
+Alongside the deterministic action, the workflow also writes a short narrative explaining the situation in plain language — what we call an **AI RCA record** (RCA = *Root Cause Analysis*). This step always runs, but the content depends on the decision:
+
+| Decision | What lands in Loki |
+|---|---|
+| `proceed` | Multi-section narrative the AI produced (Severity & confidence / Most likely cause / Immediate actions / What to verify next) |
+| `skip` | Brief annotation: *"AI RCA not run — policy decided skip (reason)"* |
+| `ENABLE_AI_RCA=false` | Brief annotation: *"AI RCA disabled"* |
+
+These records sit in the same Loki stream as the decision records, but carry an `ai_rca="true"` label instead of a `decision=…` label. The Phase 3 query's `decision=~"…"` filter hides them; drop that filter to see both kinds of record together:
+
+```logql
+{source="prefect", workflow="autocon5_quarantine_bgp", device="srl1"} | json
+```
+
+You'll see *two* recent records for the same alert: one with `decision=proceed` (the deterministic outcome) and one with `ai_rca="true"` (the AI narrative). Both are grounded in the same evidence the workflow gathered in Phase 2.
+
+Or render the latest narrative as Markdown directly in the terminal:
+
+```bash
+nobs autocon5 rca srl1 10.1.99.2
+```
+
+> **The big idea.** AI in an on-call loop should be a **narrative tool**, not a decision tool. The decision is what stays the same across replays and code reviews. The narrative is what reads well at 02:14 am. Keep them separate, keep them both grounded in the same evidence, and you get the best of both worlds.
+
+Worth noting for Phase 7: the AI narrative records share the workflow's Loki stream but **don't carry a `decision` label** (since they're not decisions — they're narratives). So if you later count records grouped by `decision`, the AI records will land in an empty/unlabeled bucket rather than alongside `proceed` / `skip` / `resolved`. Phase 7 walks the query that surfaces this.
+
+By default the lab ships with the **demo** provider — a deterministic templated narrative stitched from the evidence dict. Phase 6 walks the optional upgrade to a real LLM (OpenAI / Anthropic) with an API key.
 
 #### What `proceed` doesn't do
 
 Worth saying out loud, so it doesn't trip you up:
 
 - It does **not** fix the underlying problem on the device. The broken peer stays broken until a human (or a separate remediation flow) addresses it.
-- It does **not** open a ticket or page the on-call directly. In production this is where you'd hook in PagerDuty, OpsGenie, Jira, Slack — in this lab, the silence + audit record + dashboard mark is the full chain.
-- It does **not** decide *what to do next*. That's a human's job: read the audit record, look at the dashboard, walk the runbook.
+- It does **not** open a ticket or page the on-call directly. In production this is where you'd hook in PagerDuty, OpsGenie, Jira, Slack — in this lab, the silence + action audit + AI narrative is the full chain.
+- It does **not** decide *what to do next*. That's a human's job: read the action audit, read the narrative, look at the dashboard, walk the runbook.
 
-What `proceed` *does* do is contain the noise (silence), explain what was seen (audit record), and make the moment visible (dashboard mark). Three observable outcomes from one decision — the loop closing for this alert.
+What `proceed` *does* do is contain the noise (silence in Alertmanager), record the action with a queryable timestamp (action audit in Loki, optionally rendered as an annotation on any Grafana panel), and stitch a plain-language summary (AI narrative). Three observable outcomes from one decision — the loop closing for this alert.
 
 ### 5. Maintenance branch — same drill, opposite decision
 
@@ -782,7 +814,7 @@ Same alert payload, same workflow, same decision logic — just bypassing Alertm
 Wait ~10 seconds for the workflow to finish. Then re-run the Phase 3 LogQL query in Grafana:
 
 ```logql
-{source="prefect", workflow="autocon5_quarantine_bgp", device="srl1"} | json
+{source="prefect", workflow="autocon5_quarantine_bgp", device="srl1", decision=~"proceed|skip|resolved"} | json
 ```
 
 The **most recent line** now reads:
@@ -929,29 +961,23 @@ The deterministic policy decision is **unchanged** between demo and real provide
 
     The narrative is grounded in the *same* evidence the deterministic policy used — SoT's `expected_state`, the metric values, the prefix counter. The template doesn't invent facts; it stitches the evidence into prose. When you flip `AI_RCA_PROVIDER` to `openai` or `anthropic` later, the model gets that same evidence dict and writes its own three-section response — different voice, identical inputs. The `ai_rca="true"` label is what distinguishes these records from the deterministic `decision=...` records in the same Loki stream.
 
-#### Where it lands — alongside the decision, never inside it
-
-The AI narrative sits **next to** the deterministic decision in Loki, not in place of it. Run the Phase 3 query again:
-
-```logql
-{source="prefect", workflow="autocon5_quarantine_bgp", device="srl1"} | json
-```
-
-You'll see *two* recent records for the same alert: one with `decision=proceed` (the deterministic outcome) and one with `ai_rca=true` (the AI narrative). Both are grounded in the same evidence the workflow gathered in Phase 2.
-
-Worth noting for Phase 7: the AI narrative records share the workflow's Loki stream but **don't carry a `decision` label** (since they're not decisions — they're narratives). So if you later query by `decision`, the AI records will land in an empty/unlabeled bucket rather than alongside `proceed` / `skip` / `resolved`. Phase 7 walks the query that surfaces this.
-
-> **The big idea.** AI in an on-call loop should be a **narrative tool**, not a decision tool. The decision is what stays the same across replays and code reviews. The narrative is what reads well at 02:14 am. Keep them separate, keep them both grounded in the same evidence, and you get the best of both worlds.
+The split between **decision** (deterministic) and **narrative** (AI) is the lesson the workshop is most insistent about — see [Phase 4 §D](#d-the-ai-narrative-same-evidence-different-voice) for the *big idea* framing. With a real LLM provider, the narrative side gets richer; the deterministic decision is unchanged.
 
 !!! tip "Done experimenting? Revert to the offline `demo` provider"
 
-    Two-line revert. In `workshops/autocon5/.env`:
+    Two-step revert. In `workshops/autocon5/.env`:
 
     ```bash
     AI_RCA_PROVIDER=demo
     ```
 
-    Then `nobs autocon5 up` to reload the container against the new env. The workflow keeps writing AI RCA annotations, but they're templated again — no API calls, no cost. (Leave your API key in `.env`; it's ignored when the provider is `demo`.) If you'd rather turn the step off entirely, set `ENABLE_AI_RCA=false` instead.
+    Then reload the container so the new env takes effect (a plain `docker compose restart` won't pick up `.env` changes):
+
+    ```bash
+    nobs autocon5 up
+    ```
+
+    The workflow keeps writing AI RCA annotations, but they're templated again — no API calls, no cost. (Leave your API key in `.env`; it's ignored when the provider is `demo`.) If you'd rather turn the step off entirely, set `ENABLE_AI_RCA=false` instead.
 
 ### 7. Your turn — find what the workflow actually did
 
@@ -966,7 +992,7 @@ You've walked every step of the cycle. Now use what you've seen.
 - `count_over_time({...}[$__range])` turns a Loki query into a number — same pattern as Part 1 exercise 11. `$__range` is a Grafana template variable that resolves to whatever your time picker is set to, so the query adapts to the window you're looking at instead of being hard-coded to a literal like `[1h]`.
 - `sum by (label) (...)` collapses everything except the label you list. Pick the label that gives the most informative breakdown — try `workflow` first (one row, not useful), then try `decision` (a few rows, much more useful).
 
-Have a go before scrolling to the solution. One extra hint: **drop the `device="srl1"` filter** from Phases 3 and 5 — this question asks about the workflow's full activity across both devices, not just one.
+Have a go before scrolling to the solution. One extra hint: **drop both the `device="srl1"` and `decision=~"..."` filters** from the Phase 3 query — this question asks about the workflow's full activity across both devices, *and* you want the AI narrative records in the result so you can see them land in the empty `decision` bucket alongside `proceed` / `skip` / `resolved`.
 
 ??? success "Solution and what your query should return"
 

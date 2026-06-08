@@ -92,7 +92,7 @@
   <rect class="bg" x="0" y="0" width="1400" height="560" rx="0"/>
 
   <!-- Orchestration (Prefect) wrapper — visually groups phases 2-4 inside Prefect -->
-  <rect x="325" y="135" width="1045" height="325" rx="14"
+  <rect x="325" y="135" width="1045" height="300" rx="14"
         fill="none" stroke="#7c8a91" stroke-width="2"
         stroke-dasharray="9 6" opacity="0.6"/>
   <text x="848" y="122" class="phase-label" text-anchor="middle">Orchestration · Prefect</text>
@@ -146,7 +146,7 @@
   <line class="arrow" x1="1070" y1="260" x2="1130" y2="260" marker-end="url(#ah)"/>
 
   <!-- Phase 4 -->
-  <rect class="box box-action" x="1135" y="160" width="220" height="272" rx="14"/>
+  <rect class="box box-action" x="1135" y="160" width="220" height="220" rx="14"/>
   <text x="1245" y="210" class="box-title" text-anchor="middle">ACTION</text>
 
   <g>
@@ -157,23 +157,18 @@
   <g>
     <rect class="pill-audit" x="1155" y="282" width="180" height="34" rx="8"/>
     <use href="#ic-doc" x="1165" y="289" width="20" height="20"/>
-    <text x="1257" y="304" class="pill-text" text-anchor="middle">audit record</text>
+    <text x="1257" y="304" class="pill-text" text-anchor="middle">action audit</text>
   </g>
   <g>
-    <rect class="pill-panel" x="1155" y="324" width="180" height="34" rx="8"/>
-    <use href="#ic-chartmark" x="1165" y="331" width="20" height="20"/>
-    <text x="1257" y="346" class="pill-text" text-anchor="middle">dashboard mark</text>
-  </g>
-  <g>
-    <rect class="pill-rca" x="1155" y="366" width="180" height="34" rx="8"/>
-    <use href="#ic-sparkle" x="1165" y="373" width="20" height="20"/>
-    <text x="1257" y="388" class="pill-text" text-anchor="middle">AI narrative</text>
+    <rect class="pill-rca" x="1155" y="324" width="180" height="34" rx="8"/>
+    <use href="#ic-sparkle" x="1165" y="331" width="20" height="20"/>
+    <text x="1257" y="346" class="pill-text" text-anchor="middle">AI narrative</text>
   </g>
 
   <text x="170"  y="385" class="annot" text-anchor="middle">one trigger</text>
   <text x="560"  y="405" class="annot" text-anchor="middle">three sources, one bundle</text>
   <text x="955"  y="385" class="annot" text-anchor="middle">deterministic rule</text>
-  <text x="1245" y="450" class="annot" text-anchor="middle">silence · audit · narrative</text>
+  <text x="1245" y="405" class="annot" text-anchor="middle">silence · audit · narrative</text>
 
   <text x="700" y="485" class="footer" text-anchor="middle">
     one alert  ·  one decision per alert  ·  <tspan class="footer-emph">one record of why</tspan>
