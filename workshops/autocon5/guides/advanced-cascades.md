@@ -30,6 +30,19 @@ Two browser tabs ready:
 - **Workshop Home** at <http://localhost:3000/d/workshop-home> — situational awareness, alerts table, recent events feed.
 - **Workshop Lab 2026** at <http://localhost:3000/d/dfb5dpyjbh2wwa> — the dashboard you'll lean on in Act 4 as the incident unfolds.
 
+Ensure AI RCA analysis is enabled. Open the workshop's `.env` file at `workshops/autocon5/.env` and flip these two lines:
+
+```bash
+ENABLE_AI_RCA=true
+AI_RCA_PROVIDER=demo
+```
+
+Don't forget to reload the workflow after enabling AI RCA:
+
+```bash
+nobs autocon5 up
+```
+
 A scratch text file open on the side. The closing act has you write the top five lines of your own runbook entry, and you'll want somewhere to put them.
 
 ## The exercises
@@ -51,11 +64,11 @@ First move from the couch: confirm the page is real and the alert is still firin
 nobs autocon5 alerts
 ```
 
-You'll see four alerts firing — the two `BgpSessionNotUp` rows (one per broken peer) and the two `InterfaceAdminUpOperDown` rows you met in Part 2. Tonight's page is the **srl1 → 10.1.99.2** row in the first group. The other three are the same steady-state noise that's been on the dashboard all day. **Stop and notice.** This isn't an alert a cascade we just started invented — it's the alert that's been firing since the lab started up, because the lab is set up with a deliberately broken peer wired in. The page is real in lab terms. So: what do you do next?
+You'll see four alerts firing — the two `BgpSessionNotUp` rows (one per broken peer) and the two `InterfaceAdminUpOperDown` rows you met in Part 2. Tonight's page is the **srl1 → 10.1.99.2** row in the first group. The other three are the same steady-state noise that's been on the dashboard all day. **Stop and notice.** This isn't an alert the cascade just manufactured — it's the alert that's been firing since the lab started up, because the lab is set up with a deliberately broken peer wired in. The page is real in lab terms. So: what do you do next?
 
 ### Act 2 — Triage with PromQL and LogQL
 
-Triage is a decision tree, not a single query. You don't yet know what kind of failure this is. Walk it out — each step rules out a class of failure.
+Triage is a decision tree, not a single query. You don't yet know what kind of failure this is. Work through it step by step — each query rules out a class of failure.
 
 **Is the device itself unhealthy?** Check CPU and memory in the `prometheus` datasource:
 
@@ -107,7 +120,7 @@ You'll see BGP-related lines for that specific peer — fsm transitions, retry a
     nobs autocon5 rca srl1 10.1.99.2
     ```
 
-    Compare it against your own conclusion. Where does the narrative agree with what you just walked? Where does it surface something you missed — or miss something you caught? Useful framing for the rest of the investigation: automation does the routine work, the human does the judgment. (If the output reads *"AI RCA disabled..."* the AI step is off; that's expected unless someone flipped `ENABLE_AI_RCA=true` for this lab.)
+    Compare it against your own conclusion. Where does the narrative agree with what you found? Where does it surface something you missed — or miss something you caught? A useful frame for the rest of the investigation: automation does the routine work, the human does the judgment. (If the output reads *"AI RCA disabled..."*, the AI step is off — go back and check the setup instructions at the top of this guide. You may also need to wait a moment for the Prefect workflow to complete, then try again.)
 
 ### Act 3 — Diagnose: drive the cascade and walk the shape
 
@@ -117,7 +130,7 @@ While you were triaging, things escalated. A different problem started developin
 nobs autocon5 incident --device srl1
 ```
 
-The CLI returns immediately and prints three IDs (one per cascade stage). The cascade is now unfolding in the lab — wall-clock timing is in the callout below. Open the **Workshop Lab 2026** dashboard — you'll be running three queries against the `prometheus` datasource in Explore as the incident develops. The Workshop Home dashboard's **Recent events** feed is also reflecting it; switch tabs occasionally to keep both in view.
+The CLI returns immediately and prints three IDs (one per cascade stage). The cascade is now unfolding in the lab — wall-clock timing is in the callout below. Open the **Workshop Lab 2026** dashboard — you'll be running three queries against the `prometheus` datasource in Explore as the incident develops. The **Workshop Home** dashboard's **Recent events** feed is also reflecting it; switch tabs occasionally to keep both in view.
 
 **The first thing that catches your eye — primary degrading.** The interface starts flipping:
 
