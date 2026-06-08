@@ -545,8 +545,10 @@ When the workflow finishes looking at a peer, it writes one line to the **log st
 Open Grafana, switch to the **Loki** datasource in Explore, and paste:
 
 ```logql
-{source="prefect", workflow="autocon5_quarantine_bgp", device="srl1"} | json
+{source="prefect", workflow="autocon5_quarantine_bgp", device="srl1", decision=~"proceed|skip|resolved"} | json
 ```
+
+The `decision=~"proceed|skip|resolved"` matcher keeps the result tight: only the workflow's decision audit records. The same Loki stream also carries AI narrative records (`ai_rca="true"`) and action confirmations (`QUARANTINE applied …`); the explicit decision filter hides those for now so the focus is just on the policy outcome. [Phase 6 "Where it lands"](#6-optional-swap-to-a-real-llm-provider-for-the-narrative) shows what the stream looks like without the filter.
 
 The `| json` at the end is LogQL's way of saying *"parse each log line's body as JSON so I can read individual fields"* — the workflow writes its records as JSON, so this turns each line into a structured object Grafana renders inline (one field per row, right under the log line — no clicking needed).
 
@@ -555,8 +557,6 @@ The `| json` at the end is LogQL's way of saying *"parse each log line's body as
     If the query returns *"No data"*, the workflow hasn't processed an alert on this peer yet. The workflow only runs when an alert fires at it — give the lab ~30–60 seconds after the setup-check reset for the always-firing alerts to make their way through, then re-run the query. (Or skip ahead to Phase 4 and come back; by then there'll be records.)
 
 You should see one log line per decision the workflow has made on `srl1` recently. Look at the most recent one — Grafana parses the JSON inline, so every field is visible right under the row. The same record is the **Most-recent-decision panel** in `nobs autocon5 cycle srl1 10.1.99.2` if you'd rather read it from the terminal.
-
-You'll also see records with the `ai_rca="true"` label mixed into the same stream — those are the AI narrative the workflow writes alongside each `proceed` decision (you enabled the demo provider in Setup). [Phase 6](#6-optional-swap-to-a-real-llm-provider-for-the-narrative) covers them in detail; for now, just note they're there.
 
 The fields that matter on the *decision* record:
 
@@ -782,7 +782,7 @@ Same alert payload, same workflow, same decision logic — just bypassing Alertm
 Wait ~10 seconds for the workflow to finish. Then re-run the Phase 3 LogQL query in Grafana:
 
 ```logql
-{source="prefect", workflow="autocon5_quarantine_bgp", device="srl1"} | json
+{source="prefect", workflow="autocon5_quarantine_bgp", device="srl1", decision=~"proceed|skip|resolved"} | json
 ```
 
 The **most recent line** now reads:
@@ -931,7 +931,7 @@ The deterministic policy decision is **unchanged** between demo and real provide
 
 #### Where it lands — alongside the decision, never inside it
 
-The AI narrative sits **next to** the deterministic decision in Loki, not in place of it. Run the Phase 3 query again:
+The AI narrative sits **next to** the deterministic decision in Loki, not in place of it. Drop the `decision=~"..."` filter from the Phase 3 query so both record types come through in one stream:
 
 ```logql
 {source="prefect", workflow="autocon5_quarantine_bgp", device="srl1"} | json
@@ -966,7 +966,7 @@ You've walked every step of the cycle. Now use what you've seen.
 - `count_over_time({...}[$__range])` turns a Loki query into a number — same pattern as Part 1 exercise 11. `$__range` is a Grafana template variable that resolves to whatever your time picker is set to, so the query adapts to the window you're looking at instead of being hard-coded to a literal like `[1h]`.
 - `sum by (label) (...)` collapses everything except the label you list. Pick the label that gives the most informative breakdown — try `workflow` first (one row, not useful), then try `decision` (a few rows, much more useful).
 
-Have a go before scrolling to the solution. One extra hint: **drop the `device="srl1"` filter** from Phases 3 and 5 — this question asks about the workflow's full activity across both devices, not just one.
+Have a go before scrolling to the solution. One extra hint: **drop both the `device="srl1"` and `decision=~"..."` filters** from the Phase 3 query — this question asks about the workflow's full activity across both devices, *and* you want the AI narrative records in the result so you can see them land in the empty `decision` bucket alongside `proceed` / `skip` / `resolved`.
 
 ??? success "Solution and what your query should return"
 
