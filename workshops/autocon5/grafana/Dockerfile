@@ -14,6 +14,6 @@ FROM grafana/grafana:13.0.1-security-01
 #   - volkovlabs-echarts-panel       (eCharts visualisations)
 #   - natel-discrete-panel           (Interface Operational Status timeline)
 #   - yesoreyeram-infinity-datasource (Infrahub GraphQL queries from Grafana)
-RUN grafana-cli plugins install volkovlabs-echarts-panel \
- && grafana-cli plugins install natel-discrete-panel \
- && grafana-cli plugins install yesoreyeram-infinity-datasource
+RUN /usr/share/grafana/bin/grafana cli plugins install volkovlabs-echarts-panel \
+ && /usr/share/grafana/bin/grafana cli plugins install natel-discrete-panel \
+ && /usr/share/grafana/bin/grafana cli plugins install yesoreyeram-infinity-datasource
