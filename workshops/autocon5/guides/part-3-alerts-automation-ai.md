@@ -965,13 +965,19 @@ The split between **decision** (deterministic) and **narrative** (AI) is the les
 
 !!! tip "Done experimenting? Revert to the offline `demo` provider"
 
-    Two-line revert. In `workshops/autocon5/.env`:
+    Two-step revert. In `workshops/autocon5/.env`:
 
     ```bash
     AI_RCA_PROVIDER=demo
     ```
 
-    Then `nobs autocon5 up` to reload the container against the new env. The workflow keeps writing AI RCA annotations, but they're templated again — no API calls, no cost. (Leave your API key in `.env`; it's ignored when the provider is `demo`.) If you'd rather turn the step off entirely, set `ENABLE_AI_RCA=false` instead.
+    Then reload the container so the new env takes effect (a plain `docker compose restart` won't pick up `.env` changes):
+
+    ```bash
+    nobs autocon5 up
+    ```
+
+    The workflow keeps writing AI RCA annotations, but they're templated again — no API calls, no cost. (Leave your API key in `.env`; it's ignored when the provider is `demo`.) If you'd rather turn the step off entirely, set `ENABLE_AI_RCA=false` instead.
 
 ### 7. Your turn — find what the workflow actually did
 
