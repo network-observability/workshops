@@ -10,10 +10,10 @@
 
 FROM grafana/grafana:13.0.1-security-01
 
-# The same three plugins the workshop dashboards depend on:
-#   - volkovlabs-echarts-panel       (eCharts visualisations)
-#   - natel-discrete-panel           (Interface Operational Status timeline)
-#   - yesoreyeram-infinity-datasource (Infrahub GraphQL queries from Grafana)
-RUN /usr/share/grafana/bin/grafana cli plugins install volkovlabs-echarts-panel \
- && /usr/share/grafana/bin/grafana cli plugins install natel-discrete-panel \
- && /usr/share/grafana/bin/grafana cli plugins install yesoreyeram-infinity-datasource
+# Only the Infinity datasource is actually referenced by the provisioned
+# workshop dashboards (device-health.json uses it for Infrahub GraphQL).
+# The previously-listed `volkovlabs-echarts-panel` and `natel-discrete-panel`
+# never appeared in any dashboard (verified via git history) — and
+# natel-discrete-panel is Angular-based, which Grafana 13 has disabled.
+# Trimming to just what's used keeps the build small, fast, and offline-safe.
+RUN /usr/share/grafana/bin/grafana cli plugins install yesoreyeram-infinity-datasource
