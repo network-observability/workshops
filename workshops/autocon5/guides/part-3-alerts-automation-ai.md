@@ -648,7 +648,7 @@ Under the hood, the action stage forks into two parallel sub-stages once the pol
 
 (`resolved` decisions go through a separate `resolved_bgp_flow` — same shape, different path; it's covered in the Optional deep dives fold below.)
 
-Phase 3 showed you the workflow decided `proceed` on the broken peer. The word `proceed` only means something if you know what it triggers. Here's what **actually happens** in the lab when the workflow returns `proceed` — four concrete things, each in a different system (the first three are the *deterministic action*, the fourth is the *AI narrative*).
+Phase 3 showed you the workflow decided `proceed` on the broken peer. The word `proceed` only means something if you know what it triggers. Here's what **actually happens** in the lab when the workflow returns `proceed` — three concrete things, each in a different system (the first two are the *deterministic action*, the third is the *AI narrative*).
 
 #### A · The silence — containment in Alertmanager
 
@@ -691,23 +691,25 @@ Open Alertmanager at <http://localhost:9093/#/alerts>. In the filter bar at the 
 
 > Why silence and not fix? Silencing stops the *page* from firing again for 20 minutes — the same alert won't wake the on-call up twice for the same issue. The underlying problem is still happening (the rule keeps matching); the silence just mutes the notification path. Part 2's "What's a silence?" section walks the silence-vs-fixing distinction in detail.
 
-#### B · The audit record — memory in Loki
+#### B · The action audit + dashboard mark — Loki record, optionally visualised in Grafana
 
-You already saw this in Phase 3 — the workflow wrote a `decision=proceed` log line to Loki with the reason. This is the **institutional memory**: it survives long after the silence expires, the alert resolves, and the next person on the rotation logs in. One log line per decision, every decision, forever. (The same record renders as the Most-recent-decision panel in `nobs autocon5 cycle srl1 10.1.99.2`.)
+When the workflow finishes acting, it writes a second Loki record specifically about the action it just took:
 
-#### C · The dashboard mark — visibility in Grafana
-
-In Part 2's "See alerts in Grafana — and overlay them on your panel" section you added a Grafana **alert marker** that draws a red shaded region on the **Flap rate (2 min)** panel whenever `PeerInterfaceFlapping` is firing. The **same pattern** works for any alert exposed in the `ALERTS` metric — change the alertname filter to `BgpSessionNotUp` and you get the same red region on a different panel marking exactly when this alert was firing.
-
-If you'd like to see it for `BgpSessionNotUp` too, add a second alert marker using the same Part 2 walk, with this query instead:
-
-```promql
-ALERTS{alertname="BgpSessionNotUp", alertstate="firing"}
+```text
+QUARANTINE applied (silence_id=<uuid>)
 ```
 
-This step is optional — the silence and the audit record are already enough to verify the workflow's action. The dashboard mark is the third *type* of action the diagram showed, and the pattern is worth knowing whether you add the second annotation now or later.
+The labels are `source=prefect`, `workflow=autocon5_quarantine_bgp`, `device=srl1`, `peer_address=10.1.99.2` — note the **absence** of a `decision` label. Phase 3's record carries `decision=proceed`; this one carries the silence ID. Two records, two roles: §3's says *what was decided*, this one says *what was done*. Query the action audit specifically:
 
-#### D · The AI narrative — same evidence, different voice
+```logql
+{source="prefect", workflow="autocon5_quarantine_bgp", device="srl1"} |~ "QUARANTINE applied"
+```
+
+You'll see one row per `proceed` cycle, each pinpointing *when the workflow took action*.
+
+**Drawing this on a Grafana panel.** The same query can drive a Grafana **annotation** — a vertical line on any panel marking the exact moment the workflow acted. In Grafana, open any dashboard, **Edit → Dashboard options → Annotations → New annotation**, datasource Loki, query as above. From then on, every panel on that dashboard gets a vertical line at every action-applied timestamp. That's the real "dashboard mark" — *when the workflow acted*, not (as the Part 2 ALERTS overlay shows) *when the alert was firing*. Different signals; the action mark is far more useful for post-incident review because it answers "what did the automation do, and when?"
+
+#### C · The AI narrative — same evidence, different voice
 
 Alongside the deterministic action, the workflow also writes a short narrative explaining the situation in plain language — what we call an **AI RCA record** (RCA = *Root Cause Analysis*). This step always runs, but the content depends on the decision:
 
@@ -742,10 +744,10 @@ By default the lab ships with the **demo** provider — a deterministic template
 Worth saying out loud, so it doesn't trip you up:
 
 - It does **not** fix the underlying problem on the device. The broken peer stays broken until a human (or a separate remediation flow) addresses it.
-- It does **not** open a ticket or page the on-call directly. In production this is where you'd hook in PagerDuty, OpsGenie, Jira, Slack — in this lab, the silence + audit record + dashboard mark + AI narrative is the full chain.
-- It does **not** decide *what to do next*. That's a human's job: read the audit record, look at the dashboard, walk the runbook.
+- It does **not** open a ticket or page the on-call directly. In production this is where you'd hook in PagerDuty, OpsGenie, Jira, Slack — in this lab, the silence + action audit + AI narrative is the full chain.
+- It does **not** decide *what to do next*. That's a human's job: read the action audit, read the narrative, look at the dashboard, walk the runbook.
 
-What `proceed` *does* do is contain the noise (silence), explain what was seen (audit record), make the moment visible (dashboard mark), and stitch a plain-language summary (AI narrative). Four observable outcomes from one decision — the loop closing for this alert.
+What `proceed` *does* do is contain the noise (silence in Alertmanager), record the action with a queryable timestamp (action audit in Loki, optionally rendered as an annotation on any Grafana panel), and stitch a plain-language summary (AI narrative). Three observable outcomes from one decision — the loop closing for this alert.
 
 ### 5. Maintenance branch — same drill, opposite decision
 
