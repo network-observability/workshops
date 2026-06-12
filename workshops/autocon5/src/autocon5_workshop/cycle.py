@@ -207,23 +207,74 @@ def _render_flow_runs_panel(prefect_url: str, device: str, peer: str, minutes: i
         )
         return
 
+    try:
+        top, children = _group_flow_runs(prefect_url, runs)
+    except Exception:
+        # Grouping is cosmetic — fall back to a flat list if the lookup fails.
+        top, children = runs, {}
+
     table = Table(title=f"Prefect flow runs (last {minutes}m)", show_header=True, header_style="bold")
     table.add_column("Started")
     table.add_column("State")
     table.add_column("Flow")
-    for r in runs[:5]:
-        state = r.get("state", {}).get("type", "?")
-        state_style = {"COMPLETED": "green", "FAILED": "red", "RUNNING": "yellow"}.get(state, "")
-        run_id = r.get("id", "")
-        started_cell = r.get("start_time", "")[11:19]
-        if run_id:
-            started_cell = f"[link={prefect_url}/runs/flow-run/{run_id}]{started_cell}[/link]"
-        table.add_row(
-            started_cell,
-            f"[{state_style}]{state}[/]" if state_style else state,
-            r.get("name", "?"),
-        )
+    for r in top[:3]:
+        _add_run_row(table, prefect_url, r)
+        kids = children.get(r.get("id", ""), [])
+        for i, c in enumerate(kids):
+            branch = "└─" if i == len(kids) - 1 else "├─"
+            _add_run_row(table, prefect_url, c, prefix=f"  [dim]{branch}[/] ")
     console.print(table)
+
+
+def _add_run_row(table: Table, prefect_url: str, run: dict, prefix: str = "") -> None:
+    state = run.get("state", {}).get("type", "?")
+    state_style = {"COMPLETED": "green", "FAILED": "red", "RUNNING": "yellow"}.get(state, "")
+    run_id = run.get("id", "")
+    started_cell = run.get("start_time", "")[11:19]
+    if run_id:
+        started_cell = f"[link={prefect_url}/runs/flow-run/{run_id}]{started_cell}[/link]"
+    name = run.get("name", "?")
+    if prefix:
+        # Child rows: the parent row already carries the device:peer suffix.
+        name = name.split(" | ")[0]
+    table.add_row(
+        started_cell,
+        f"[{state_style}]{state}[/]" if state_style else state,
+        f"{prefix}{name}",
+    )
+
+
+def _group_flow_runs(prefect_url: str, runs: list[dict]) -> tuple[list[dict], dict[str, list[dict]]]:
+    """Split runs into top-level runs and children grouped by parent flow-run id.
+
+    The evidence/policy/action block flows are subflows of quarantine_bgp and
+    carry the same device/peer parameters, so they land in the same filtered
+    set. A run counts as a child only when its parent flow run is *also* in the
+    set — quarantine_bgp itself is a subflow of alert_receiver, but
+    alert_receiver carries no device/peer parameters so it never appears here
+    and quarantine_bgp stays top-level. Subflows are linked to their parent via
+    a synthetic task run, hence the task-run lookup.
+    """
+    ids = {r.get("id") for r in runs}
+    task_ids = sorted({r["parent_task_run_id"] for r in runs if r.get("parent_task_run_id")})
+    task_to_flow: dict[str, str] = {}
+    if task_ids:
+        body = {"task_runs": {"id": {"any_": task_ids}}, "limit": len(task_ids)}
+        resp = requests.post(f"{prefect_url}/api/task_runs/filter", json=body, timeout=10)
+        resp.raise_for_status()
+        task_to_flow = {t.get("id", ""): t.get("flow_run_id", "") for t in resp.json()}
+
+    top: list[dict] = []
+    children: dict[str, list[dict]] = {}
+    for r in runs:
+        parent_flow = task_to_flow.get(r.get("parent_task_run_id") or "")
+        if parent_flow in ids:
+            children.setdefault(parent_flow, []).append(r)
+        else:
+            top.append(r)
+    for kids in children.values():
+        kids.sort(key=lambda r: r.get("start_time") or "")
+    return top, children
 
 
 def _render_decision_panel(loki: LokiClient, device: str, peer: str, minutes: int) -> None:
