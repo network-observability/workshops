@@ -1,20 +1,33 @@
 """
 Prefect flows for AutoCon5 — Part 3 of the workshop.
 
-Pipeline (per BgpSessionNotUp alert):
+The flow structure mirrors the Part 3 teaching diagram one-to-one: each block
+in `alert → evidence → policy → action` is a flow, and each step inside a
+block is a task.
 
-    alert_receiver
-       └── quarantine_bgp_flow                 (fires on status=firing)
-              ├── collect_bgp_evidence_task   (metrics + logs + SoT)
-              ├── evaluate_policy_task        (DecisionPolicy: stop/skip/proceed)
-              ├── annotate_decision_task      (audit trail to Loki)
-              ├── ai_rca_task                 (opt-in; ENABLE_AI_RCA toggle)
-              └── if proceed:
-                    ├── quarantine_task        (Alertmanager silence)
-                    └── annotate_action_task   (audit trail to Loki)
+    alert_receiver                                (Alert — webhook entrypoint)
+       └── quarantine_bgp_flow                    (status=firing; orchestrates the cycle)
+              ├── evidence_flow                   (Evidence)
+              │      ├── fetch_sot                (Infrahub GraphQL — intent)
+              │      ├── fetch_metrics            (Prometheus PromQL — reality)
+              │      ├── fetch_logs               (Loki LogQL — recent history)
+              │      └── assemble_evidence        (decode enums, bundle the three)
+              ├── policy_flow                     (Policy)
+              │      ├── evaluate_sot_gate        (stage 1 — SoT only)
+              │      ├── evaluate_metrics_gate    (stage 2 — SoT + metrics; only if stage 1 passes)
+              │      └── annotate_decision        (audit trail to Loki)
+              └── action_flow                     (Action)
+                     ├── ai_rca / ai_rca_skipped  (narrative — always writes a record)
+                     └── if proceed:
+                           ├── quarantine         (Alertmanager silence)
+                           └── annotate_action    (audit trail to Loki)
 
-       └── resolved_bgp_flow                  (fires on status=resolved)
-              └── annotate_decision_task
+       └── resolved_bgp_flow                      (status=resolved)
+              └── annotate_decision
+
+The three fetch tasks inside evidence_flow are submitted concurrently — the
+sources are independent, and a retry on one source no longer re-fetches the
+other two.
 
 The four canonical paths from the AutoCon5 outline map to:
     actionable / mismatch    → quarantine
@@ -29,34 +42,57 @@ from typing import Any
 
 from prefect import flow, tags, task
 from prefect.logging import get_run_logger
-from workshop_sdk import Decision, DecisionPolicy, EvidenceBundle, WorkshopSDK, is_ai_rca_enabled
+from workshop_sdk import (
+    Decision,
+    DecisionPolicy,
+    EvidenceBundle,
+    WorkshopSDK,
+    decode_bgp_states,
+    is_ai_rca_enabled,
+)
 
 # ---------------------------------------------------------------------------
-# Tasks
+# Evidence tasks
 # ---------------------------------------------------------------------------
 
 
-@task(retries=2, retry_delay_seconds=3, log_prints=True, task_run_name="collect_evidence[{device}:{peer_address}]")
-def collect_bgp_evidence_task(
+@task(retries=2, retry_delay_seconds=3, log_prints=True, task_run_name="fetch_sot[{device}:{peer_address}]")
+def fetch_sot_task(device: str, peer_address: str, afi_safi: str) -> dict[str, Any]:
+    print(f"🔎 [evidence] SoT gate for {device}:{peer_address} ({afi_safi})")
+    return WorkshopSDK().bgp_gate(device=device, peer_address=peer_address, afi_safi=afi_safi)
+
+
+@task(retries=2, retry_delay_seconds=3, log_prints=True, task_run_name="fetch_metrics[{device}:{peer_address}]")
+def fetch_metrics_task(device: str, peer_address: str, afi_safi: str, instance_name: str) -> dict[str, float]:
+    print(f"🔎 [evidence] BGP metrics snapshot for {device}:{peer_address}")
+    return WorkshopSDK().bgp_metrics_snapshot(
+        device=device, peer_address=peer_address, afi_safi=afi_safi, instance_name=instance_name
+    )
+
+
+@task(retries=2, retry_delay_seconds=3, log_prints=True, task_run_name="fetch_logs[{device}:{peer_address}]")
+def fetch_logs_task(device: str, peer_address: str, log_minutes: int, log_limit: int) -> list[str]:
+    print(f"🔎 [evidence] last {log_minutes}m of logs for {device}:{peer_address}")
+    return WorkshopSDK().bgp_logs(device=device, peer_address=peer_address, minutes=log_minutes, limit=log_limit)
+
+
+@task(log_prints=True, task_run_name="assemble_evidence[{device}:{peer_address}]")
+def assemble_evidence_task(
     device: str,
     peer_address: str,
     afi_safi: str,
     instance_name: str,
-    log_minutes: int,
-    log_limit: int,
+    sot: dict[str, Any],
+    metrics: dict[str, float],
+    logs: list[str],
 ) -> EvidenceBundle:
-    print(f"🔎 [collect] device={device} peer={peer_address} afi={afi_safi} instance={instance_name}")
-    sdk = WorkshopSDK()
-    ev = sdk.collect_bgp_evidence(
-        device=device,
-        peer_address=peer_address,
-        afi_safi=afi_safi,
-        instance_name=instance_name,
-        log_minutes=log_minutes,
-        log_limit=log_limit,
-    )
+    ev = EvidenceBundle(device=device, peer_address=peer_address, afi_safi=afi_safi, instance_name=instance_name)
+    ev.sot = sot
+    ev.metrics = metrics
+    ev.sot["decoded"] = decode_bgp_states(metrics)
+    ev.logs = logs
     print(
-        "✅ [collect] sot.found={} maintenance={} intended={} expected_state={} reason={!r}".format(
+        "✅ [evidence] sot.found={} maintenance={} intended={} expected_state={} reason={!r}".format(
             ev.sot.get("found"),
             ev.sot.get("maintenance"),
             ev.sot.get("intended_peer"),
@@ -69,19 +105,23 @@ def collect_bgp_evidence_task(
     return ev
 
 
-@task(log_prints=True, task_run_name="evaluate_policy[{device}:{peer_address}]")
-def evaluate_policy_task(device: str, peer_address: str, ev: EvidenceBundle) -> Decision:
-    print(f"🧠 [policy] {device}:{peer_address}")
-    policy = DecisionPolicy()
+# ---------------------------------------------------------------------------
+# Policy tasks
+# ---------------------------------------------------------------------------
 
-    sot_decision = policy.evaluate(ev.sot, metrics=None)
-    print(f"   stage1 SoT-only → {sot_decision.decision} ({sot_decision.reason})")
-    if sot_decision.decision in {"stop", "skip"}:
-        return sot_decision
 
-    metrics_decision = policy.evaluate(ev.sot, metrics=ev.metrics)
-    print(f"   stage2 SoT+metrics → {metrics_decision.decision} ({metrics_decision.reason})")
-    return metrics_decision
+@task(log_prints=True, task_run_name="evaluate_sot_gate[{device}:{peer_address}]")
+def evaluate_sot_gate_task(device: str, peer_address: str, ev: EvidenceBundle) -> Decision:
+    decision = DecisionPolicy().evaluate(ev.sot, metrics=None)
+    print(f"🧠 [policy] stage1 SoT-only → {decision.decision} ({decision.reason})")
+    return decision
+
+
+@task(log_prints=True, task_run_name="evaluate_metrics_gate[{device}:{peer_address}]")
+def evaluate_metrics_gate_task(device: str, peer_address: str, ev: EvidenceBundle) -> Decision:
+    decision = DecisionPolicy().evaluate(ev.sot, metrics=ev.metrics)
+    print(f"🧠 [policy] stage2 SoT+metrics → {decision.decision} ({decision.reason})")
+    return decision
 
 
 @task(log_prints=True, task_run_name="annotate_decision[{device}:{peer_address}]")
@@ -95,6 +135,11 @@ def annotate_decision_task(workflow: str, device: str, peer_address: str, decisi
         decision=decision.decision,
         message=decision.reason,
     )
+
+
+# ---------------------------------------------------------------------------
+# Action tasks
+# ---------------------------------------------------------------------------
 
 
 @task(log_prints=True, task_run_name="ai_rca[{device}:{peer_address}]")
@@ -170,7 +215,110 @@ def annotate_action_task(workflow: str, device: str, peer_address: str, silence_
 
 
 # ---------------------------------------------------------------------------
-# Action flows
+# Block flows — one per diagram block (evidence / policy / action)
+# ---------------------------------------------------------------------------
+
+
+@flow(log_prints=True, flow_run_name="evidence | {device}:{peer_address}")
+def evidence_flow(
+    device: str,
+    peer_address: str,
+    afi_safi: str = "ipv4-unicast",
+    instance_name: str = "default",
+    log_minutes: int = 30,
+    log_limit: int = 50,
+) -> EvidenceBundle:
+    """Evidence block: three concurrent fetches (intent / reality / history), one bundle."""
+    sot = fetch_sot_task.submit(device=device, peer_address=peer_address, afi_safi=afi_safi)
+    metrics = fetch_metrics_task.submit(
+        device=device, peer_address=peer_address, afi_safi=afi_safi, instance_name=instance_name
+    )
+    logs = fetch_logs_task.submit(
+        device=device, peer_address=peer_address, log_minutes=log_minutes, log_limit=log_limit
+    )
+    return assemble_evidence_task(
+        device=device,
+        peer_address=peer_address,
+        afi_safi=afi_safi,
+        instance_name=instance_name,
+        sot=sot,
+        metrics=metrics,
+        logs=logs,
+    )
+
+
+@flow(log_prints=True, flow_run_name="policy | {device}:{peer_address}")
+def policy_flow(
+    device: str,
+    peer_address: str,
+    ev: EvidenceBundle,
+    workflow: str = "autocon5_quarantine_bgp",
+) -> Decision:
+    """Policy block: two-stage deterministic evaluation, then the audit record.
+
+    Stage 2 only runs when stage 1 (SoT-only) doesn't short-circuit — so a
+    maintenance-skip run shows a single evaluate task in the UI, while a
+    proceed run shows both stages.
+    """
+    print(f"🧠 [policy] {device}:{peer_address}")
+    decision = evaluate_sot_gate_task(device=device, peer_address=peer_address, ev=ev)
+    if decision.decision not in {"stop", "skip"}:
+        decision = evaluate_metrics_gate_task(device=device, peer_address=peer_address, ev=ev)
+    annotate_decision_task(workflow=workflow, device=device, peer_address=peer_address, decision=decision)
+    return decision
+
+
+@flow(log_prints=True, flow_run_name="action | {device}:{peer_address}")
+def action_flow(
+    device: str,
+    peer_address: str,
+    decision: Decision,
+    ev: EvidenceBundle,
+    quarantine_minutes: int = 20,
+    workflow: str = "autocon5_quarantine_bgp",
+) -> dict[str, Any]:
+    """Action block: AI narrative (always writes) + deterministic action (proceed only)."""
+    # AI RCA branching:
+    #   1. ENABLE_AI_RCA=false  → ai_rca_task writes the "disabled" annotation
+    #      regardless of decision (the feature is off; that's the only honest
+    #      message to write).
+    #   2. ENABLE_AI_RCA=true + decision=proceed → real LLM narrative.
+    #   3. ENABLE_AI_RCA=true + decision != proceed → ai_rca_skipped_task
+    #      writes a brief "not run because policy said skip" annotation.
+    #      Skips the LLM call entirely (saves compute / API cost, keeps the
+    #      audit trail honest — SoT says "don't act", so we don't act
+    #      anywhere, including the LLM step).
+    if is_ai_rca_enabled() and decision.decision != "proceed":
+        rca_text = ai_rca_skipped_task(
+            workflow=workflow,
+            device=device,
+            peer_address=peer_address,
+            decision=decision,
+        )
+    else:
+        rca_text = ai_rca_task(
+            workflow=workflow,
+            device=device,
+            peer_address=peer_address,
+            ev=ev,
+        )
+
+    if decision.decision != "proceed":
+        print(f"✅ [action] no deterministic action ({decision.decision} — {decision.reason})")
+        return {"action": "none", "silence_id": None, "ai_rca": rca_text}
+
+    silence_id = quarantine_task(device=device, peer_address=peer_address, minutes=quarantine_minutes)
+    annotate_action_task(
+        workflow=workflow,
+        device=device,
+        peer_address=peer_address,
+        silence_id=silence_id,
+    )
+    return {"action": "quarantine", "silence_id": silence_id, "ai_rca": rca_text}
+
+
+# ---------------------------------------------------------------------------
+# Orchestrating flows
 # ---------------------------------------------------------------------------
 
 
@@ -194,7 +342,7 @@ def quarantine_bgp_flow(
         f"instance:{instance_name}",
         "action:quarantine",
     ):
-        ev = collect_bgp_evidence_task(
+        ev = evidence_flow(
             device=device,
             peer_address=peer_address,
             afi_safi=afi_safi,
@@ -203,68 +351,25 @@ def quarantine_bgp_flow(
             log_limit=log_limit,
         )
 
-        decision = evaluate_policy_task(device=device, peer_address=peer_address, ev=ev)
-        annotate_decision_task(
-            workflow="autocon5_quarantine_bgp",
+        decision = policy_flow(device=device, peer_address=peer_address, ev=ev)
+
+        outcome = action_flow(
             device=device,
             peer_address=peer_address,
             decision=decision,
+            ev=ev,
+            quarantine_minutes=quarantine_minutes,
         )
 
-        # AI RCA branching:
-        #   1. ENABLE_AI_RCA=false  → ai_rca_task writes the "disabled" annotation
-        #      regardless of decision (the feature is off; that's the only honest
-        #      message to write).
-        #   2. ENABLE_AI_RCA=true + decision=proceed → real LLM narrative.
-        #   3. ENABLE_AI_RCA=true + decision != proceed → ai_rca_skipped_task
-        #      writes a brief "not run because policy said skip" annotation.
-        #      Skips the LLM call entirely (saves compute / API cost, keeps the
-        #      audit trail honest — SoT says "don't act", so we don't act
-        #      anywhere, including the LLM step).
-        if is_ai_rca_enabled() and decision.decision != "proceed":
-            rca_text = ai_rca_skipped_task(
-                workflow="autocon5_quarantine_bgp",
-                device=device,
-                peer_address=peer_address,
-                decision=decision,
-            )
+        if outcome["action"] == "quarantine":
+            logger.info("Quarantine applied: silence_id=%s", outcome["silence_id"])
         else:
-            rca_text = ai_rca_task(
-                workflow="autocon5_quarantine_bgp",
-                device=device,
-                peer_address=peer_address,
-                ev=ev,
-            )
-
-        if decision.decision != "proceed":
             print(f"✅ [flow] no action ({decision.decision} — {decision.reason})")
-            return {
-                "device": device,
-                "peer_address": peer_address,
-                "action": "none",
-                "decision": {
-                    "ok": decision.ok,
-                    "decision": decision.decision,
-                    "reason": decision.reason,
-                    "details": decision.details,
-                },
-                "evidence_summary": ev.summary(),
-                "ai_rca": rca_text,
-            }
 
-        silence_id = quarantine_task(device=device, peer_address=peer_address, minutes=quarantine_minutes)
-        logger.info("Quarantine applied: silence_id=%s", silence_id)
-        annotate_action_task(
-            workflow="autocon5_quarantine_bgp",
-            device=device,
-            peer_address=peer_address,
-            silence_id=silence_id,
-        )
-        return {
+        result: dict[str, Any] = {
             "device": device,
             "peer_address": peer_address,
-            "action": "quarantine",
-            "silence_id": silence_id,
+            "action": outcome["action"],
             "decision": {
                 "ok": decision.ok,
                 "decision": decision.decision,
@@ -272,8 +377,11 @@ def quarantine_bgp_flow(
                 "details": decision.details,
             },
             "evidence_summary": ev.summary(),
-            "ai_rca": rca_text,
+            "ai_rca": outcome["ai_rca"],
         }
+        if outcome["action"] == "quarantine":
+            result["silence_id"] = outcome["silence_id"]
+        return result
 
 
 @flow(log_prints=True, flow_run_name="resolved_bgp | {device}:{peer_address}")
