@@ -213,7 +213,7 @@ Workshop CLI (host machine)                       Prefect flows (in-container)
               │  http://localhost:8085)                         │  http://sonda-server:8080)
               ▼                                                  ▼
               ┌──────────────────────────────────────────────────┐
-              │ sonda-server v1.3.0                              │
+              │ sonda-server v1.16.0                             │
               │  POST /events handler                            │
               │   • validates payload                            │
               │   • forwards to sink config inline               │
@@ -318,7 +318,7 @@ docker compose --project-name autocon5 restart sonda-setup
 
 ## Why `incident.py` uses remote_write
 
-Every other workshop metric flows through the pull path — **sonda emits → Telegraf scrapes `/metrics` → Prometheus scrapes Telegraf**. `nobs autocon5 incident` is the exception: its cascade body uses `encoder/sink: remote_write` and pushes directly to Prometheus, bypassing Telegraf. This is intentional, not legacy.
+Every other workshop metric flows through the pull path — **sonda emits → Telegraf scrapes `/scenarios/metrics` → Prometheus scrapes Telegraf**. `nobs autocon5 incident` is the exception: its cascade body uses `encoder/sink: remote_write` and pushes directly to Prometheus, bypassing Telegraf. This is intentional, not legacy.
 
 ### Why the exception exists
 
