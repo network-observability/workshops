@@ -11,7 +11,8 @@ cleanup subprocess — sonda 1.13.1 handles the lifecycle.
 
 One POST per affected scope:
   - Interface flap: `autocon5-cascade-<device>-intf-<interface-key>`
-    (cascade_active signal + oper_state DOWN + frozen octets + UPDOWN log)
+    (cascade_active signal + oper_state DOWN + UPDOWN log; octets
+    freeze via `delay.close.snap_to` on the baseline overrides)
   - Each cascading healthy peer: `autocon5-cascade-<device>-bgp-<peer-key>`
     (cascade_active signal + BGP DOWN values for that peer; phase-shifted
     so BGP lags interface on DOWN and recovers simultaneously on UP)
