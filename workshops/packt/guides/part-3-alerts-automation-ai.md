@@ -56,7 +56,7 @@ Then reload the workflow container so the new env takes effect (a plain `docker 
 nobs packt up
 ```
 
-The demo provider stitches a templated narrative from the same evidence the policy reads — deterministic, free, and offline. Swapping it for a real LLM provider is on the [Take it home](take-home.md) page; for now just know that **every workflow run on a `proceed` decision will write one of these records to Loki with the `ai_rca="true"` label**.
+The demo provider stitches a templated narrative from the same evidence the policy reads — deterministic, free, and offline. Swapping it for a real LLM provider is on the [Take it home](../../../docs-packt/take-home.md) page; for now just know that **every workflow run on a `proceed` decision will write one of these records to Loki with the `ai_rca="true"` label**.
 
 ??? info "What's a workflow?"
 
@@ -547,7 +547,7 @@ Open Grafana, switch to the **Loki** datasource in Explore, and paste:
 {source="prefect", workflow="packt_quarantine_bgp", device="srl1", decision=~"proceed|skip|resolved"} | json
 ```
 
-The `decision=~"proceed|skip|resolved"` matcher keeps the result tight: only the workflow's decision audit records. The same Loki stream also carries AI narrative records (`ai_rca="true"`) and action confirmations (`QUARANTINE applied …`); the explicit decision filter hides those for now so the focus is just on the policy outcome. Phase 4 [§D · The AI narrative](#d-the-ai-narrative-same-evidence-different-voice) shows what the stream looks like without the filter.
+The `decision=~"proceed|skip|resolved"` matcher keeps the result tight: only the workflow's decision audit records. The same Loki stream also carries AI narrative records (`ai_rca="true"`) and action confirmations (`QUARANTINE applied …`); the explicit decision filter hides those for now so the focus is just on the policy outcome. Step 4's [§C · The AI narrative](#c-the-ai-narrative-same-evidence-different-voice) shows what the stream looks like without the filter.
 
 The `| json` at the end is LogQL's way of saying *"parse each log line's body as JSON so I can read individual fields"* — the workflow writes its records as JSON, so this turns each line into a structured object Grafana renders inline (one field per row, right under the log line — no clicking needed).
 
@@ -736,7 +736,7 @@ nobs packt rca srl1 10.1.99.2
 
 Worth noting for Phase 7: the AI narrative records share the workflow's Loki stream but **don't carry a `decision` label** (since they're not decisions — they're narratives). So if you later count records grouped by `decision`, the AI records will land in an empty/unlabeled bucket rather than alongside `proceed` / `skip` / `resolved`. Phase 7 walks the query that surfaces this.
 
-By default the lab ships with the **demo** provider — a deterministic templated narrative stitched from the evidence dict. Swapping it for a real LLM (OpenAI / Anthropic) with an API key is on the [Take it home](take-home.md) page.
+By default the lab ships with the **demo** provider — a deterministic templated narrative stitched from the evidence dict. Swapping it for a real LLM (OpenAI / Anthropic) with an API key is on the [Take it home](../../../docs-packt/take-home.md) page.
 
 #### What `proceed` doesn't do
 

@@ -22,7 +22,7 @@ Whoever's free, take it.
 
     **Nothing here is required for Part 3.** We drive; you watch. Follow along on your own Grafana if you like — every command and query is written out below — but if your stack is slow, if you are still finishing Part 1, or if you would simply rather watch, that is the intended way to take this block. Part 3 starts from a clean `nobs packt reset` and does not depend on anything you build here.
 
-    We are walking four of the ten panel-build steps and five of the seven alert-lifecycle steps — the ones that carry the ideas. The **full ten-step build**, the steps we skip, and the stretch goals are all on the [Take it home](take-home.md) page, written so you can work through them at your own pace afterwards.
+    We are walking four of the ten panel-build steps and five of the seven alert-lifecycle steps — the ones that carry the ideas. The **full ten-step build**, the steps we skip, and the stretch goals are all on the [Take it home](../../../docs-packt/take-home.md) page, written so you can work through them at your own pace afterwards.
 
 A "flap" is an interface bouncing up and down in quick succession. The flap-rate panel counts UPDOWN log events per interface in a rolling window — a number that climbs fast when something is flapping and sits at the floor when it isn't.
 
