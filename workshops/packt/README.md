@@ -20,7 +20,7 @@ Part 2 is a **guided demo for everybody** — nothing in it is required for Part
 
 ## Before the session
 
-Do this a few days ahead, not on the morning. The first `up` pulls 3–5 GB of container images and that is the only genuinely slow step.
+Do this a few days ahead, not on the morning. The first `up` pulls 3–5 GB of container images and builds five more locally — that is the only genuinely slow step.
 
 ```bash
 git clone https://github.com/network-observability/workshops.git

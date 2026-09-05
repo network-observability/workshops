@@ -112,7 +112,7 @@ nobs packt down                 # images stay cached; comes back in seconds
 
 !!! warning "Only one workshop stack at a time"
 
-    This repo also hosts a longer in-person workshop whose stack binds the same container names and host ports. `nobs packt up` will refuse to start while the other one's containers exist, and tells you which `destroy` command clears them. If you have never run the other workshop, this will never come up.
+    This repo also hosts a longer in-person workshop whose stack binds the same container names and host ports. `nobs packt up` will refuse to start while the other one's containers exist, and tells you which `down` command clears them. If you have never run the other workshop, this will never come up.
 
 ## What you'll have running
 

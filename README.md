@@ -82,8 +82,9 @@ nobs autocon5 flap-interface --device srl1 --interface ethernet-1/1
   uv handles Python installation too, so you don't need a system Python.
 - **Git** to clone the repo and a few GB of free disk for container images.
 - Approximately **8 GB of free RAM** while the stack is running.
-- Outbound HTTPS to `github.com`, `ghcr.io`, `docker.io`, `quay.io` for image
-  pulls.
+- Outbound HTTPS to `github.com`, `ghcr.io`, `docker.io`, `registry.opsmill.io`
+  (Infrahub) and `grafana.com` (a Grafana plugin baked in at build time) for image
+  pulls, plus `deb.debian.org` and `pypi.org` for the locally-built images.
 
 If Docker or uv aren't already installed, the next section walks through each.
 
