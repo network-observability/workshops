@@ -353,3 +353,23 @@ def test_cascade_targetable_interfaces_freeze_octets(
             assert overrides.get(metric, {}).get("delay", {}).get("close", {}).get("snap_to") is not None, (
                 f"{device} {interface}: {metric} has no delay.close.snap_to"
             )
+
+
+@pytest.mark.parametrize("device", ["srl1", "srl2"])
+def test_cascade_gated_bgp_peers_match_generated_names(
+    device: str,
+    flap: ModuleType,
+    slug: str,
+    baseline_entries: Callable[[str], list[dict]],
+) -> None:
+    peer_label = flap._DEVICE_CONFIG[device]["peer_label"]
+    gated = [
+        e
+        for e in baseline_entries(device)
+        if e.get("while", {}).get("scenario_name", "").startswith(f"{slug}-cascade-{device}-bgp-")
+    ]
+    assert gated, f"no cascade-gated BGP peers found for {device}"
+
+    for entry in gated:
+        peer = entry["labels"][peer_label]
+        assert entry["while"]["scenario_name"] == flap.bgp_cascade_name(device, peer)
