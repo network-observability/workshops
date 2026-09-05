@@ -14,7 +14,7 @@ The point of both: the only thing that can go wrong on the day is an unprepared 
 >
 > You're booked on **Building a Network Observability Stack with Tools, Automation, and AI** on **Saturday 19 September, 09:00–12:00 EDT (14:00–17:00 Dublin)**.
 >
-> The whole workshop runs on your own laptop — a full observability stack in Docker, no shared backend, nothing to sign up for. That means about 30 minutes of setup, and it is much better done this week than at 08:55 on the day. The first run pulls 3–5 GB of container images; on hotel or conference Wi-Fi that is the difference between "ready" and "watching".
+> The whole workshop runs on your own laptop — a full observability stack in Docker, no shared backend, nothing to sign up for. That means about 30 minutes of setup, and it is much better done this week than at 08:55 on the day. The first run pulls 3–5 GB of container images and builds five more locally; on hotel or conference Wi-Fi that is the difference between "ready" and "watching".
 >
 > **Start here**: <https://network-observability.github.io/workshops/packt/prework/>
 >
