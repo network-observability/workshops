@@ -116,29 +116,40 @@ jobs:
           cp .env.example .env
           docker compose --env-file .env config --quiet
 
+      - name: Validate docker compose (packt)
+        working-directory: workshops/packt
+        run: |
+          cp .env.example .env
+          docker compose --env-file .env config --quiet
+
       - name: Ruff (Python style)
         run: uv run ruff check .
 
       - name: Verify compose bind-mount sources resolve
-        working-directory: workshops/autocon5
         run: |
           python3 - <<'PY'
           import os, sys, yaml
           fail = 0
-          with open("docker-compose.yml") as fh: cfg = yaml.safe_load(fh)
-          for name, svc in (cfg.get("services") or {}).items():
-              for vol in svc.get("volumes") or []:
-                  if isinstance(vol, str) and vol.startswith("./"):
-                      src = vol.split(":", 1)[0]
-                      if not os.path.exists(src):
-                          print(f"MISSING bind-mount source for {name}: {src}"); fail += 1
-              build = svc.get("build")
-              if isinstance(build, dict):
-                  ctx = build.get("context", ".")
-                  df = build.get("dockerfile", "Dockerfile")
-                  full = os.path.join(ctx, df)
-                  if not os.path.exists(full):
-                      print(f"MISSING build dockerfile for {name}: {full}"); fail += 1
+          for ws in sorted(os.listdir("workshops")):
+              root = os.path.join("workshops", ws)
+              compose = os.path.join(root, "docker-compose.yml")
+              if not os.path.isfile(compose):
+                  continue
+              print(f"== {ws}")
+              with open(compose) as fh: cfg = yaml.safe_load(fh)
+              for name, svc in (cfg.get("services") or {}).items():
+                  for vol in svc.get("volumes") or []:
+                      if isinstance(vol, str) and vol.startswith("./"):
+                          src = os.path.join(root, vol.split(":", 1)[0])
+                          if not os.path.exists(src):
+                              print(f"MISSING bind-mount source for {name}: {src}"); fail += 1
+                  build = svc.get("build")
+                  if isinstance(build, dict):
+                      ctx = build.get("context", ".")
+                      df = build.get("dockerfile", "Dockerfile")
+                      full = os.path.join(root, ctx, df)
+                      if not os.path.exists(full):
+                          print(f"MISSING build dockerfile for {name}: {full}"); fail += 1
           sys.exit(1 if fail else 0)
           PY
 
@@ -146,12 +157,19 @@ jobs:
   # Slow smoke — full stack up, walk the four Part 3 paths, then tear down.
   # Gated on schedule + workflow_dispatch so PRs aren't slow.
   # ~10 minutes (image pulls dominate).
+  #
+  # One runner per workshop: both stacks pin the same container names and host
+  # ports, so they cannot share a runner.
   # =========================================================================
   smoke:
-    name: smoke (full stack + try-it)
+    name: smoke (${{ matrix.workshop }} full stack + try-it)
     needs: lint
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        workshop: [autocon5, packt]
     if: |
       github.event_name == 'schedule' ||
       (github.event_name == 'workflow_dispatch' && inputs.run_smoke == 'true')
@@ -174,8 +192,8 @@ jobs:
 
       - name: Bring stack up
         run: |
-          uv run nobs autocon5 setup
-          uv run nobs autocon5 up
+          uv run nobs ${{ matrix.workshop }} setup
+          uv run nobs ${{ matrix.workshop }} up
 
       - name: Wait for stack readiness
         run: |
@@ -204,7 +222,7 @@ jobs:
             || { echo "Infrahub HTTP listener never came up"; exit 1; }
           echo "Infrahub listener is up"
           # Phase 2: schema-write path is responsive (no-op POST returns 200).
-          set -a; . workshops/autocon5/.env; set +a
+          set -a; . workshops/${{ matrix.workshop }}/.env; set +a
           for _ in $(seq 1 60); do
             code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
               -X POST -H "Content-Type: application/json" \
@@ -219,7 +237,7 @@ jobs:
           echo "Infrahub schema-write path is ready"
 
       - name: Seed Infrahub
-        run: uv run nobs autocon5 load-infrahub
+        run: uv run nobs ${{ matrix.workshop }} load-infrahub
 
       - name: Wait for first BgpSessionNotUp alert (up to 2m)
         run: |
@@ -234,11 +252,11 @@ jobs:
           done
 
       - name: Walk the four Part 3 paths (try-it --auto)
-        run: uv run nobs autocon5 try-it --auto
+        run: uv run nobs ${{ matrix.workshop }} try-it --auto
 
       - name: Dump container logs on failure
         if: failure()
-        working-directory: workshops/autocon5
+        working-directory: workshops/${{ matrix.workshop }}
         run: |
           for svc in prefect-flows webhook alertmanager prometheus loki infrahub-server; do
             echo "===== $svc ====="
@@ -247,4 +265,4 @@ jobs:
 
       - name: Tear stack down
         if: always()
-        run: uv run nobs autocon5 destroy
+        run: uv run nobs ${{ matrix.workshop }} destroy
