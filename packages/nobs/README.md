@@ -12,8 +12,11 @@ nobs maintenance --device srl1   # toggle a SoT device's maintenance flag
 ```
 
 Installed as the `nobs` console script when you `uv sync` from the repo
-root. The `autocon5-workshop` package re-exports these subcommands so
-attendees can use `autocon5 status` interchangeably.
+root. Two workshops register with it today — `autocon5-workshop` (the
+4-hour in-person AutoCon5 track) and `packt-workshop` (the 3-hour online
+Packt track) — so `nobs autocon5 status` and `nobs packt status` are both
+available, and from inside either workshop directory the prefix can be
+dropped entirely.
 
 ## Why a separate package?
 

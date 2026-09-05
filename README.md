@@ -32,7 +32,7 @@ packages/
                          #   nobs <workshop> up / down / status / alerts / ...
 notes/                   # local-only scratchpad — gitignored, see notes/README.md
 workshops/
-  autocon5/              # AutoCon5 — Modern Network Observability workshop
+  autocon5/              # AutoCon5 — 4-hour in-person workshop
     README.md            # attendee-facing instructions
     pyproject.toml       # workshop's Python deps (uv workspace member)
     docker-compose.yml
@@ -49,7 +49,16 @@ workshops/
     infrahub/            # schema YAML
     webhook/             # FastAPI receiver for Alertmanager
     automation/          # Prefect flows (alert -> evidence -> decision -> action -> RCA)
+  packt/                 # Packt — 3-hour online workshop
+    README.md            # attendee-facing instructions
+    guides/              # trimmed to the 3-hour runsheet, plus runsheet.md + take-home.md
+    src/packt_workshop/  # same command surface, registered as `nobs packt`
+    …                    # same stack layout as autocon5/ above
 ```
+
+The two workshops share container names and host ports, so only one can run at a
+time. `nobs <workshop> up` refuses to start if the other one's containers are
+still around — `nobs <other> destroy` first.
 
 **One CLI: `nobs`.**
 Workshops are subcommand groups (`nobs autocon5 ...`).
@@ -151,9 +160,10 @@ Each workshop's own README walks through the agenda and the hands-on parts.
 
 ## Available workshops
 
-| Workshop | Outline |
-|----------|---------|
-| [`autocon5`](workshops/autocon5/README.md) | Telemetry & queries → dashboards → alerts, automation, AI-assisted ops |
+| Workshop | Format | Outline |
+|----------|--------|---------|
+| [`autocon5`](workshops/autocon5/README.md) | 4 h · in-person | Telemetry & queries → dashboards → alerts, automation, AI-assisted ops |
+| [`packt`](workshops/packt/README.md) | 3 h · online | Telemetry & queries → dashboards (guided demo) → alerts, automation, AI-assisted ops |
 
 ## License
 

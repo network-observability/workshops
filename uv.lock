@@ -10,6 +10,7 @@ resolution-markers = [
 members = [
     "autocon5-workshop",
     "nobs",
+    "packt-workshop",
     "workshops",
 ]
 
@@ -789,6 +790,7 @@ dependencies = [
     { name = "autocon5-workshop" },
     { name = "httpx" },
     { name = "infrahub-sdk", extra = ["ctl"] },
+    { name = "packt-workshop" },
     { name = "psutil" },
     { name = "pydantic" },
     { name = "python-dotenv" },
@@ -802,6 +804,7 @@ requires-dist = [
     { name = "autocon5-workshop", editable = "workshops/autocon5" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "infrahub-sdk", extras = ["ctl"], specifier = ">=1.0,<2.0" },
+    { name = "packt-workshop", editable = "workshops/packt" },
     { name = "psutil", specifier = ">=5.9" },
     { name = "pydantic", specifier = ">=2.6,<3" },
     { name = "python-dotenv", specifier = ">=1.0" },
@@ -897,6 +900,32 @@ sdist = { url = "https://files.pythonhosted.org/packages/d7/f1/e7a6dd94a8d4a5626
 wheels = [
     { url = "https://files.pythonhosted.org/packages/df/b2/87e62e8c3e2f4b32e5fe99e0b86d576da1312593b39f47d8ceef365e95ed/packaging-26.2-py3-none-any.whl", hash = "sha256:5fc45236b9446107ff2415ce77c807cee2862cb6fac22b8a73826d0693b0980e", size = 100195, upload-time = "2026-04-24T20:15:22.081Z" },
 ]
+
+[[package]]
+name = "packt-workshop"
+version = "0.1.0"
+source = { editable = "workshops/packt" }
+dependencies = [
+    { name = "infrahub-sdk", extra = ["ctl"] },
+    { name = "pyyaml" },
+    { name = "requests" },
+    { name = "typer" },
+]
+
+[package.optional-dependencies]
+preflight = [
+    { name = "playwright" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "infrahub-sdk", extras = ["ctl"], specifier = ">=1.0,<2.0" },
+    { name = "playwright", marker = "extra == 'preflight'", specifier = ">=1.58" },
+    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "requests", specifier = ">=2.31" },
+    { name = "typer", extras = ["all"], specifier = ">=0.12,<1" },
+]
+provides-extras = ["preflight"]
 
 [[package]]
 name = "paginate"
