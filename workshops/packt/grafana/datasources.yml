@@ -1,0 +1,28 @@
+---
+apiVersion: 1
+
+datasources:
+  - name: prometheus
+    type: prometheus
+    url: http://prometheus:9090
+    access: proxy
+    isDefault: true
+
+  - name: loki
+    type: loki
+    url: http://loki:3001
+    access: proxy
+
+  # Infrahub source-of-truth via the Infinity datasource.
+  # Authoritative URL + custom header live here; panels reference the UID
+  # and post their GraphQL queries through Grafana's backend proxy with the
+  # token already attached.
+  - name: infrahub
+    uid: workshop-infrahub-graphql
+    type: yesoreyeram-infinity-datasource
+    url: http://infrahub-server:8000/graphql
+    editable: true
+    jsonData:
+      httpHeaderName1: X-INFRAHUB-KEY
+    secureJsonData:
+      httpHeaderValue1: ${INFRAHUB_API_TOKEN}

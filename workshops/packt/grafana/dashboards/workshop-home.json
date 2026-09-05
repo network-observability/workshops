@@ -1,0 +1,688 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "liveNow": false,
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "",
+      "transparent": true,
+      "datasource": {
+        "type": "datasource",
+        "uid": "grafana"
+      },
+      "options": {
+        "mode": "markdown",
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "# Network Observability Workshop\n\n**Where you are in the arc:** [Part 1 \u2014 Telemetry & queries](https://network-observability.github.io/workshops/workshop/part-1/) \u00b7 [Part 2 \u2014 Dashboards](https://network-observability.github.io/workshops/workshop/part-2/) \u00b7 [Part 3 \u2014 Alerts, automation, AI](https://network-observability.github.io/workshops/workshop/part-3/) \u00b7 [Advanced](https://network-observability.github.io/workshops/workshop/advanced/)\n\nWelcome. The status row below shows lab health at a glance \u2014 the navigation tiles drop you straight into a device's health view, the lab scratchpad, or the runbook. Recent flap and config-push events are streamed at the bottom; firing alerts are surfaced in the table beneath. The starter queries at the bottom give you ready-to-run PromQL and LogQL for the canonical curriculum questions."
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 5
+      },
+      "pluginVersion": "13.0.1"
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Devices",
+      "description": "Number of devices currently emitting metrics. Should equal the topology size (2 for the canonical workshop).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P1809F7CD0C75ACF3"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none",
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value",
+        "wideLayout": true,
+        "percentChangeColorMode": "standard",
+        "showPercentChange": false
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P1809F7CD0C75ACF3"
+          },
+          "editorMode": "code",
+          "expr": "count(group by (device)(bgp_oper_state))",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 6,
+        "h": 4
+      },
+      "pluginVersion": "13.0.1"
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Interfaces",
+      "description": "Total interfaces being monitored across all devices. Reflects what the sonda scenarios are generating.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P1809F7CD0C75ACF3"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none",
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value",
+        "wideLayout": true,
+        "percentChangeColorMode": "standard",
+        "showPercentChange": false
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P1809F7CD0C75ACF3"
+          },
+          "editorMode": "code",
+          "expr": "count(group by (device, name)(interface_oper_state))",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "x": 6,
+        "y": 5,
+        "w": 6,
+        "h": 4
+      },
+      "pluginVersion": "13.0.1"
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Firing alerts",
+      "description": "Count of Prometheus alert rules currently in `firing` state. Zero in steady state.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P1809F7CD0C75ACF3"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none",
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value",
+        "wideLayout": true,
+        "percentChangeColorMode": "standard",
+        "showPercentChange": false
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P1809F7CD0C75ACF3"
+          },
+          "editorMode": "code",
+          "expr": "sum(ALERTS{alertstate=\"firing\"}) OR vector(0)",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 5,
+        "w": 6,
+        "h": 4
+      },
+      "pluginVersion": "13.0.1"
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Log lines (5m)",
+      "description": "Total log lines received across all pipelines in the last 5 minutes. A quick liveness check \u2014 if this is zero on a freshly-booted stack, sonda or Vector hasn't started emitting yet.",
+      "datasource": {
+        "type": "loki",
+        "uid": "P982945308D3682D1"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none",
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value",
+        "wideLayout": true,
+        "percentChangeColorMode": "standard",
+        "showPercentChange": false
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "P982945308D3682D1"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({pipeline=~\".+\"}[5m]))",
+          "queryType": "instant",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "x": 18,
+        "y": 5,
+        "w": 6,
+        "h": 4
+      },
+      "pluginVersion": "13.0.1"
+    },
+    {
+      "id": 10,
+      "type": "text",
+      "title": "",
+      "transparent": true,
+      "datasource": {
+        "type": "datasource",
+        "uid": "grafana"
+      },
+      "options": {
+        "mode": "markdown",
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "### [srl1 Device Health](/d/c78e686b-138b-4deb-b6ae-3239dc10a162?var-device=srl1)\n\nMetrics, BGP, interfaces, and logs for `srl1` \u2014 the **gNMI-collected** device (`collection_type=gnmi`). Metrics arrive as raw gNMI shapes (`srl_*` names) and telegraf-srl1 normalizes them to canonical. Logs push direct to Loki."
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 6,
+        "h": 5
+      },
+      "pluginVersion": "13.0.1"
+    },
+    {
+      "id": 11,
+      "type": "text",
+      "title": "",
+      "transparent": true,
+      "datasource": {
+        "type": "datasource",
+        "uid": "grafana"
+      },
+      "options": {
+        "mode": "markdown",
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "### [srl2 Device Health](/d/c78e686b-138b-4deb-b6ae-3239dc10a162?var-device=srl2)\n\nSame view for `srl2` \u2014 the **SNMP-collected** device (`collection_type=snmp`). Metrics arrive as raw SNMP shapes (`ifHC*`, `bgpPeer*` names) and telegraf-srl2 normalizes them to the same canonical schema as srl1. Syslog ships via Vector. Same downstream queries, different vendor shapes upstream."
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 9,
+        "w": 6,
+        "h": 5
+      },
+      "pluginVersion": "13.0.1"
+    },
+    {
+      "id": 12,
+      "type": "text",
+      "title": "",
+      "transparent": true,
+      "datasource": {
+        "type": "datasource",
+        "uid": "grafana"
+      },
+      "options": {
+        "mode": "markdown",
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "### [Workshop Lab](/d/dfb5dpyjbh2wwa)\n\nAttendee scratchpad \u2014 focused interface admin/operational state, traffic, and filtered logs. Use this when running through the hands-on exercises."
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 9,
+        "w": 6,
+        "h": 5
+      },
+      "pluginVersion": "13.0.1"
+    },
+    {
+      "id": 13,
+      "type": "text",
+      "title": "",
+      "transparent": true,
+      "datasource": {
+        "type": "datasource",
+        "uid": "grafana"
+      },
+      "options": {
+        "mode": "markdown",
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "### [Runbook](https://github.com/network-observability/workshops/blob/main/workshops/packt/docs/troubleshooting.md)\n\nOperator runbook for the workshop stack \u2014 recovery steps for every recurring failure mode (Infrahub seeding, sonda `/events`, Vector, annotations, more)."
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 9,
+        "w": 6,
+        "h": 5
+      },
+      "pluginVersion": "13.0.1"
+    },
+    {
+      "id": 20,
+      "type": "logs",
+      "title": "Recent events",
+      "description": "Live stream of interface flaps and config-push annotations across the lab \u2014 the same lines that drive the dashboard annotation markers, surfaced as a feed so they're impossible to miss.",
+      "datasource": {
+        "type": "loki",
+        "uid": "P982945308D3682D1"
+      },
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "P982945308D3682D1"
+          },
+          "editorMode": "code",
+          "expr": "{device=~\".+\"} |~ \"Interface .* changed state|Configured from\" | json | line_format \"[{{ or .severity .level | upper }}] {{ .device }} | {{ .message }}\"",
+          "queryType": "range",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "P982945308D3682D1"
+          },
+          "editorMode": "code",
+          "expr": "{source=\"prefect\"} | json | line_format \"[{{ or .severity .level | upper }}] {{ .device }} | prefect/{{ .workflow }} | decision={{ or .decision \\\"-\\\" }} ai_rca={{ or .ai_rca \\\"-\\\" }} | {{ .message }}\"",
+          "queryType": "range",
+          "refId": "B"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 24,
+        "h": 8
+      }
+    },
+    {
+      "id": 21,
+      "type": "table",
+      "title": "Currently firing alerts",
+      "description": "Live view of alerts currently in `firing` state. Empty in steady state. Use `nobs packt flap-interface --device srl1 --interface ethernet-1/1` four times in two minutes to trip `PeerInterfaceFlapping` for a demo.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P1809F7CD0C75ACF3"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "alertstate"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "firing": {
+                        "color": "red",
+                        "index": 0
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "pipeline"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "direct": {
+                        "color": "green",
+                        "index": 0
+                      },
+                      "telegraf": {
+                        "color": "blue",
+                        "index": 1
+                      },
+                      "vector": {
+                        "color": "orange",
+                        "index": 2
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "collection_type"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "gnmi": {
+                        "color": "green",
+                        "index": 0
+                      },
+                      "snmp": {
+                        "color": "blue",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value": true,
+              "__name__": true,
+              "job": true,
+              "instance": true
+            },
+            "indexByName": {
+              "alertname": 0,
+              "alertstate": 1,
+              "severity": 2,
+              "device": 3,
+              "interface": 4,
+              "peer_address": 5
+            },
+            "renameByName": {}
+          }
+        }
+      ],
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "P1809F7CD0C75ACF3"
+          },
+          "editorMode": "code",
+          "expr": "ALERTS{alertstate=\"firing\"}",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 22,
+        "w": 24,
+        "h": 6
+      },
+      "pluginVersion": "13.0.1"
+    },
+    {
+      "id": 30,
+      "type": "text",
+      "title": "Starter queries",
+      "transparent": false,
+      "datasource": {
+        "type": "datasource",
+        "uid": "grafana"
+      },
+      "options": {
+        "mode": "markdown",
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "Copy any of these into Grafana \u2192 **Explore** to see the live data behind the curriculum's recurring questions. Switch the data source dropdown at the top of Explore between **Prometheus** and **Loki** as noted.\n\n**1 \u2014 Every UPDOWN event across the lab** (Loki)\n```logql\n{vendor_facility_process=\"UPDOWN\"}\n```\nAll interface UP/DOWN events, regardless of device or pipeline. Sanity check: scenarios should be emitting these on every flap.\n\n**2 \u2014 BGP peers that changed state recently** (Prometheus)\n```promql\nchanges(bgp_oper_state[5m]) > 0\n```\nPeers whose session state flipped at least once in the last 5 minutes. Bridge to the corresponding logs by filtering Loki on the same `device` and `peer_address` labels.\n\n**3 \u2014 Logs that flowed through Vector** (Loki)\n```logql\n{pipeline=\"vector\"}\n```\nOnly the syslog leg shipped via Vector \u2014 i.e. the SNMP-collected device's log path. Compare against `{pipeline=\"loki-push\"}` for the direct-push leg.\n\n**4 \u2014 Three-pipeline mental model rollup** (Prometheus)\n```promql\ncount by (pipeline) (bgp_oper_state)\n```\nHow many BGP series each pipeline is contributing \u2014 `direct`, `telegraf`, `vector`. Useful for confirming that the curriculum's three-pipeline story is still wired up after a stack restart.\n\n[Open Explore \u2192](/explore)"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 24,
+        "h": 14
+      },
+      "pluginVersion": "13.0.1"
+    }
+  ],
+  "preload": false,
+  "refresh": "30s",
+  "schemaVersion": 41,
+  "tags": [
+    "workshop",
+    "home"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Workshop Home",
+  "uid": "workshop-home",
+  "version": 1,
+  "weekStart": ""
+}
