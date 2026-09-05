@@ -8,7 +8,7 @@
 # runs once at home (or CI runs once and publishes the image), after which the
 # lab boots fully offline.
 
-FROM grafana/grafana:13.0.1-security-01
+FROM grafana/grafana:13.2.1
 
 # Only the Infinity datasource is actually referenced by the provisioned
 # workshop dashboards (device-health.json uses it for Infrahub GraphQL).

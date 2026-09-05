@@ -113,6 +113,21 @@ nobs packt restart prefect-flows   # re-registers the deployment
 
 This is faster than a full `nobs packt restart` and doesn't disturb the rest of the stack.
 
+## `prefect-postgres` exits 1 with "database files are incompatible"
+
+Full message: *"This is usually the result of upgrading the Docker image without upgrading the underlying database using `pg_upgrade`."*
+
+The stack runs `postgres:18-alpine`. A `prefect_data` volume created by an older image (Postgres 14) cannot be read by 18, and Postgres refuses to start rather than corrupt it. Everything that depends on Prefect then fails with `dependency failed to start`.
+
+Nothing in the workshop needs that data to survive, so drop the volume:
+
+```bash
+nobs packt destroy    # removes containers AND volumes
+nobs packt up
+```
+
+Note that the mount is `prefect_data:/var/lib/postgresql/18/docker`, not `/var/lib/postgresql/data`. Postgres 18 wants the mount one level above `PGDATA` so a future `pg_upgrade --link` doesn't cross a mount-point boundary. The `18` in that path is deliberate and moves with the image's major version.
+
 ## Stack feels slow / runs out of memory
 
 **Why.** Infrahub alone runs a half-dozen containers (server, db, cache, mq, storage, ray-worker).

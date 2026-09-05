@@ -1,4 +1,4 @@
-ARG TELEGRAF_IMAGE=docker.io/telegraf:1.31
+ARG TELEGRAF_IMAGE=docker.io/telegraf:1.39.3
 
 FROM $TELEGRAF_IMAGE
 

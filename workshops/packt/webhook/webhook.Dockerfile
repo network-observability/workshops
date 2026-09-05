@@ -1,4 +1,4 @@
-ARG PYTHON_VER=3.10
+ARG PYTHON_VER=3.11
 
 FROM tiangolo/uvicorn-gunicorn-fastapi:python${PYTHON_VER}-slim AS webhook
 

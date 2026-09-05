@@ -17,9 +17,9 @@ nodes:
     description: A network device modelled by the workshop.
     label: Network Device
     icon: mdi:router
-    default_filter: name__value
-    display_labels:
+    human_friendly_id:
       - name__value
+    display_label: name__value
     order_by:
       - name__value
     attributes:
@@ -58,8 +58,7 @@ nodes:
     description: A device interface.
     label: Interface
     icon: mdi:ethernet
-    display_labels:
-      - name__value
+    display_label: name__value
     order_by:
       - name__value
     attributes:
@@ -98,8 +97,7 @@ nodes:
     description: A BGP peer the device is configured to maintain (intent).
     label: BGP Session
     icon: mdi:lan
-    display_labels:
-      - peer_address__value
+    display_label: peer_address__value
     order_by:
       - peer_address__value
     attributes:

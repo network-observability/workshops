@@ -38,7 +38,7 @@ services:
   # label (`source` for srl1's gNMI shape, `agent_host` for srl2's SNMP shape).
   sonda-server:
     container_name: sonda-server
-    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.22.2}
+    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.23.1}
     command: ["--port", "8080", "--bind", "0.0.0.0", "--catalog", "/catalog"]
     volumes:
       - ./sonda/catalog:/catalog:ro
@@ -51,7 +51,7 @@ services:
   # no client-side expansion here.
   sonda-setup:
     container_name: sonda-setup
-    image: python:3.12-slim
+    image: python:3.13-slim
     entrypoint: ["/bin/bash", "/scripts/sonda-setup.sh"]
     environment:
       SONDA_SERVER_URL: "http://sonda-server:8080"
@@ -68,7 +68,7 @@ services:
   # to Loki; srl2 streams emit RFC 5424 syslog UDP to Vector (vector:1514).
   sonda-logs:
     container_name: sonda-logs
-    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.22.2}
+    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.23.1}
     entrypoint: ["/sonda"]
     command: ["run", "/catalog/all-logs.yaml"]
     volumes:
@@ -96,7 +96,7 @@ services:
       context: .
       dockerfile: ./telegraf/telegraf.Dockerfile
       args:
-        TELEGRAF_IMAGE: ${TELEGRAF_IMAGE:-docker.io/telegraf:1.31}
+        TELEGRAF_IMAGE: ${TELEGRAF_IMAGE:-docker.io/telegraf:1.39.3}
     command: telegraf --config /etc/telegraf/telegraf.conf
     tty: true
     volumes:
@@ -120,7 +120,7 @@ services:
       context: .
       dockerfile: ./telegraf/telegraf.Dockerfile
       args:
-        TELEGRAF_IMAGE: ${TELEGRAF_IMAGE:-docker.io/telegraf:1.31}
+        TELEGRAF_IMAGE: ${TELEGRAF_IMAGE:-docker.io/telegraf:1.39.3}
     command: telegraf --config /etc/telegraf/telegraf.conf
     tty: true
     volumes:
@@ -141,7 +141,7 @@ services:
 
   vector:
     container_name: vector
-    image: ${VECTOR_IMAGE:-docker.io/timberio/vector:0.49.0-debian}
+    image: ${VECTOR_IMAGE:-docker.io/timberio/vector:0.58.0-debian}
     command: ["--config", "/etc/vector/vector.yaml"]
     volumes:
       - ./vector/vector.yaml:/etc/vector/vector.yaml:ro
@@ -160,7 +160,7 @@ services:
 
   loki:
     container_name: loki
-    image: ${LOKI_IMAGE:-docker.io/grafana/loki:3.1.1}
+    image: ${LOKI_IMAGE:-docker.io/grafana/loki:3.6.16}
     ports:
       - "3001:3001"
     command: -config.file=/etc/loki/loki-config.yml
@@ -171,7 +171,7 @@ services:
 
   prometheus:
     container_name: prometheus
-    image: ${PROMETHEUS_IMAGE:-docker.io/prom/prometheus:v2.52.0}
+    image: ${PROMETHEUS_IMAGE:-docker.io/prom/prometheus:v3.14.0}
     ports:
       - "9090:9090"
     command:
@@ -193,7 +193,7 @@ services:
 
   alertmanager:
     container_name: alertmanager
-    image: ${ALERTMANAGER_IMAGE:-docker.io/prom/alertmanager:v0.26.0}
+    image: ${ALERTMANAGER_IMAGE:-docker.io/prom/alertmanager:v0.34.0}
     ports:
       - "9093:9093"
     command: --config.file=/etc/alertmanager/alertmanager.yml --cluster.advertise-address=0.0.0.0:9093
@@ -210,7 +210,7 @@ services:
     build:
       context: ./grafana
       dockerfile: Dockerfile
-    image: ${GRAFANA_IMAGE:-packt/grafana:13.0.1-security-01-plugins}
+    image: ${GRAFANA_IMAGE:-packt/grafana:13.2.1-plugins}
     ports:
       - "3000:3000"
     volumes:
@@ -246,10 +246,11 @@ services:
 
   infrahub-db:
     container_name: infrahub-db
-    image: neo4j:5-community
+    image: neo4j:2026.05.0-community
     environment:
       NEO4J_AUTH: neo4j/admin
       NEO4J_dbms_security_auth__minimum__password__length: "4"
+      NEO4J_dbms_security_procedures_unrestricted: "apoc.*"
     healthcheck:
       test: wget -qO /dev/null http://localhost:7474 || exit 1
       interval: 5s
@@ -261,19 +262,19 @@ services:
 
   infrahub-cache:
     container_name: infrahub-cache
-    image: redis:7.2
+    image: redis:8.4.0
     volumes:
       - infrahub_cache_data:/data
 
   # AMQP message bus between the Infrahub API server and the git-agent.
   infrahub-message-queue:
     container_name: infrahub-message-queue
-    image: rabbitmq:3.13-management-alpine
+    image: rabbitmq:4.2.1-management
     environment:
       RABBITMQ_DEFAULT_USER: infrahub
       RABBITMQ_DEFAULT_PASS: infrahub
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
       interval: 5s
       timeout: 30s
       retries: 5
@@ -282,7 +283,7 @@ services:
 
   infrahub-server:
     container_name: infrahub-server
-    image: ${INFRAHUB_IMAGE:-registry.opsmill.io/opsmill/infrahub:1.1}
+    image: ${INFRAHUB_IMAGE:-registry.opsmill.io/opsmill/infrahub:1.11.2}
     command: gunicorn --config backend/infrahub/serve/gunicorn_config.py --logger-class infrahub.serve.log.GunicornLogger -w 2 infrahub.server:app
     ports:
       - "8000:8000"
@@ -324,7 +325,7 @@ services:
 
   infrahub-task-worker:
     container_name: infrahub-task-worker
-    image: ${INFRAHUB_IMAGE:-registry.opsmill.io/opsmill/infrahub:1.1}
+    image: ${INFRAHUB_IMAGE:-registry.opsmill.io/opsmill/infrahub:1.11.2}
     # Background worker for branch / changeset / repository operations.
     command: infrahub git-agent start
     environment:
@@ -358,7 +359,7 @@ services:
       context: .
       dockerfile: ./webhook/webhook.Dockerfile
       args:
-        PYTHON_VER: ${PYTHON_VER:-3.10}
+        PYTHON_VER: ${PYTHON_VER:-3.11}
     command: "python -m app.main"
     ports:
       - "9997:9997"
@@ -374,13 +375,16 @@ services:
 
   prefect-postgres:
     container_name: prefect-postgres
-    image: postgres:14
+    image: postgres:18-alpine
     environment:
       POSTGRES_USER: prefect
       POSTGRES_PASSWORD: prefect
       POSTGRES_DB: prefect
+    # postgres:18+ wants the mount one level up from PGDATA so `pg_upgrade --link`
+    # can cross major versions without a mount-point boundary. Matches upstream
+    # Infrahub's own task-manager-db.
     volumes:
-      - prefect_data:/var/lib/postgresql/data
+      - prefect_data:/var/lib/postgresql/18/docker
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U prefect"]
       interval: 5s
@@ -389,7 +393,7 @@ services:
 
   prefect-redis:
     container_name: prefect-redis
-    image: redis:7
+    image: redis:8.4.0
     volumes:
       - prefect_redis_data:/data
     healthcheck:

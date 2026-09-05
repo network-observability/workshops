@@ -213,7 +213,7 @@ Workshop CLI (host machine)                       Prefect flows (in-container)
               │  http://localhost:8085)                         │  http://sonda-server:8080)
               ▼                                                  ▼
               ┌──────────────────────────────────────────────────┐
-              │ sonda-server v1.22.2                             │
+              │ sonda-server v1.23.1                             │
               │  POST /events handler                            │
               │   • validates payload                            │
               │   • forwards to sink config inline               │
