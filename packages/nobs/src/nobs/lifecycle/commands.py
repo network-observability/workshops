@@ -10,7 +10,8 @@ registry as a Rich tree.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import subprocess
+from collections.abc import Callable, Sequence
 from typing import Annotated
 
 import typer
@@ -75,7 +76,7 @@ def up_for(ws: Workshop) -> Callable[..., None]:
         # Stream compose output natively. We tried wrapping it in a Rich
         # Progress earlier but compose's own pull/build progress is already
         # rich enough; competing with it produced visually mangled output.
-        result = run_compose(action, ws, services=services)
+        result = _guarded_up(action, ws, services=services)
         if result.returncode != 0:
             fail(f"docker compose exited {result.returncode}")
             raise typer.Exit(code=result.returncode)
@@ -120,6 +121,8 @@ def restart_for(ws: Workshop) -> Callable[..., None]:
             typer.Argument(help="Specific services to restart (default: full down + up)."),
         ] = None,
     ) -> None:
+        _guard_foreign_containers(ws)
+
         if services:
             step(f"docker compose restart {' '.join(services)} (project={ws.name})")
             result = run_compose("restart", ws, services=services)
@@ -134,7 +137,7 @@ def restart_for(ws: Workshop) -> Callable[..., None]:
         if result.returncode != 0:
             raise typer.Exit(code=result.returncode)
         step(f"docker compose up -d --build (project={ws.name})")
-        result = run_compose("up -d --build", ws)
+        result = _guarded_up("up -d --build", ws)
         if result.returncode != 0:
             raise typer.Exit(code=result.returncode)
         ok("stack restarted")
@@ -202,13 +205,15 @@ def build_for(ws: Workshop) -> Callable[..., None]:
             typer.Argument(help="Services to rebuild (default: all)."),
         ] = None,
     ) -> None:
+        _guard_foreign_containers(ws)
+
         step(f"docker compose build (project={ws.name})")
         result = run_compose("build", ws, services=services)
         if result.returncode != 0:
             raise typer.Exit(code=result.returncode)
         # Bring rebuilt services back up.
         step("docker compose up -d (post-build)")
-        result = run_compose("up -d", ws, services=services)
+        result = _guarded_up("up -d", ws, services=services)
         if result.returncode != 0:
             raise typer.Exit(code=result.returncode)
         ok("rebuild complete")
@@ -221,6 +226,14 @@ def build_for(ws: Workshop) -> Callable[..., None]:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _guarded_up(
+    action: str, ws: Workshop, *, services: Sequence[str] | None = None
+) -> subprocess.CompletedProcess[str]:
+    """Run a container-creating compose action, refusing if a foreign stack exists."""
+    _guard_foreign_containers(ws)
+    return run_compose(action, ws, services=services)
 
 
 def _guard_foreign_containers(ws: Workshop) -> None:
@@ -237,7 +250,8 @@ def _guard_foreign_containers(ws: Workshop) -> None:
             continue
         fail(
             f"Containers from the {other.title} stack are present and share "
-            f"names/ports with this one. Run `nobs {other.name} destroy` first."
+            f"names/ports with this one. Run `nobs {other.name} down` first "
+            f"(or `nobs {other.name} destroy` to also drop its volumes)."
         )
         console.print(f"   [muted]conflicting containers: {', '.join(names)}[/]")
         raise typer.Exit(code=1)
