@@ -143,6 +143,21 @@ def test_collision_message_names_the_other_workshop_and_remediation(
     assert "grafana, loki" in out
 
 
+def test_collision_message_truncates_a_long_container_list(
+    up: Callable[[], None],
+    docker_ps: MagicMock,
+    run_compose: MagicMock,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    names = [f"svc{i:02d}" for i in range(22)]
+    docker_ps.side_effect = _docker_ps({"beta": names})
+    with pytest.raises(typer.Exit):
+        up()
+    out = " ".join(capsys.readouterr().out.split())
+    assert "svc00, svc01, svc02 (+19 more)" in out
+    assert "svc21" not in out
+
+
 def test_up_proceeds_when_no_other_workshop_has_containers(
     up: Callable[[], None],
     docker_ps: MagicMock,

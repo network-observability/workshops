@@ -1,17 +1,17 @@
 ---
 title: Pre-work
-description: Install Docker and uv, run the preflight, and pull the images before the session — about 20 minutes, best done a few days ahead.
+description: Install Docker and uv, run the preflight, and pull the images before the session — about 30 minutes, best done a few days ahead.
 ---
 
 <div class="packt-section-hero" markdown>
 
-<span class="packt-section-hero__badge">Before the session · ~20 minutes</span>
+<span class="packt-section-hero__badge">Before the session · ~30 minutes</span>
 
 <h1 class="packt-section-hero__title">Pre-work</h1>
 
 <p class="packt-section-hero__subtitle">Do this a few days ahead. The slow step is image pulls, and it only happens once.</p>
 
-The whole workshop runs on your own laptop — a complete observability stack in Docker, no shared backend, nothing to sign up for. Almost all of the 20 minutes below is containers downloading in the background while you do something else. Getting it out of the way this week is the difference between spending 09:00 EDT querying telemetry and spending it watching a progress bar.
+The whole workshop runs on your own laptop — a complete observability stack in Docker, no shared backend, nothing to sign up for. Almost all of the 30 minutes below is containers downloading and building in the background while you do something else. Getting it out of the way this week is the difference between spending 09:00 EDT querying telemetry and spending it watching a progress bar.
 
 <p class="packt-section-hero__meta">
   <span>Docker + uv</span>
@@ -34,7 +34,10 @@ Part 2 is a guided demo for everybody, so a stack that's still pulling images at
 - **Docker** with Compose v2 — Docker Desktop, Colima, OrbStack or Rancher Desktop all work. `docker compose version` should report v2 or later.
 - **[uv](https://docs.astral.sh/uv/)** for the Python tooling. One install command, and it brings its own Python.
 - **~5.5 GB of free RAM** while the stack is running, and **~5 GB of free disk** for images.
-- **Git**, and outbound HTTPS to `github.com`, `ghcr.io`, `docker.io` and `quay.io` for the image pulls.
+- **Git**, and outbound HTTPS to `github.com`, `ghcr.io`, `docker.io`, `registry.opsmill.io` (Infrahub) and
+  `grafana.com` (a Grafana plugin baked in at build time) — plus `deb.debian.org` and `pypi.org`, which the
+  five locally-built images use. The preflight checks the registries for you; if your machine is behind a
+  corporate proxy, get these allow-listed before the day.
 
 ### Installing Docker
 
@@ -97,7 +100,7 @@ This is the slow part. Run it once, well ahead of the session, on a connection y
 
 ```bash
 source .venv/bin/activate       # put nobs on PATH for the rest of the session
-nobs packt up                   # first run pulls 3–5 GB of images, ~5–10 min
+nobs packt up                   # first run pulls + builds images, ~15–30 min
 nobs packt status               # repeat until every row says 'ok'
 nobs packt load-infrahub
 ```
