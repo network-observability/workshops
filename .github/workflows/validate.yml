@@ -125,17 +125,22 @@ jobs:
       - name: Ruff (Python style)
         run: uv run ruff check .
 
+      - name: pytest
+        run: uv run pytest -q
+
       - name: Verify compose bind-mount sources resolve
         run: |
           python3 - <<'PY'
           import os, sys, yaml
           fail = 0
+          checked = []
           for ws in sorted(os.listdir("workshops")):
               root = os.path.join("workshops", ws)
               compose = os.path.join(root, "docker-compose.yml")
               if not os.path.isfile(compose):
                   continue
               print(f"== {ws}")
+              checked.append(ws)
               with open(compose) as fh: cfg = yaml.safe_load(fh)
               for name, svc in (cfg.get("services") or {}).items():
                   for vol in svc.get("volumes") or []:
@@ -150,6 +155,8 @@ jobs:
                       full = os.path.join(root, ctx, df)
                       if not os.path.exists(full):
                           print(f"MISSING build dockerfile for {name}: {full}"); fail += 1
+          if not checked:
+              print("no workshop compose files found — check is not doing anything"); fail += 1
           sys.exit(1 if fail else 0)
           PY
 
