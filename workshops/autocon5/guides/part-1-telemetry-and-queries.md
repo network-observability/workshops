@@ -40,7 +40,7 @@ The two devices speak different protocols at the source:
 - **`srl1` emits gNMI** — that's the telemetry shape SR Linux puts on the wire natively. Field names like `srl_interface_oper_state`, tags like `source`. **Telegraf-srl1** scrapes this raw shape, renames `srl_*` to canonical (`interface_*`, `bgp_*`) and `source` to `device`. Out the other side: the shared schema this workshop's dashboards and alerts speak.
 - **`srl2` emits SNMP** — the classic shape from IF-MIB / BGP4-MIB. Field names like `ifOperStatus`, `ifHCInOctets`; tags like `agent_host`, `ifDescr`. **Telegraf-srl2** scrapes the raw SNMP shape and renames every field and every tag to the same canonical schema. Out the other side: byte-for-byte identical to what srl1 produces.
 
-Both raw shapes live on `sonda-server` (the lab's synthetic-telemetry runtime). Each Telegraf scrapes its device's per-scenario `/metrics` endpoints on a 10-second cadence — same scrape pattern Prometheus would use against real exporters in production.
+Both raw shapes live on `sonda-server` (the lab's synthetic-telemetry runtime). Each Telegraf scrapes its device's per-scenario `/scenarios/metrics` endpoints on a 10-second cadence — same scrape pattern Prometheus would use against real exporters in production.
 
 #### See the raw shape, before Telegraf touches it
 
@@ -48,7 +48,7 @@ Both raw shapes live on `sonda-server` (the lab's synthetic-telemetry runtime). 
 
 The pipeline has three layers you can inspect directly from your browser:
 
-1. **Raw gNMI from srl1** (sonda-server, before Telegraf): <http://localhost:8085/metrics?label=source:srl1>
+1. **Raw gNMI from srl1** (sonda-server, before Telegraf): <http://localhost:8085/scenarios/metrics?label=source:srl1>
 
     Look for `srl_*` metric names and the `source="srl1"` tag. This is what an SR Linux device emits on its gNMI stream. For example:
 
@@ -58,7 +58,7 @@ The pipeline has three layers you can inspect directly from your browser:
 
     The pack `workshops/autocon5/sonda/catalog/srlinux-gnmi-interfaces-raw.yaml` lists every metric in this shape.
 
-2. **Raw SNMP from srl2** (sonda-server, before Telegraf): <http://localhost:8085/metrics?label=agent_host:srl2>
+2. **Raw SNMP from srl2** (sonda-server, before Telegraf): <http://localhost:8085/scenarios/metrics?label=agent_host:srl2>
 
     Different shape entirely — IF-MIB names (`ifOperStatus`, `ifHCInOctets`) and the `agent_host="srl2"` tag. For example:
 
@@ -80,9 +80,9 @@ The pipeline has three layers you can inspect directly from your browser:
 
     A single PromQL query for `interface_oper_state` returns rows from both devices in the same shape. The vendor difference is invisible at this layer.
 
-??? info "Why the sonda `/metrics` endpoint is safe for two readers at once"
+??? info "Why the sonda `/scenarios/metrics` endpoint is safe for two readers at once"
 
-    `sonda-server` exposes two shapes of metric endpoint: the **aggregate** `/metrics?label=key:value` you just used, and a **per-scenario** `/scenarios/{id}/metrics` for a single scenario by ID.
+    `sonda-server` exposes two shapes of metric endpoint: the **aggregate** `/scenarios/metrics?label=key:value` you just used, and a **per-scenario** `/scenarios/{id}/metrics` for a single scenario by ID.
 
     - The aggregate endpoint is **snapshot-style**: each scrape gets a consistent picture without consuming anything. Telegraf reads it every 10 seconds; you can read it concurrently from your browser; both see the same bytes.
     - The per-scenario endpoint is **drain-on-read**: each read consumes the scenario's emission buffer. Telegraf doesn't use this endpoint precisely because two consumers can't share a drain-on-read buffer without racing.
@@ -646,7 +646,7 @@ UPDOWN log lines start appearing in the live stream within seconds of the first 
 
         Click each URL and grep for one specific metric:
 
-        - <http://localhost:8085/metrics?label=agent_host:srl2> — raw SNMP (pre-Telegraf): `bgpPeerState`, `ifHCInOctets`, `agent_host=srl2`
+        - <http://localhost:8085/scenarios/metrics?label=agent_host:srl2> — raw SNMP (pre-Telegraf): `bgpPeerState`, `ifHCInOctets`, `agent_host=srl2`
         - <http://localhost:9006/metrics> — telegraf-srl2's normalized output: `bgp_oper_state`, `interface_in_octets`, `device=srl2`
         - <http://localhost:9090/graph?g0.expr=bgp_oper_state%7Bdevice%3D%22srl2%22%7D&g0.tab=1> — Prometheus stores the same data after one more scrape hop
 

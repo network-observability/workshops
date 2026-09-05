@@ -47,7 +47,7 @@ A single workshop boot registers **76 scenarios** — sonda-server fans each `ki
 | `GET /scenarios/{uuid}` | One scenario's live handle: identity (`id`, `name`), `state`, `elapsed_secs`, plus an embedded `stats` block. |
 | `GET /scenarios/{uuid}/stats` | Per-scenario emission counters: `total_events`, `current_rate`, `target_rate`, `bytes_emitted`, `errors`, `consecutive_failures`, gap/burst state, and `last_successful_write_at`. |
 | `GET /scenarios/{uuid}/metrics` | The single Prometheus-text sample this scenario is emitting right now. Drained on read. |
-| `GET /metrics[?label=k:v]` | Aggregate Prometheus-text snapshot across every running scenario. Optional `label=key:value` filter narrows to one device. Snapshot semantics — multiple consumers (Telegraf and a curl) can read the same bytes concurrently. |
+| `GET /scenarios/metrics[?label=k:v]` | Aggregate Prometheus-text snapshot across every running scenario. Optional `label=key:value` filter narrows to one device. Snapshot semantics — multiple consumers (Telegraf and a curl) can read the same bytes concurrently. |
 | `POST /scenarios` | Register a new scenario. The cascade flap (`nobs autocon5 flap-interface`) is one of these. |
 | `DELETE /scenarios/{uuid}` | Stop and unregister a scenario. |
 
@@ -99,10 +99,10 @@ curl -s http://localhost:8085/scenarios | jq '.scenarios[0]'
 }
 ```
 
-To see the actual Prometheus-text samples Telegraf reads — the byte-for-byte input, before any rename or normalization — curl the aggregate `/metrics` endpoint and filter to one device with `label=key:value`. The endpoint is snapshot-style: Telegraf scrapes it every 10 seconds and you can read it concurrently without stealing samples from anyone.
+To see the actual Prometheus-text samples Telegraf reads — the byte-for-byte input, before any rename or normalization — curl the aggregate `/scenarios/metrics` endpoint and filter to one device with `label=key:value`. The endpoint is snapshot-style: Telegraf scrapes it every 10 seconds and you can read it concurrently without stealing samples from anyone.
 
 ```bash
-curl -s 'http://localhost:8085/metrics?label=source:srl1' | grep '^srl_bgp_oper_state{' | grep '10.1.99.2' | head -1
+curl -s 'http://localhost:8085/scenarios/metrics?label=source:srl1' | grep '^srl_bgp_oper_state{' | grep '10.1.99.2' | head -1
 ```
 
 ```text
@@ -114,7 +114,7 @@ Note the metric name (`srl_bgp_oper_state`) and the `source="srl1"` tag — that
 srl2 uses the SNMP shape, where the device tag is `agent_host`:
 
 ```bash
-curl -s 'http://localhost:8085/metrics?label=agent_host:srl2' | grep '^bgpPeerState{' | grep '10.1.2.1' | head -1
+curl -s 'http://localhost:8085/scenarios/metrics?label=agent_host:srl2' | grep '^bgpPeerState{' | grep '10.1.2.1' | head -1
 ```
 
 ```text
@@ -145,7 +145,7 @@ Drop `--kind composable` to also list runnable scenarios in the catalog, or swap
 
 ### Where you'll see this in the workshop
 
-- **Part 1** — When you query Prometheus and see `bgp_oper_state{device="srl1"}` return three rows with one stuck at `5` instead of `1`, that's a value Sonda is generating right now. `curl 'http://localhost:8085/metrics?label=source:srl1'` shows you the raw side of that same number.
+- **Part 1** — When you query Prometheus and see `bgp_oper_state{device="srl1"}` return three rows with one stuck at `5` instead of `1`, that's a value Sonda is generating right now. `curl 'http://localhost:8085/scenarios/metrics?label=source:srl1'` shows you the raw side of that same number.
 - **Part 3** — `nobs autocon5 flap-interface` and `nobs autocon5 incident` both POST cascade scenarios to this server.
 - **Advanced** — When you write your own scenario, you'll POST it here.
 

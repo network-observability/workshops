@@ -3,7 +3,7 @@
 #
 # Runs as an init container. Waits for sonda-server, POSTs each `*.yaml` in
 # `$SCENARIOS_DIR` (server resolves any `pack:` refs via its own `--catalog`),
-# and exits. Telegraf scrapes the aggregate /metrics endpoint filtered by
+# and exits. Telegraf scrapes the aggregate /scenarios/metrics endpoint filtered by
 # device label, so no per-device ID file is needed.
 
 set -e

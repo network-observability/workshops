@@ -34,11 +34,11 @@ services:
   # =========================================================================
 
   # Both devices register their baseline scenarios on sonda-server. Each
-  # telegraf scrapes the aggregate /metrics endpoint, filtered by a device
+  # telegraf scrapes the aggregate /scenarios/metrics endpoint, filtered by a device
   # label (`source` for srl1's gNMI shape, `agent_host` for srl2's SNMP shape).
   sonda-server:
     container_name: sonda-server
-    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.14.0}
+    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.22.2}
     command: ["--port", "8080", "--bind", "0.0.0.0", "--catalog", "/catalog"]
     volumes:
       - ./sonda/catalog:/catalog:ro
@@ -68,7 +68,7 @@ services:
   # to Loki; srl2 streams emit RFC 5424 syslog UDP to Vector (vector:1514).
   sonda-logs:
     container_name: sonda-logs
-    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.14.0}
+    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.22.2}
     entrypoint: ["/sonda"]
     command: ["run", "/catalog/all-logs.yaml"]
     volumes:
@@ -87,7 +87,7 @@ services:
   # canonical `interface_*` / `bgp_*` series in Prometheus.
   # =========================================================================
 
-  # telegraf-srl1: scrapes the aggregate /metrics endpoint filtered by
+  # telegraf-srl1: scrapes the aggregate /scenarios/metrics endpoint filtered by
   # `source:srl1` (gNMI-raw `srl_*`), renames to canonical (`interface_*`,
   # `bgp_*`), exposes a Prom scrape endpoint on :9005.
   telegraf-srl1:
@@ -111,7 +111,7 @@ services:
       sonda-setup:
         condition: service_completed_successfully
 
-  # telegraf-srl2: scrapes the aggregate /metrics endpoint filtered by
+  # telegraf-srl2: scrapes the aggregate /scenarios/metrics endpoint filtered by
   # `agent_host:srl2` (SNMP-raw `ifHC*`, `bgpPeer*`), renames to canonical,
   # exposes a Prom scrape endpoint on :9005.
   telegraf-srl2:

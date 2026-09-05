@@ -9,7 +9,10 @@ that pause the matching baseline via cross-POST resolution. See
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
+import yaml
 from autocon5_workshop.flap import (
     _BROKEN_PEERS,
     _DEVICE_CONFIG,
@@ -43,8 +46,6 @@ def _interface_body(device: str, interface: str = "ethernet-1/1") -> dict:
         down_duration="60s",
         cascade_delay="10s",
         loki_url="http://loki:3001",
-        in_octet_start=5_000_000.0,
-        out_octet_start=2_500_000.0,
     )
 
 
@@ -75,14 +76,12 @@ def test_bgp_cascade_name_format() -> None:
 # --- interface cascade body ----------------------------------------------------
 
 
-def test_interface_cascade_has_signal_oper_state_octets_and_log() -> None:
+def test_interface_cascade_has_signal_oper_state_and_log() -> None:
     body = _interface_body("srl1")
     entries = _entries_by_id(body)
     assert set(entries) == {
         "cascade_active",
         "cascade_oper_state",
-        "cascade_in_octets",
-        "cascade_out_octets",
         "updown_logs_down",
     }
 
@@ -106,12 +105,11 @@ def test_interface_cascade_signal_is_flap_0_1() -> None:
     assert "while" not in sig
 
 
-def test_interface_cascade_overrides_are_gated_on_signal() -> None:
+def test_interface_cascade_oper_state_is_gated_on_signal() -> None:
     body = _interface_body("srl1")
     entries = _entries_by_id(body)
-    for eid in ("cascade_oper_state", "cascade_in_octets", "cascade_out_octets"):
-        entry = entries[eid]
-        assert entry["while"] == {"ref": "cascade_active", "op": ">", "value": 0}
+    entry = entries["cascade_oper_state"]
+    assert entry["while"] == {"ref": "cascade_active", "op": ">", "value": 0}
 
 
 def test_interface_cascade_oper_state_emits_down_value_srl1() -> None:
@@ -131,14 +129,9 @@ def test_interface_cascade_oper_state_uses_srl2_metric_name() -> None:
     assert entry["labels"]["collection_type"] == "snmp"
 
 
-def test_interface_cascade_octets_seeded_from_prom_value() -> None:
+def test_interface_cascade_emits_no_octet_entries() -> None:
     body = _interface_body("srl1")
-    in_entry = _entries_by_id(body)["cascade_in_octets"]
-    out_entry = _entries_by_id(body)["cascade_out_octets"]
-    assert in_entry["generator"] == {"type": "constant", "value": 5_000_000.0}
-    assert out_entry["generator"] == {"type": "constant", "value": 2_500_000.0}
-    assert in_entry["metric_type"] == "counter"
-    assert out_entry["metric_type"] == "counter"
+    assert [e["id"] for e in body["scenarios"] if "octet" in e["id"]] == []
 
 
 def test_interface_cascade_defaults_carry_only_device_label_srl1() -> None:
@@ -282,3 +275,43 @@ def test_device_config_srl2_has_snmp_shape() -> None:
 )
 def test_parse_duration_secs(input: str, expected: float) -> None:
     assert _parse_duration_secs(input) == expected
+
+
+# --- Pattern C: the baseline half of the octet-freeze contract -----------------
+
+_CATALOG = Path(__file__).resolve().parents[1] / "workshops/autocon5/sonda/catalog"
+
+_OCTET_METRICS = {
+    "srl1": ("srl_interface_in_octets", "srl_interface_out_octets"),
+    "srl2": ("ifHCInOctets", "ifHCOutOctets"),
+}
+
+
+def _baseline_entries(device: str) -> list[dict]:
+    body = yaml.safe_load((_CATALOG / f"{device}-metrics.yaml").read_text())
+    return body["scenarios"]
+
+
+@pytest.mark.parametrize("device", ["srl1", "srl2"])
+def test_cascade_targetable_interfaces_freeze_octets(device: str) -> None:
+    """Every interface a cascade can pause must snap its octet counters.
+
+    The cascade emits no octet entries, so a baseline missing `snap_to` drops
+    its octet series entirely while the interface is down.
+    """
+    interface_label = _DEVICE_CONFIG[device]["interface_label"]
+    targetable = [
+        e
+        for e in _baseline_entries(device)
+        if e.get("while", {}).get("scenario_name", "").startswith(f"autocon5-cascade-{device}-intf-")
+    ]
+    assert targetable, f"no cascade-targetable interfaces found for {device}"
+
+    for entry in targetable:
+        interface = entry["labels"][interface_label]
+        assert entry["while"]["scenario_name"] == interface_cascade_name(device, interface)
+        overrides = entry.get("overrides", {})
+        for metric in _OCTET_METRICS[device]:
+            assert overrides.get(metric, {}).get("delay", {}).get("close", {}).get("snap_to") is not None, (
+                f"{device} {interface}: {metric} has no delay.close.snap_to"
+            )
