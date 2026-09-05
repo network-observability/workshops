@@ -29,7 +29,7 @@ cd workshops
 uv sync --all-packages          # install workspace deps into .venv/
 source .venv/bin/activate       # put nobs on PATH for the rest of the session
 nobs preflight                  # Docker, Compose v2, RAM, disk, registry reachability
-nobs packt up                   # first run pulls images, ~5–10 min
+nobs packt up                   # first run pulls + builds images, ~15–30 min
 nobs packt status               # repeat until every row says 'ok'
 nobs packt load-infrahub
 nobs packt down                 # stop until the day; images stay cached
@@ -121,10 +121,10 @@ We use [`uv`](https://docs.astral.sh/uv/) to install and run the workshop's `nob
 Run everything inside **WSL 2**. Docker Desktop with the WSL 2 backend. Native Windows / PowerShell isn't supported.
 
 **How big is the stack?**
-Around 21 containers, ~5.5 GB of RAM, and ~5 GB of disk. The first `nobs packt up` pulls 3–5 GB of images — that's the slow step. After that, restarts are fast.
+22 containers, ~5 GB of RAM in use, and ~5 GB of disk once images and build cache are counted. The first `nobs packt up` pulls and builds them — that's the slow step. After that, restarts take seconds.
 
 **Can I run this offline?**
-Yes, once images are pulled. The only outbound call during the session is the optional AI RCA step (needs a provider key and internet).
+Yes, once the first `nobs packt up` has finished. That first run both pulls images and *builds* five of them, which needs the package mirrors — so do it before the day. After that the lab boots offline; the only outbound call during the session is the optional AI RCA step (needs a provider key and internet).
 
 **Is anything sent to a remote service?**
 No, by default. All telemetry, alerts, and dashboards are local. The AI RCA step defaults to a `demo` provider that generates its narrative from a local template, and only calls OpenAI or Anthropic if you set a key in `.env`.

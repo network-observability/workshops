@@ -253,7 +253,11 @@ def _guard_foreign_containers(ws: Workshop) -> None:
             f"names/ports with this one. Run `nobs {other.name} down` first "
             f"(or `nobs {other.name} destroy` to also drop its volumes)."
         )
-        console.print(f"   [muted]conflicting containers: {', '.join(names)}[/]")
+        shown = ", ".join(sorted(names)[:3])
+        rest = len(names) - 3
+        if rest > 0:
+            shown += f" (+{rest} more)"
+        console.print(f"   [muted]conflicting containers: {shown}[/]")
         raise typer.Exit(code=1)
 
 

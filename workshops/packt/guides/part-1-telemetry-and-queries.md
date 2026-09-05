@@ -12,7 +12,7 @@ This part is the longest block of the session on purpose — every later part de
 
 Your senior already has Grafana up on their screen. They've reset the lab to known-good baseline and confirmed every row says `ok`. Your turn.
 
-If this is your first time bringing up the lab solo, run the four-command **Bring it up** sequence from the workshop README first (`uv sync --all-packages` → `nobs setup` → `nobs packt up` → `nobs packt load-infrahub`) — `nobs packt up` alone doesn't seed Infrahub, and `reset` will fail with `SchemaNotFoundError` until `load-infrahub` has run once.
+If this is your first time bringing up the lab solo, run the **Before the session** sequence from the workshop README first (`uv sync --all-packages` → `nobs preflight` → `nobs packt up` → `nobs packt load-infrahub`) — `nobs packt up` alone doesn't seed Infrahub, and `reset` will fail with `SchemaNotFoundError` until `load-infrahub` has run once.
 
 In a terminal:
 
@@ -53,10 +53,10 @@ The pipeline has three layers you can inspect directly from your browser:
     Look for `srl_*` metric names and the `source="srl1"` tag. This is what an SR Linux device emits on its gNMI stream. For example:
 
     ```
-    srl_interface_oper_state{collection_type="gnmi",name="ethernet-1/1",intf_role="peer",source="srl1"} 1
+    srl_interface_oper_state{collection_type="gnmi",name="ethernet-1/1",source="srl1"} 1
     ```
 
-    The pack `workshops/packt/sonda/catalog/srlinux-gnmi-interfaces-raw.yaml` lists every metric in this shape.
+    The pack `workshops/packt/sonda/catalog/srlinux-gnmi-interface-raw.yaml` lists every metric in this shape.
 
 2. **Raw SNMP from srl2** (sonda-server, before Telegraf): <http://localhost:8085/scenarios/metrics?label=agent_host:srl2>
 
@@ -66,7 +66,7 @@ The pipeline has three layers you can inspect directly from your browser:
     ifOperStatus{agent_host="srl2",collection_type="snmp",ifDescr="ethernet-1/1"} 1
     ```
 
-    Same logical concept (interface operational state) as srl1's `srl_interface_oper_state`, completely different field name, completely different label keys. Pack: `workshops/packt/sonda/catalog/cisco-snmp-interfaces-raw.yaml`.
+    Same logical concept (interface operational state) as srl1's `srl_interface_oper_state`, completely different field name, completely different label keys. Pack: `workshops/packt/sonda/catalog/cisco-snmp-interface-raw.yaml`.
 
 3. **Telegraf-srl1's normalized output** (after gNMI → canonical rename): <http://localhost:9005/metrics>
 
@@ -154,6 +154,10 @@ rate(interface_in_octets{device="srl1"}[1m])
 ```
 
 In the panel options on the right of Explore, switch from `Table` to `Time series`. You should see three lines, one per srl1 interface. The two healthy ones (`ethernet-1/1`, `ethernet-1/10`) hover around **~12,500 bytes/sec** — that's the synthetic emitter's `step_size` of 125 KB per 10s. `ethernet-1/11` (the broken interface) sits at **0 bytes/sec** — its counter doesn't tick because the interface is operationally down.
+
+!!! tip "Numbers look low?"
+
+    `rate()` averages over the window in the brackets, so a lab that only started a few minutes ago hasn't filled a `[5m]` window yet and will read under the true rate. Give it a few minutes and it settles.
 
 Now widen the window:
 
@@ -315,7 +319,7 @@ count by (pipeline) (count_over_time({device="srl1"}[5m]))
 count by (pipeline) (count_over_time({device="srl2"}[5m]))
 ```
 
-Returns `pipeline=direct` and `pipeline=vector` respectively. Now run a query that doesn't pin the pipeline:
+Returns `pipeline=direct` and `pipeline=vector` respectively. You will also see a small unlabelled (`{}`) bucket — a few lines that carry no `pipeline` label at all; ignore it, the labelled rows are the point. Now run a query that doesn't pin the pipeline:
 
 ```logql
 {vendor_facility_process="UPDOWN"}

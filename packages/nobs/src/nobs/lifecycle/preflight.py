@@ -159,6 +159,9 @@ def _check_network() -> list[CheckResult]:
         "https://ghcr.io",
         "https://registry-1.docker.io",
         "https://github.com",
+        # Infrahub's registry; grafana.com serves the plugin baked in at build time.
+        "https://registry.opsmill.io",
+        "https://grafana.com",
     ]
     out: list[CheckResult] = []
     for url in targets:

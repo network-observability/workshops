@@ -2,7 +2,7 @@
 
 ## What you'll do here
 
-Late morning. The clock is creeping toward lunch. The flap-rate panel you built before the break is still pinned in a tab. You're both finishing coffee when a `BgpSessionNotUp` alert lands — a real one, on the lab. Your senior glances at the dashboard, then at you.
+Late morning. The clock is creeping toward lunch. The flap-rate panel from before the break is still pinned in a tab. You're both finishing coffee when a `BgpSessionNotUp` alert lands — a real one, on the lab. Your senior glances at the dashboard, then at you.
 
 > *"Watch what happens automatically. The flow's going to handle this without us. Then I'll walk you through the four cases it covers, and you can drive each one yourself. In about an hour you'll know exactly what the automation can and can't do for you — and which calls still belong to a human."*
 
@@ -98,7 +98,7 @@ Two `BgpSessionNotUp` alerts are firing in your lab right now (you just saw them
 The rest of Part 3 is structured around this cycle:
 
 - **Phases 1 → 4** walk **one full pass** through it — alert (you'll see the firing alert), evidence (you'll run a CLI to see what the workflow gathered), policy (you'll read the decision in Loki), action (you'll look at the silence in Alertmanager and the record it wrote).
-- **Phases 5 → 7** are **variations on the same cycle** — flip a flag in the source of truth and watch the same alert land at a different decision (Phase 5), turn on the AI narrative step (Phase 6), then write your own query against the audit trail (Phase 7).
+- **Phases 5 → 6** are **variations on the same cycle** — flip a flag in the source of truth and watch the same alert land at a different decision (Phase 5), then write your own query against the audit trail (Phase 6).
 
 The bigger point — and the reason this matters even outside this lab — is that **alerts on their own aren't useful**. The loop that wraps each alert (gather context, decide, act, leave a record) is what turns a notification into an operational decision. Once you know the four steps, every alert your team writes follows the same pattern.
 
@@ -106,7 +106,7 @@ The bigger point — and the reason this matters even outside this lab — is th
 
     Reading material — skim once, then jump to the exercises below. The nested folds are deeper dives you can come back to when something feels unclear during the exercises.
 
-    Every `BgpSessionNotUp` payload that lands on the webhook gets fed through the same **decision tree**: a deterministic Python function that pulls **intent** (from Infrahub) and **reality** (from Prometheus metrics) for the affected peer, compares them, and returns one of a fixed set of outcomes. "Deterministic" here means the same inputs always produce the same decision — no probabilistic step, no LLM judgment in the path. You can replay any historical alert and get bit-identical reasoning, which is what makes the flow reviewable in code review and replayable in a post-mortem. The AI RCA step you'll turn on in Phase 6 sits *alongside* this decision, not inside it.
+    Every `BgpSessionNotUp` payload that lands on the webhook gets fed through the same **decision tree**: a deterministic Python function that pulls **intent** (from Infrahub) and **reality** (from Prometheus metrics) for the affected peer, compares them, and returns one of a fixed set of outcomes. "Deterministic" here means the same inputs always produce the same decision — no probabilistic step, no LLM judgment in the path. You can replay any historical alert and get bit-identical reasoning, which is what makes the flow reviewable in code review and replayable in a post-mortem. The AI RCA step you turned on in the setup check sits *alongside* this decision, not inside it.
 
     ```text
        alert payload
@@ -123,7 +123,7 @@ The bigger point — and the reason this matters even outside this lab — is th
 
     The policy writes one of **three decisions** for any given alert — `proceed`, `skip`, or `resolved`. The reason there are *four paths* below is that `skip` happens for two different reasons (healthy peer / device in maintenance), and we list each reason separately because they're operationally different. There's also a rare bail-out value (`stop`) for one edge case — explained at the end of this fold.
 
-    Every decision the flow makes lands in Loki as an **audit record** — one log line per evaluation, written by the `annotate_decision` task right after `evaluate_policy` returns. The record carries the device, the peer, and a `decision` label. That label is what lets you slice the audit trail by decision outcome — "how many `proceed` decisions in the last hour?" — directly in Loki. Phase 7 is the unguided exercise where you answer that question yourself.
+    Every decision the flow makes lands in Loki as an **audit record** — one log line per evaluation, written by the `annotate_decision` task right after `evaluate_policy` returns. The record carries the device, the peer, and a `decision` label. That label is what lets you slice the audit trail by decision outcome — "how many `proceed` decisions in the last hour?" — directly in Loki. Phase 6 is the unguided exercise where you answer that question yourself.
 
     | Path | Trigger | Decision | Outcome |
     |------|---------|---------|---------|
@@ -604,7 +604,7 @@ That `message` is the same answer the **Policy hint** panel showed you in Phase 
     }
     ```
 
-    Every record carries the same five-label envelope (`source`, `workflow`, `decision`, `device`, `peer_address`) plus a free-form `message`. That label set is what makes Phase 7's aggregation query (`sum by (decision) (count_over_time(...))`) work — collapsing on the label that distinguishes paths is the whole game. The `message` field carries human-readable reasoning ("SoT expects peer up, but metrics show mismatch" vs "device not found in Infrahub") — Loki indexes the labels, not the message, so queries filter on the former and read the latter.
+    Every record carries the same five-label envelope (`source`, `workflow`, `decision`, `device`, `peer_address`) plus a free-form `message`. That label set is what makes Phase 6's aggregation query (`sum by (decision) (count_over_time(...))`) work — collapsing on the label that distinguishes paths is the whole game. The `message` field carries human-readable reasoning ("SoT expects peer up, but metrics show mismatch" vs "device not found in Infrahub") — Loki indexes the labels, not the message, so queries filter on the former and read the latter.
 
 #### The three decisions, explained
 
@@ -734,7 +734,7 @@ nobs packt rca srl1 10.1.99.2
 
 > **The big idea.** AI in an on-call loop should be a **narrative tool**, not a decision tool. The decision is what stays the same across replays and code reviews. The narrative is what reads well at 02:14 am. Keep them separate, keep them both grounded in the same evidence, and you get the best of both worlds.
 
-Worth noting for Phase 7: the AI narrative records share the workflow's Loki stream but **don't carry a `decision` label** (since they're not decisions — they're narratives). So if you later count records grouped by `decision`, the AI records will land in an empty/unlabeled bucket rather than alongside `proceed` / `skip` / `resolved`. Phase 7 walks the query that surfaces this.
+Worth noting for Phase 6: the AI narrative records share the workflow's Loki stream but **don't carry a `decision` label** (since they're not decisions — they're narratives). So if you later count records grouped by `decision`, the AI records will land in an empty/unlabeled bucket rather than alongside `proceed` / `skip` / `resolved`. Phase 6 walks the query that surfaces this.
 
 By default the lab ships with the **demo** provider — a deterministic templated narrative stitched from the evidence dict. Swapping it for a real LLM (OpenAI / Anthropic) with an API key is on the [Take it home](../../../docs-packt/take-home.md) page.
 

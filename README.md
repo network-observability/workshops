@@ -58,7 +58,7 @@ workshops/
 
 The two workshops share container names and host ports, so only one can run at a
 time. `nobs <workshop> up` refuses to start if the other one's containers are
-still around — `nobs <other> destroy` first.
+still around — `nobs <other> down` first (or `destroy` to drop its volumes too).
 
 **One CLI: `nobs`.**
 Workshops are subcommand groups (`nobs autocon5 ...`).
