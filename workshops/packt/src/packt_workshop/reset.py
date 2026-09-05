@@ -31,7 +31,7 @@ _CASCADE_NAMES = (
     "incident_latency_ms",
     "updown_logs_down",
 )
-_WORKSHOP_SILENCE_HINTS = ("Workshop", "workshop", "autocon")
+_WORKSHOP_SILENCE_HINTS = ("Workshop", "workshop")
 
 
 def reset(

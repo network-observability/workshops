@@ -188,7 +188,7 @@ Worth noting: `srl1` and `srl2` arrive through different upstream pipelines (gNM
 
 You've made the panel react to a flap. The line crossed the orange and red thresholds; visually you got both the early heads-up and the page moment. Now the question every on-call asks themselves at 02:14: *did anything else actually fire?* Where does that information live, and what happens to it next?
 
-This walk uses every observability surface the workshop already has running — CLI, Alertmanager UI, Grafana — to follow the alert from rule match → firing → silence → resolved.
+This walk uses the observability surfaces the workshop already has running — the Alertmanager UI and Grafana — to follow the alert from rule match → firing → silence → resolved.
 
 > Heads-up: this walk is foundational for Part 3, which is hands-on. Watch it closely even if you are not following along in your own Grafana — Part 3 assumes you have seen `firing → suppressed → resolved` happen once.
 

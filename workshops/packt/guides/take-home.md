@@ -16,6 +16,11 @@ nobs packt load-infrahub
 
 Then pick a section. They are independent — you do not have to do them in order, though the order below is the one that builds on itself best.
 
+!!! note "Numbering on this page is the original full sequence"
+
+    These sections keep the step and exercise numbers from the complete, untrimmed workshop, because their internal cross-references depend on them. They do **not** line up with the numbering in the session guides — the session runs a subset and renumbers. When a section here says "step 6", it means step 6 *of this section*, not step 6 of Part 2.
+
+
 | Section | Roughly | What it adds |
 |---|---|---|
 | [Part 1 — recording rules and alerts](#part-1-recording-rules-and-alerts) | 25 min | Where an alert rule actually comes from |
@@ -32,7 +37,7 @@ Then pick a section. They are independent — you do not have to do them in orde
 
 ## Part 1 — recording rules and alerts
 
-We stopped Part 1 after the metric-to-log bridge. The two sections below are what comes next in the original arc: composing expensive queries into pre-computed metrics, then wrapping a query in an alert rule so it fires on its own. Read them in order — the alert rule in the second section is the intent-vs-reality query from exercise 5 with a `for:` clause bolted on, and it will not land unless the recording-rule idea is fresh.
+We stopped Part 1 after the metric-to-log bridge. The two sections below are what comes next in the original arc: composing expensive queries into pre-computed metrics, then wrapping a query in an alert rule so it fires on its own. Read them in order — the alert rule in the second section is the intent-vs-reality query from exercise 4 with a `for:` clause bolted on, and it will not land unless the recording-rule idea is fresh.
 
 #### Recording rules — composed metrics
 

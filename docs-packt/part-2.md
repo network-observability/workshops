@@ -21,15 +21,6 @@ A post-mortem email lands: last night's page lost ten minutes because a flap-rat
 
 </div>
 
-<figure class="section-preview" markdown>
-
-![Flap rate panel during a flap](assets/screenshots/flap-rate-flapping-light.png#only-light){ .screenshot loading=lazy }
-![Flap rate panel during a flap](assets/screenshots/flap-rate-flapping-dark.png#only-dark){ .screenshot loading=lazy }
-
-<figcaption>The panel we build, mid-flap. Orange line at 2 is the early heads-up; red at 3 is the exact condition the <code>PeerInterfaceFlapping</code> alert rule fires on.</figcaption>
-
-</figure>
-
 {%
   include-markdown "../workshops/packt/guides/part-2-dashboards.md"
   start="## What you'll do here"
