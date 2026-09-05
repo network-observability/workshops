@@ -20,7 +20,7 @@ from rich.tree import Tree
 from .. import workshops as _workshops_module
 from .._console import console, fail, ok, step
 from ..workshops import Workshop
-from .compose import run_compose
+from .compose import project_container_names, run_compose
 
 # ---------------------------------------------------------------------------
 # Top-level (registry-level) commands
@@ -65,6 +65,8 @@ def up_for(ws: Workshop) -> Callable[..., None]:
             typer.Argument(help="Specific services to bring up (default: all)."),
         ] = None,
     ) -> None:
+        _guard_foreign_containers(ws)
+
         if ws.bootstrap is not None:
             ws.bootstrap()
 
@@ -219,6 +221,26 @@ def build_for(ws: Workshop) -> Callable[..., None]:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _guard_foreign_containers(ws: Workshop) -> None:
+    """Exit before any compose work if another workshop's containers exist.
+
+    Every workshop stack binds the same host ports and uses the same fixed
+    container names, so two of them can never coexist.
+    """
+    for other in _workshops_module.REGISTRY:
+        if other.name == ws.name:
+            continue
+        names = project_container_names(other.name)
+        if not names:
+            continue
+        fail(
+            f"Containers from the {other.title} stack are present and share "
+            f"names/ports with this one. Run `nobs {other.name} destroy` first."
+        )
+        console.print(f"   [muted]conflicting containers: {', '.join(names)}[/]")
+        raise typer.Exit(code=1)
 
 
 def _print_urls_panel(ws: Workshop) -> None:

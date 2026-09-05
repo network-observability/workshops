@@ -76,3 +76,27 @@ def run_compose(
         capture_output=capture,
         text=True,
     )
+
+
+def project_container_names(project: str, *, timeout: float = 10.0) -> list[str]:
+    """Names of existing containers (running or stopped) labelled with a compose project.
+
+    Returns an empty list when docker is unavailable or the query fails, so
+    callers using this as a preflight probe never block on a broken docker.
+    """
+    cmd = [
+        "docker",
+        "ps",
+        "-a",
+        "--filter",
+        f"label=com.docker.compose.project={project}",
+        "--format",
+        "{{.Names}}",
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if result.returncode != 0:
+        return []
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
