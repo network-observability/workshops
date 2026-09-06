@@ -51,7 +51,7 @@ workshops/
     automation/          # Prefect flows (alert -> evidence -> decision -> action -> RCA)
   packt/                 # Packt — 3-hour online workshop
     README.md            # attendee-facing instructions
-    guides/              # trimmed to the 3-hour runsheet, plus runsheet.md + take-home.md
+    guides/              # trimmed to three hours, plus take-home.md
     src/packt_workshop/  # same command surface, registered as `nobs packt`
     …                    # same stack layout as autocon5/ above
 ```
