@@ -147,9 +147,11 @@ Then head to [Part 1](part-1.md).
 
 ## If something is red
 
-Reply to Packt's T-2 email with your `nobs preflight` output — the whole block, copied out of your terminal — and we'll look at it before the day. A red preflight two days out is fixable by email; a red one at 09:00 EDT is not, and we won't spend the session debugging individual machines.
+Start with the usual culprits: Docker Desktop not actually running, Compose v1 still first on `PATH`, low disk, a corporate proxy blocking `ghcr.io` or `registry.opsmill.io`, and WSL 2 not enabled on Windows.
 
-The usual culprits: Docker Desktop not actually running, Compose v1 still first on `PATH`, low disk, a corporate proxy blocking `ghcr.io`, and WSL 2 not enabled on Windows.
+If it still fails, open an issue on [the workshops repo](https://github.com/network-observability/workshops/issues) and paste your `nobs preflight` output — the whole block, copied out of your terminal. A red preflight a few days out is fixable; a red one at 09:00 EDT is not, and we won't spend the session debugging individual machines.
+
+And if it can't be sorted in time, come anyway. The watching lane is written for exactly this, and the [Take it home](take-home.md) page lets you do the hands-on parts later at your own pace.
 
 <nav class="packt-nav-footer" markdown>
 

@@ -365,7 +365,7 @@ You'll see BGP-related lines for that specific peer. Add a filter to narrow:
 {device="srl1", peer_address="10.1.99.2"} |~ "BGP"
 ```
 
-**Stop and notice.** Metrics told you *something* is wrong (admin says up, oper says down). Logs tell you *why* (peer didn't reply, fsm transition, whatever the message says). The labels are the same on both sides — that's what makes correlation cheap. This is the single most important pattern in the entire workshop. Every dashboard panel you'll build in Part 2, every alert path in Part 3, leans on this metric-to-log bridge.
+**Stop and notice.** Metrics told you *something* is wrong (admin says up, oper says down). Logs tell you *why* (peer didn't reply, fsm transition, whatever the message says). The labels are the same on both sides — that's what makes correlation cheap. This is the single most important pattern in the entire workshop. Every dashboard panel in Part 2, every alert path you walk in Part 3, leans on this metric-to-log bridge.
 
 > *"Same query shape works on srl2 — try it. Different `peer_address`, same answer-the-why pattern. The fact that one device's metric came in as gNMI and the other's came in as SNMP doesn't change the bridge query at all."*
 
