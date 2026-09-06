@@ -1,0 +1,488 @@
+# Packt — Building a Network Observability Stack — workshop stack
+#
+# Inspiration: chapters/sonda-integration in network-observability-lab.
+# Differences:
+#   - Internal/auto-created network instead of an externally pre-created one.
+#   - Infrahub replaces Nautobot as the source of truth.
+#   - Grafana provisions an Infrahub GraphQL datasource (token-authenticated).
+#   - Webhook/Prefect flows query Infrahub via GraphQL instead of Nautobot REST.
+#   - AI-assisted RCA is wired into the Prefect quarantine flow behind a flag
+#     (ENABLE_AI_RCA=true). When disabled, the flow still runs and annotates a
+#     clear "AI RCA disabled" message back to Loki.
+
+networks:
+  default:
+    name: workshop-packt
+    driver: bridge
+
+volumes:
+  loki_data:
+  prometheus_data:
+  grafana_data:
+  alertmanager_data:
+  prefect_data:
+  prefect_redis_data:
+  infrahub_data:
+  infrahub_db_data:
+  infrahub_cache_data:
+  infrahub_mq_data:
+  infrahub_storage_data:
+
+services:
+  # =========================================================================
+  # Sonda — synthetic telemetry generation
+  # =========================================================================
+
+  # Both devices register their baseline scenarios on sonda-server. Each
+  # telegraf scrapes the aggregate /scenarios/metrics endpoint, filtered by a device
+  # label (`source` for srl1's gNMI shape, `agent_host` for srl2's SNMP shape).
+  sonda-server:
+    container_name: sonda-server
+    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.23.1}
+    command: ["--port", "8080", "--bind", "0.0.0.0", "--catalog", "/catalog"]
+    volumes:
+      - ./sonda/catalog:/catalog:ro
+    ports:
+      - "8085:8080"
+    restart: unless-stopped
+
+  # Init container: POSTs each device's scenario file to sonda-server and
+  # exits. Server resolves `pack:` refs against its own mounted /catalog —
+  # no client-side expansion here.
+  sonda-setup:
+    container_name: sonda-setup
+    image: python:3.13-slim
+    entrypoint: ["/bin/bash", "/scripts/sonda-setup.sh"]
+    environment:
+      SONDA_SERVER_URL: "http://sonda-server:8080"
+      SCENARIOS_DIR: "/scenarios"
+    volumes:
+      - ./sonda/scripts/sonda-setup.sh:/scripts/sonda-setup.sh:ro
+      - ./sonda/catalog/srl1-metrics.yaml:/scenarios/srl1-metrics.yaml:ro
+      - ./sonda/catalog/srl2-metrics.yaml:/scenarios/srl2-metrics.yaml:ro
+    depends_on:
+      sonda-server:
+        condition: service_started
+
+  # Both devices' logs run in one sonda process. srl1 streams push direct
+  # to Loki; srl2 streams emit RFC 5424 syslog UDP to Vector (vector:1514).
+  sonda-logs:
+    container_name: sonda-logs
+    image: ${SONDA_IMAGE:-ghcr.io/davidban77/sonda:1.23.1}
+    entrypoint: ["/sonda"]
+    command: ["run", "/catalog/all-logs.yaml"]
+    volumes:
+      - ./sonda/catalog:/catalog:ro
+    depends_on:
+      loki:
+        condition: service_started
+      vector:
+        condition: service_started
+    restart: unless-stopped
+
+  # =========================================================================
+  # Telegraf — two collectors, one per device, each normalizing a different
+  # raw vendor shape into the workshop's canonical schema. Side-by-side for
+  # the curriculum: gNMI-raw (srl1) and SNMP-raw (srl2) both arrive as
+  # canonical `interface_*` / `bgp_*` series in Prometheus.
+  # =========================================================================
+
+  # telegraf-srl1: scrapes the aggregate /scenarios/metrics endpoint filtered by
+  # `source:srl1` (gNMI-raw `srl_*`), renames to canonical (`interface_*`,
+  # `bgp_*`), exposes a Prom scrape endpoint on :9005.
+  telegraf-srl1:
+    container_name: telegraf-srl1
+    build:
+      context: .
+      dockerfile: ./telegraf/telegraf.Dockerfile
+      args:
+        TELEGRAF_IMAGE: ${TELEGRAF_IMAGE:-docker.io/telegraf:1.39.3}
+    command: telegraf --config /etc/telegraf/telegraf.conf
+    tty: true
+    volumes:
+      - ./telegraf/telegraf-srl1.conf.toml:/etc/telegraf/telegraf.conf
+    # Expose the normalized /metrics endpoint to the host so the Part 2
+    # bonus tip can link directly. Prometheus still scrapes via the
+    # Docker network address `telegraf-srl1:9005`; this just adds a
+    # parallel host-side entry point at localhost:9005.
+    ports:
+      - "9005:9005"
+    depends_on:
+      sonda-setup:
+        condition: service_completed_successfully
+
+  # telegraf-srl2: scrapes the aggregate /scenarios/metrics endpoint filtered by
+  # `agent_host:srl2` (SNMP-raw `ifHC*`, `bgpPeer*`), renames to canonical,
+  # exposes a Prom scrape endpoint on :9005.
+  telegraf-srl2:
+    container_name: telegraf-srl2
+    build:
+      context: .
+      dockerfile: ./telegraf/telegraf.Dockerfile
+      args:
+        TELEGRAF_IMAGE: ${TELEGRAF_IMAGE:-docker.io/telegraf:1.39.3}
+    command: telegraf --config /etc/telegraf/telegraf.conf
+    tty: true
+    volumes:
+      - ./telegraf/telegraf-srl2.conf.toml:/etc/telegraf/telegraf.conf
+    # Same host-port exposure as telegraf-srl1. Mapped to host port 9006
+    # to avoid colliding with telegraf-srl1's 9005.
+    ports:
+      - "9006:9005"
+    depends_on:
+      sonda-setup:
+        condition: service_completed_successfully
+
+  # =========================================================================
+  # Vector — RFC 5424 syslog UDP -> Loki, for srl2's log leg.
+  # srl1 emits direct to Loki; srl2 sends syslog here so the curriculum
+  # has a side-by-side "shipper-side transforms vs no-shipper" comparison.
+  # =========================================================================
+
+  vector:
+    container_name: vector
+    image: ${VECTOR_IMAGE:-docker.io/timberio/vector:0.58.0-debian}
+    command: ["--config", "/etc/vector/vector.yaml"]
+    volumes:
+      - ./vector/vector.yaml:/etc/vector/vector.yaml:ro
+    ports:
+      - "8686:8686"
+    expose:
+      - "1514/udp"
+    depends_on:
+      loki:
+        condition: service_started
+    restart: unless-stopped
+
+  # =========================================================================
+  # Storage / querying
+  # =========================================================================
+
+  loki:
+    container_name: loki
+    image: ${LOKI_IMAGE:-docker.io/grafana/loki:3.6.16}
+    ports:
+      - "3001:3001"
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - ./loki/loki-config.yml:/etc/loki/loki-config.yml
+      - ./loki/rules/:/rules/fake/
+      - loki_data:/loki:rw
+
+  prometheus:
+    container_name: prometheus
+    image: ${PROMETHEUS_IMAGE:-docker.io/prom/prometheus:v3.14.0}
+    ports:
+      - "9090:9090"
+    command:
+      - --storage.tsdb.retention.size=512MB
+      - --config.file=/etc/prometheus/prometheus.yml
+      # `nobs packt incident` pushes via remote_write (intentional — preserves
+      # source=incident-cascade label end-to-end for the Advanced guide's Act 3).
+      # See docs/data-pipelines.md "Why incident.py uses remote_write".
+      - --web.enable-remote-write-receiver
+    tty: true
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus/rules/:/etc/prometheus/rules/
+      - prometheus_data:/prometheus
+
+  # =========================================================================
+  # Visualization & alerting
+  # =========================================================================
+
+  alertmanager:
+    container_name: alertmanager
+    image: ${ALERTMANAGER_IMAGE:-docker.io/prom/alertmanager:v0.34.0}
+    ports:
+      - "9093:9093"
+    command: --config.file=/etc/alertmanager/alertmanager.yml --cluster.advertise-address=0.0.0.0:9093
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+      - alertmanager_data:/data
+
+  grafana:
+    container_name: grafana
+    # Build a workshop-local image with plugins baked in so the lab boots
+    # without internet. `docker compose build grafana` (one-time, with
+    # internet) downloads the plugins via grafana-cli; subsequent `up` runs
+    # are fully offline. See ./grafana/Dockerfile for the plugin list.
+    build:
+      context: ./grafana
+      dockerfile: Dockerfile
+    image: ${GRAFANA_IMAGE:-packt/grafana:13.2.1-plugins}
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/datasources.yml:/etc/grafana/provisioning/datasources/all.yml
+      - ./grafana/dashboards.yml:/etc/grafana/provisioning/dashboards/all.yml
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+      - ./grafana/grafana.ini:/etc/grafana/grafana.ini
+      - grafana_data:/grafana
+    environment:
+      # Plugins are baked into the image (see ./grafana/Dockerfile); no
+      # runtime install needed. GF_INSTALL_PLUGINS deliberately omitted.
+      # Disable Grafana 13's bundled promo apps so the dashboards aren't
+      # cluttered with Pyroscope / DrillDown nav entries the workshop never uses.
+      # Note: this does NOT suppress the Grafana 13 "What's new" splash modal —
+      # that's gated per-user via the userstorage API, not the plugin system.
+      # See troubleshooting.md ("Grafana shows a 'What's new' splash on first load").
+      GF_PLUGINS_DISABLE_PLUGINS: grafana-assistant-app,grafana-pyroscope-app,grafana-exploretraces-app,grafana-metricsdrilldown-app
+      # Keep the workshop offline-friendly: don't poll grafana.com for news/version checks.
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      INFRAHUB_API_TOKEN: ${INFRAHUB_API_TOKEN}
+
+  # =========================================================================
+  # Source of truth — Infrahub
+  # Five services: graph DB (Neo4j), cache (Redis), message bus (RabbitMQ),
+  # API server, and git-agent. Admin token is seeded on first boot so the
+  # workshop loader can apply the schema + lab_vars without manual auth.
+  # =========================================================================
+
+  infrahub-db:
+    container_name: infrahub-db
+    image: neo4j:2026.05.0-community
+    environment:
+      NEO4J_AUTH: neo4j/admin
+      NEO4J_dbms_security_auth__minimum__password__length: "4"
+      NEO4J_dbms_security_procedures_unrestricted: "apoc.*"
+    healthcheck:
+      test: wget -qO /dev/null http://localhost:7474 || exit 1
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 10s
+    volumes:
+      - infrahub_db_data:/data
+
+  infrahub-cache:
+    container_name: infrahub-cache
+    image: redis:8.4.0
+    volumes:
+      - infrahub_cache_data:/data
+
+  # AMQP message bus between the Infrahub API server and the git-agent.
+  infrahub-message-queue:
+    container_name: infrahub-message-queue
+    image: rabbitmq:4.2.1-management
+    environment:
+      RABBITMQ_DEFAULT_USER: infrahub
+      RABBITMQ_DEFAULT_PASS: infrahub
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 5s
+      timeout: 30s
+      retries: 5
+    volumes:
+      - infrahub_mq_data:/var/lib/rabbitmq
+
+  infrahub-server:
+    container_name: infrahub-server
+    image: ${INFRAHUB_IMAGE:-registry.opsmill.io/opsmill/infrahub:1.11.2}
+    command: gunicorn --config backend/infrahub/serve/gunicorn_config.py --logger-class infrahub.serve.log.GunicornLogger -w 2 infrahub.server:app
+    ports:
+      - "8000:8000"
+    environment:
+      INFRAHUB_PRODUCTION: "true"
+      # In-process workflow execution. The workshop only exercises schema
+      # CRUD + GraphQL reads, so the worker-pool path isn't needed.
+      INFRAHUB_WORKFLOW_DRIVER: local
+      INFRAHUB_INITIAL_ADMIN_TOKEN: ${INFRAHUB_API_TOKEN}
+      INFRAHUB_SECURITY_SECRET_KEY: 327f747f-efac-42be-9e73-999f08f86b92
+      INFRAHUB_DB_TYPE: neo4j
+      INFRAHUB_DB_ADDRESS: infrahub-db
+      INFRAHUB_DB_PORT: 7687
+      NEO4J_USERNAME: neo4j
+      NEO4J_PASSWORD: admin
+      INFRAHUB_BROKER_ADDRESS: infrahub-message-queue
+      INFRAHUB_BROKER_USERNAME: infrahub
+      INFRAHUB_BROKER_PASSWORD: infrahub
+      INFRAHUB_CACHE_ADDRESS: infrahub-cache
+      # Distinct from the admin token; same-value pairs are rejected.
+      INFRAHUB_INITIAL_AGENT_TOKEN: a4f3c1d2-9b8e-4a7f-8c5d-1e2f3a4b5c6d
+      INFRAHUB_LOG_LEVEL: INFO
+    healthcheck:
+      test: curl -sf http://localhost:8000/health || exit 1
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+    volumes:
+      - infrahub_storage_data:/opt/infrahub/storage
+      - infrahub_data:/opt/infrahub
+    depends_on:
+      infrahub-db:
+        condition: service_healthy
+      infrahub-cache:
+        condition: service_started
+      infrahub-message-queue:
+        condition: service_healthy
+
+  infrahub-task-worker:
+    container_name: infrahub-task-worker
+    image: ${INFRAHUB_IMAGE:-registry.opsmill.io/opsmill/infrahub:1.11.2}
+    # Background worker for branch / changeset / repository operations.
+    command: infrahub git-agent start
+    environment:
+      INFRAHUB_PRODUCTION: "true"
+      INFRAHUB_WORKFLOW_DRIVER: local
+      INFRAHUB_DB_TYPE: neo4j
+      INFRAHUB_DB_ADDRESS: infrahub-db
+      INFRAHUB_DB_PORT: 7687
+      NEO4J_USERNAME: neo4j
+      NEO4J_PASSWORD: admin
+      # Broker (RabbitMQ) + cache (Redis) split — must match the server above.
+      INFRAHUB_BROKER_ADDRESS: infrahub-message-queue
+      INFRAHUB_BROKER_USERNAME: infrahub
+      INFRAHUB_BROKER_PASSWORD: infrahub
+      INFRAHUB_CACHE_ADDRESS: infrahub-cache
+      INFRAHUB_INTERNAL_ADDRESS: http://infrahub-server:8000
+      INFRAHUB_API_TOKEN: ${INFRAHUB_API_TOKEN}
+    depends_on:
+      infrahub-server:
+        condition: service_healthy
+      infrahub-message-queue:
+        condition: service_healthy
+
+  # =========================================================================
+  # Webhook receiver for Alertmanager
+  # =========================================================================
+
+  webhook:
+    container_name: webhook
+    build:
+      context: .
+      dockerfile: ./webhook/webhook.Dockerfile
+      args:
+        PYTHON_VER: ${PYTHON_VER:-3.11}
+    command: "python -m app.main"
+    ports:
+      - "9997:9997"
+    tty: true
+    environment:
+      PREFECT_API_URL: "http://prefect-server:4200/api"
+
+  # =========================================================================
+  # Prefect 3 — workflow orchestration for Part 3
+  # postgres + redis + server + services + worker + a flow-server container
+  # that registers and serves the alert-receiver deployment.
+  # =========================================================================
+
+  prefect-postgres:
+    container_name: prefect-postgres
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: prefect
+      POSTGRES_PASSWORD: prefect
+      POSTGRES_DB: prefect
+    # postgres:18+ wants the mount one level up from PGDATA so `pg_upgrade --link`
+    # can cross major versions without a mount-point boundary. Matches upstream
+    # Infrahub's own task-manager-db.
+    volumes:
+      - prefect_data:/var/lib/postgresql/18/docker
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prefect"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  prefect-redis:
+    container_name: prefect-redis
+    image: redis:8.4.0
+    volumes:
+      - prefect_redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  prefect-server:
+    container_name: prefect-server
+    image: prefecthq/prefect:3-latest
+    depends_on:
+      prefect-postgres:
+        condition: service_healthy
+      prefect-redis:
+        condition: service_healthy
+    environment:
+      PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://prefect:prefect@prefect-postgres:5432/prefect
+      PREFECT_SERVER_API_HOST: 0.0.0.0
+      PREFECT_UI_API_URL: http://localhost:4200/api
+      PREFECT_MESSAGING_BROKER: prefect_redis.messaging
+      PREFECT_MESSAGING_CACHE: prefect_redis.messaging
+      PREFECT_REDIS_MESSAGING_HOST: prefect-redis
+      PREFECT_REDIS_MESSAGING_PORT: 6379
+      PREFECT_REDIS_MESSAGING_DB: 0
+    command: prefect server start --no-services
+    ports:
+      - "4200:4200"
+
+  prefect-services:
+    container_name: prefect-services
+    image: prefecthq/prefect:3-latest
+    depends_on:
+      prefect-postgres:
+        condition: service_healthy
+      prefect-redis:
+        condition: service_healthy
+    environment:
+      PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://prefect:prefect@prefect-postgres:5432/prefect
+      PREFECT_MESSAGING_BROKER: prefect_redis.messaging
+      PREFECT_MESSAGING_CACHE: prefect_redis.messaging
+      PREFECT_REDIS_MESSAGING_HOST: prefect-redis
+      PREFECT_REDIS_MESSAGING_PORT: 6379
+      PREFECT_REDIS_MESSAGING_DB: 0
+    command: prefect server services start
+
+  prefect-worker:
+    container_name: prefect-worker
+    image: prefecthq/prefect:3-latest
+    depends_on:
+      prefect-server:
+        condition: service_started
+    environment:
+      PREFECT_API_URL: http://prefect-server:4200/api
+    command: prefect worker start --pool local-pool
+    # `prefect-server: condition: service_started` only waits for the container
+    # to start, not for the API socket to accept connections — first run of
+    # `prefect worker start` can race and exit with httpx.ConnectError.
+    restart: on-failure
+
+  # The flow server: registers and runs the alert-receiver deployment, with
+  # all the workshop SDK code mounted in. This is the container the webhook
+  # invokes via run_deployment().
+  prefect-flows:
+    container_name: prefect-flows
+    build:
+      context: .
+      dockerfile: ./automation/flows.Dockerfile
+    command: ["python", "/app/serve.py"]
+    environment:
+      PREFECT_API_URL: http://prefect-server:4200/api
+      INFRAHUB_ADDRESS: ${INFRAHUB_ADDRESS:-http://infrahub-server:8000}
+      INFRAHUB_API_TOKEN: ${INFRAHUB_API_TOKEN}
+      PROMETHEUS_URL: http://prometheus:9090
+      LOKI_URL: http://loki:3001
+      ALERTMANAGER_URL: http://alertmanager:9093
+      SONDA_SERVER_URL: http://sonda-server:8080
+      SONDA_API_KEY: ${SONDA_API_KEY:-}
+      ENABLE_AI_RCA: ${ENABLE_AI_RCA:-false}
+      AI_RCA_PROVIDER: ${AI_RCA_PROVIDER:-openai}
+      AI_RCA_MODEL: ${AI_RCA_MODEL:-gpt-4o-mini}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    volumes:
+      - ./automation:/app
+    depends_on:
+      prefect-server:
+        condition: service_started
+    # Same race as prefect-worker — depends_on `service_started` doesn't wait
+    # for the API to be listening; first `python /app/serve.py` can crash on
+    # httpx.ConnectError before the server's `prefect.serve()` is reachable.
+    restart: on-failure

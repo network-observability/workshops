@@ -8,6 +8,7 @@
 # Usage:
 #     uv sync                               # install all workshop deps
 #     uv sync --package autocon5-workshop   # install just AutoCon5
+#     uv sync --package packt-workshop      # install just Packt
 #     uv run python workshops/autocon5/scripts/load_infrahub.py ...
 #
 # We deliberately set `package = false` because nothing here is published

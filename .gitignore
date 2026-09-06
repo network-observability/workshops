@@ -41,6 +41,7 @@ node_modules/
 
 # MkDocs build output
 site/
+site-packt/
 
 # Claude Code local session state
 .claude/

@@ -1,0 +1,43 @@
+# Packt workshop docs site.
+#
+# INHERIT pulls in mkdocs.yml wholesale: theme (and all its features), plugins,
+# markdown_extensions, extra. Mappings merge key-by-key; lists are replaced. The
+# palette stays teal here and is overridden to Packt orange in packt.css.
+#
+#     uv run mkdocs build --strict -f mkdocs.packt.yml
+
+INHERIT: mkdocs.yml
+
+# Do NOT override `markdown_extensions` here. INHERIT replaces lists wholesale,
+# so a partial override silently drops admonitions, tabs, superfences and the
+# rest — and `--strict` does not catch it, because unrendered `!!!` is just
+# text. The inherited `pymdownx.snippets.base_path` therefore still resolves
+# against docs/ first; no page uses `--8<--`, and one that did would need the
+# path spelled out relative to the repo root.
+
+site_name: Packt · Building a Network Observability Stack
+site_description: 3-hour online workshop — telemetry, queries, dashboards, alerts, automation and AI on your laptop.
+site_url: https://network-observability.github.io/workshops/packt/
+
+docs_dir: docs-packt
+site_dir: site-packt
+edit_uri: edit/main/docs-packt/
+
+dev_addr: "127.0.0.1:8002"
+
+extra_css:
+  - stylesheets/packt.css
+
+nav:
+  - Home: index.md
+  - Pre-work: prework.md
+  - Part 1 — Telemetry and queries: part-1.md
+  - Part 2 — Dashboards and alerts (demo): part-2.md
+  - Part 3 — Alerts, automation and AI: part-3.md
+  - Take it home: take-home.md
+  - "Modern Network Observability hub ↗": https://network-observability.github.io/
+
+watch:
+  - workshops/packt/README.md
+  - workshops/packt/guides
+  - README.md

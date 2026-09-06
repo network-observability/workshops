@@ -10,18 +10,18 @@ from nobs.workshops import REGISTRY, Workshop
 
 
 @pytest.fixture
-def autocon5_in_registry(tmp_path: Path):
-    """Register an autocon5-shaped workshop rooted at tmp_path/autocon5/.
+def workshop_in_registry(tmp_path: Path):
+    """Register a workshop rooted at tmp_path/demo/.
 
     Yields the workshop dir for caller convenience and pops the registry
     entry after the test so the suite isn't poisoned.
     """
-    ws_dir = tmp_path / "autocon5"
+    ws_dir = tmp_path / "demo"
     ws_dir.mkdir()
     (ws_dir / "docker-compose.yml").write_text("services: {}\n")
 
     initial_len = len(REGISTRY)
-    ws = Workshop(name="autocon5-detect-test", title="Detect Test", dir=ws_dir)
+    ws = Workshop(name="demo-detect-test", title="Detect Test", dir=ws_dir)
     REGISTRY.append(ws)
     try:
         yield ws_dir
@@ -34,23 +34,23 @@ def test_detect_returns_none_outside_any_workshop(tmp_path: Path) -> None:
     assert _detect_current_workshop(cwd=tmp_path) is None
 
 
-def test_detect_returns_workshop_at_dir_root(autocon5_in_registry: Path) -> None:
-    ws = _detect_current_workshop(cwd=autocon5_in_registry)
+def test_detect_returns_workshop_at_dir_root(workshop_in_registry: Path) -> None:
+    ws = _detect_current_workshop(cwd=workshop_in_registry)
     assert ws is not None
-    assert ws.dir == autocon5_in_registry.resolve()
+    assert ws.dir == workshop_in_registry.resolve()
 
 
-def test_detect_returns_workshop_for_descendant(autocon5_in_registry: Path) -> None:
+def test_detect_returns_workshop_for_descendant(workshop_in_registry: Path) -> None:
     """Anywhere inside the workshop's tree should resolve to the workshop."""
-    nested = autocon5_in_registry / "docs" / "guides"
+    nested = workshop_in_registry / "docs" / "guides"
     nested.mkdir(parents=True)
     ws = _detect_current_workshop(cwd=nested)
     assert ws is not None
-    assert ws.dir == autocon5_in_registry.resolve()
+    assert ws.dir == workshop_in_registry.resolve()
 
 
-def test_detect_returns_none_for_sibling(autocon5_in_registry: Path) -> None:
+def test_detect_returns_none_for_sibling(workshop_in_registry: Path) -> None:
     """A sibling directory (same parent, different name) is NOT a match."""
-    sibling = autocon5_in_registry.parent / "other"
+    sibling = workshop_in_registry.parent / "other"
     sibling.mkdir()
     assert _detect_current_workshop(cwd=sibling) is None

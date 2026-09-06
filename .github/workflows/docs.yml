@@ -5,20 +5,28 @@ on:
     branches: [main]
     paths:
       - "docs/**"
+      - "docs-packt/**"
       - "workshops/autocon5/README.md"
       - "workshops/autocon5/guides/**"
+      - "workshops/packt/README.md"
+      - "workshops/packt/guides/**"
       - "README.md"
       - "mkdocs.yml"
+      - "mkdocs.packt.yml"
       - "pyproject.toml"
       - "uv.lock"
       - ".github/workflows/docs.yml"
   pull_request:
     paths:
       - "docs/**"
+      - "docs-packt/**"
       - "workshops/autocon5/README.md"
       - "workshops/autocon5/guides/**"
+      - "workshops/packt/README.md"
+      - "workshops/packt/guides/**"
       - "README.md"
       - "mkdocs.yml"
+      - "mkdocs.packt.yml"
       - "pyproject.toml"
       - "uv.lock"
       - ".github/workflows/docs.yml"
@@ -53,6 +61,16 @@ jobs:
 
       - name: Build site
         run: uv run mkdocs build --strict
+
+      - name: Build Packt site
+        run: uv run mkdocs build --strict -f mkdocs.packt.yml
+
+      # The Packt site is published as a subdirectory of the main site, so a
+      # single Pages artifact carries both.
+      - name: Nest Packt site under /packt
+        run: |
+          mkdir -p site/packt
+          cp -r site-packt/. site/packt/
 
       - name: Upload built site
         uses: actions/upload-pages-artifact@v3

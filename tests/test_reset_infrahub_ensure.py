@@ -1,12 +1,30 @@
-"""Tests for `reset._ensure_infrahub_loaded` — probe-then-load behavior."""
+"""Tests for each workshop's `reset._ensure_infrahub_loaded` — probe-then-load behavior."""
 
 from __future__ import annotations
 
+import importlib
+from types import ModuleType
 from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
-from autocon5_workshop import reset
+
+PLUGINS = ["autocon5_workshop", "packt_workshop"]
+
+
+@pytest.fixture(params=PLUGINS)
+def plugin(request: pytest.FixtureRequest) -> str:
+    return request.param
+
+
+@pytest.fixture
+def slug(plugin: str) -> str:
+    return plugin.removesuffix("_workshop")
+
+
+@pytest.fixture
+def reset(plugin: str) -> ModuleType:
+    return importlib.import_module(f"{plugin}.reset")
 
 
 def _mock_graphql_response(edges: list[dict]) -> MagicMock:
@@ -24,7 +42,7 @@ def device_edges_two() -> list[dict]:
     ]
 
 
-def test_probe_returns_two_devices_skips_subprocess_invocation(device_edges_two: list[dict]) -> None:
+def test_probe_returns_two_devices_skips_subprocess_invocation(reset: ModuleType, device_edges_two: list[dict]) -> None:
     with (
         patch.object(reset.requests, "post", return_value=_mock_graphql_response(device_edges_two)) as mock_post,
         patch("subprocess.run") as mock_run,
@@ -35,7 +53,7 @@ def test_probe_returns_two_devices_skips_subprocess_invocation(device_edges_two:
     mock_run.assert_not_called()
 
 
-def test_probe_returns_zero_devices_invokes_load_infrahub() -> None:
+def test_probe_returns_zero_devices_invokes_load_infrahub(reset: ModuleType, slug: str) -> None:
     with (
         patch.object(reset.requests, "post", return_value=_mock_graphql_response([])),
         patch("subprocess.run") as mock_run,
@@ -45,12 +63,12 @@ def test_probe_returns_zero_devices_invokes_load_infrahub() -> None:
 
     mock_run.assert_called_once()
     args, kwargs = mock_run.call_args
-    assert args[0] == ["uv", "run", "nobs", "autocon5", "load-infrahub"]
+    assert args[0] == ["uv", "run", "nobs", slug, "load-infrahub"]
     assert kwargs["timeout"] == 60
     assert kwargs["capture_output"] is True
 
 
-def test_probe_returns_one_device_invokes_load_infrahub() -> None:
+def test_probe_returns_one_device_invokes_load_infrahub(reset: ModuleType) -> None:
     one_edge = [{"node": {"name": {"value": "srl1"}}}]
     with (
         patch.object(reset.requests, "post", return_value=_mock_graphql_response(one_edge)),
@@ -62,7 +80,7 @@ def test_probe_returns_one_device_invokes_load_infrahub() -> None:
     mock_run.assert_called_once()
 
 
-def test_probe_failure_warns_and_skips_subprocess() -> None:
+def test_probe_failure_warns_and_skips_subprocess(reset: ModuleType) -> None:
     with (
         patch.object(reset.requests, "post", side_effect=requests.ConnectionError("boom")),
         patch("subprocess.run") as mock_run,
@@ -72,7 +90,7 @@ def test_probe_failure_warns_and_skips_subprocess() -> None:
     mock_run.assert_not_called()
 
 
-def test_probe_url_strips_trailing_slash(device_edges_two: list[dict]) -> None:
+def test_probe_url_strips_trailing_slash(reset: ModuleType, device_edges_two: list[dict]) -> None:
     with (
         patch.object(reset.requests, "post", return_value=_mock_graphql_response(device_edges_two)) as mock_post,
         patch("subprocess.run"),
