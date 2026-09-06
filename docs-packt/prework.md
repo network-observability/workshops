@@ -11,7 +11,7 @@ description: Install Docker and uv, run the preflight, and pull the images befor
 
 <p class="packt-section-hero__subtitle">Do this a few days ahead. The slow step is image pulls, and it only happens once.</p>
 
-The whole workshop runs on your own laptop — a complete observability stack in Docker, no shared backend, nothing to sign up for. Almost all of the 30 minutes below is containers downloading and building in the background while you do something else. Getting it out of the way this week is the difference between spending 09:00 EDT querying telemetry and spending it watching a progress bar.
+The whole workshop runs on your own laptop — a complete observability stack in Docker, no shared backend, nothing to sign up for. Almost all of the 30 minutes below is containers downloading and building in the background while you do something else. Getting it out of the way this week is the difference between spending the session querying telemetry and spending it watching a progress bar.
 
 <p class="packt-section-hero__meta">
   <span>Docker + uv</span>

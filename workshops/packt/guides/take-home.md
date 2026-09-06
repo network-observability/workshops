@@ -1484,8 +1484,6 @@ Then re-read what you wrote.
 
 ## Where to go next
 
-**The recording.** Packt records the session and distributes it — check your Packt account for the replay. Everything the recording shows is also written out in the guides you already have on your laptop, so you can follow along at your own speed rather than scrubbing video.
-
 **The book.** [*Modern Network Observability*](https://network-observability.github.io/) is the long-form version of everything here — the collectors, the schema design, the alerting philosophy, the automation patterns, with far more depth than three hours allows.
 
 **The deeper lab.** [`network-observability-lab`](https://github.com/network-observability/network-observability-lab) is the book's chapter-by-chapter playground: every collector, every variant, real cEOS and SR Linux containers in the loop. Bigger surface area, more RAM, more network-engineering depth. This workshop is the tight on-ramp; that repo is the full trip.
