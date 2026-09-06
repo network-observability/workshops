@@ -162,8 +162,6 @@ Pass `--no-cascade` to emit the interface flap and UPDOWN log stream alone (no B
 
 For maintainers, instructors, and anyone forking this workshop:
 
-- [`guides/runsheet.md`](guides/runsheet.md) — proctor-facing minute-by-minute script, driver/monitor roles, and the fallback if the room can't get the stack up.
-- [`guides/prework-email.md`](guides/prework-email.md) — T-7 and T-2 email templates.
 - [`docs/`](docs/) — operator documentation index (architecture diagram, `.env` lifecycle, repo layout, troubleshooting).
 - [`docs/env-lifecycle.md`](docs/env-lifecycle.md) — who creates `.env`, who reads it, and the host-vs-container nuance.
 - [`docs/troubleshooting.md`](docs/troubleshooting.md) — the recurring failure modes and exact recovery commands.
