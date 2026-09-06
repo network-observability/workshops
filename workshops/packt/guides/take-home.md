@@ -945,7 +945,7 @@ The phases above walk one full cycle with all the concepts spelled out. If you w
 
     You'll see:
 
-    - **Task graph** — the steps the workflow ran, in order: `collect_evidence` → `evaluate_policy` → `annotate_decision` → `ai_rca` → (if `proceed`) `quarantine` → `annotate_action`. Same shape as the Phase 1–4 walk.
+    - **Subflow runs** — three rows nested under the parent run: `evidence`, `policy`, `action`. Same three blocks as the Phase 2–4 walk. Click one to see its tasks — `fetch_sot` / `fetch_metrics` / `fetch_logs` / `assemble_evidence` under `evidence`, `evaluate_sot_gate` / `evaluate_metrics_gate` / `annotate_decision` under `policy`, `ai_rca` / `quarantine` / `annotate_action` under `action`.
     - **Per-task logs** — every line the workflow printed, indexed by task. Same content as `nobs packt logs prefect-flows`, but searchable per task.
     - **Tags** — labels on each task like `device:srl1`, `peer_address:10.1.99.2`, `action:quarantine`. These are what an operator filters on to find "every run that touched this peer."
 
@@ -989,18 +989,13 @@ The phases above walk one full cycle with all the concepts spelled out. If you w
     ```python
     @flow(log_prints=True, flow_run_name="quarantine_bgp | {device}:{peer_address}")
     def quarantine_bgp_flow(device, peer_address, ...):
-        ev = collect_bgp_evidence_task(device=device, peer_address=peer_address, ...)
-        decision = evaluate_policy_task(device=device, peer_address=peer_address, ev=ev)
-        annotate_decision_task(workflow="packt_quarantine_bgp", ..., decision=decision)
-        rca_text = ai_rca_task(workflow="packt_quarantine_bgp", ..., ev=ev)
-        if decision.decision != "proceed":
-            return {...}
-        silence_id = quarantine_task(device=device, peer_address=peer_address, minutes=20)
-        annotate_action_task(...)
+        ev = evidence_flow(device=device, peer_address=peer_address, ...)
+        decision = policy_flow(device=device, peer_address=peer_address, ev=ev)
+        outcome = action_flow(device=device, peer_address=peer_address, decision=decision, ev=ev, ...)
         return {...}
     ```
 
-    Six function calls, matching the steps you walked across Phases 2–4. The `@flow` decorator on top is what gives this a UI, retries, per-task logs, and a queryable record. "Automation" here is a Python function with decorators on top.
+    Three calls, one per block of the cycle you walked across Phases 2–4. Each block is a flow of its own with its own tasks, which is why `evidence`, `policy` and `action` appear as separate rows in the Prefect UI and in `nobs packt cycle`. The `@flow` decorator on top is what gives this a UI, retries, per-task logs, and a queryable record. "Automation" here is a Python function with decorators on top.
 
     Full source: [`workshops/packt/automation/flows.py`](https://github.com/network-observability/workshops/blob/main/workshops/packt/automation/flows.py).
 
@@ -1020,24 +1015,27 @@ The phases above walk one full cycle with all the concepts spelled out. If you w
 
         Run `nobs packt logs prefect-flows` in one terminal, then re-run `nobs packt try-it --auto` in another.
 
-        Each `try-it --auto` cycle produces a burst of log lines, one per task as the flow runs through it. For a `proceed` path:
+        Each `try-it --auto` cycle produces a burst of log lines, grouped by the three blocks. For a `proceed` path (trimmed):
 
         ```text
-        [collect] device=srl1 peer=10.1.99.2 afi=ipv4-unicast instance=default
-        [collect] sot.found=True maintenance=False intended=True expected_state=established reason='ip-mismatch-demo'
-           metrics={'admin_state': 1.0, 'oper_state': 5.0, 'received_routes': 0.0, ...}
-           logs collected: 50 lines
-        [policy] srl1:10.1.99.2
-           stage1 SoT-only → ok (intended, not in maintenance)
-           stage2 SoT + metrics → proceed (mismatch)
-        [annotate] decision=proceed reason=SoT expects peer up, but metrics show mismatch
-        [ai_rca] running (gated by ENABLE_AI_RCA)
-        [ai_rca] annotated: AI RCA disabled ...   # or, with AI RCA on, the first line of the narrative
-        [quarantine] silencing srl1:10.1.99.2 for 20m
-        [flow] action=quarantine silence_id=...
+        Flow run 'evidence | srl1:10.1.99.2' - Beginning subflow run
+        Task run 'fetch_sot[srl1:10.1.99.2]' - 🔎 [evidence] SoT gate for srl1:10.1.99.2 (ipv4-unicast)
+        Task run 'fetch_metrics[srl1:10.1.99.2]' - 🔎 [evidence] BGP metrics snapshot for srl1:10.1.99.2
+        Task run 'fetch_logs[srl1:10.1.99.2]' - 🔎 [evidence] last 30m of logs for srl1:10.1.99.2
+        Task run 'assemble_evidence[srl1:10.1.99.2]' - ✅ [evidence] sot.found=True maintenance=False intended=True expected_state=established reason='ip-mismatch-demo'
+        Task run 'assemble_evidence[srl1:10.1.99.2]' -    metrics={'admin_state': 1.0, 'oper_state': 5.0, 'received_routes': 0.0, ...}
+        Task run 'assemble_evidence[srl1:10.1.99.2]' -    logs collected: 50 lines
+        Flow run 'policy | srl1:10.1.99.2' - Beginning subflow run
+        Task run 'evaluate_sot_gate[srl1:10.1.99.2]' - 🧠 [policy] stage1 SoT-only → proceed (SoT expects up; metrics not provided (collect evidence))
+        Task run 'evaluate_metrics_gate[srl1:10.1.99.2]' - 🧠 [policy] stage2 SoT+metrics → proceed (SoT expects peer up, but metrics show mismatch)
+        Task run 'annotate_decision[srl1:10.1.99.2]' - 📝 [annotate] decision=proceed reason=SoT expects peer up, but metrics show mismatch
+        Flow run 'action | srl1:10.1.99.2' - Beginning subflow run
+        Task run 'ai_rca[srl1:10.1.99.2]' - 🤖 [ai_rca] running (gated by ENABLE_AI_RCA)
+        Task run 'quarantine[srl1:10.1.99.2]' - 🔕 [quarantine] silencing srl1:10.1.99.2 for 20m
+        Task run 'quarantine[srl1:10.1.99.2]' - ✅ [quarantine] silence id=d9419759-0b0a-40ce-8bda-21e6298b0bb3
         ```
 
-        The `[collect]` lines show the exact SoT + metric values the policy will see. The `[policy]` lines show which stage matched and why. The `[annotate]` line carries the same `decision` and `reason` you find in Loki under `{source="prefect"}`. Tailing the logs is the fastest debug loop when the flow returns an unexpected decision — every intermediate value is visible without a single LogQL query.
+        The `[evidence]` lines show the exact SoT + metric values the policy will see. The `[policy]` lines show which stage answered and why — on a maintenance run, `evaluate_metrics_gate` is absent because stage 1 already returned `skip`. The `[annotate]` line carries the same `decision` and `reason` you find in Loki under `{source="prefect"}`. Tailing the logs is the fastest debug loop when the flow returns an unexpected decision — every intermediate value is visible without a single LogQL query.
 
 - **Compare evidence between a healthy peer and a broken one.** Both peers share the same SoT intent, but the policy fires `proceed` on one and `skip` on the other. Find the field that drives the difference.
 
