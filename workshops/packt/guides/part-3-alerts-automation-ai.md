@@ -75,7 +75,12 @@ The demo provider stitches a templated narrative from the same evidence the poli
             │
             ▼
        quarantine_bgp_flow  ── the decision logic
+            ├── evidence_flow   (§2)
+            ├── policy_flow     (§3)
+            └── action_flow     (§4)
     ```
+
+    `quarantine_bgp_flow` calls one **subflow** per step — a flow started by another flow. Each step shows up in Prefect under its own name: `evidence`, `policy`, `action`. You'll see those names on screen in the next sections.
 
     `quarantine_bgp_flow` is **deterministic** (same alert payload in, same decision out, every time — also called "rule-based"). Replayable, reviewable in code review (the decision tree is `DecisionPolicy.evaluate` in [`workshops/packt/automation/workshop_sdk.py`](https://github.com/network-observability/workshops/blob/main/workshops/packt/automation/workshop_sdk.py)), and auditable through **audit records** it writes to Loki — one log line per decision, with labels you can query later. The full decision tree is broken out in the "Deep dive" fold under [The cycle](#the-cycle-alert-evidence-policy-action) below.
 
@@ -95,6 +100,22 @@ Two `BgpSessionNotUp` alerts are firing in your lab right now (you just saw them
 ![The Part 3 cycle — alert, evidence, policy, action](../../../docs-packt/assets/diagrams/part-3-cycle-light.svg#only-light){ .screenshot loading=lazy }
 ![The Part 3 cycle — alert, evidence, policy, action](../../../docs-packt/assets/diagrams/part-3-cycle-dark.svg#only-dark){ .screenshot loading=lazy }
 
+Steps 2, 3 and 4 are each a separate flow. The structure above is not just a drawing — it is what the workflow looks like while it runs. Run `nobs packt cycle srl1 10.1.99.2` and the **Prefect flow runs** panel shows one parent row and three child rows:
+
+```text
+               Prefect flow runs (last 30m)
+┏━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Started  ┃ State     ┃ Flow                            ┃
+┡━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ 07:44:14 │ COMPLETED │ quarantine_bgp | srl1:10.1.99.2 │
+│ 07:44:14 │ COMPLETED │   ├─ evidence                   │
+│ 07:44:15 │ COMPLETED │   ├─ policy                     │
+│ 07:44:16 │ COMPLETED │   └─ action                     │
+└──────────┴───────────┴─────────────────────────────────┘
+```
+
+The same three names appear in the Prefect UI at <http://localhost:4200/runs>. Each section below names the row you are in, shows its code, and shows the data it returns.
+
 The rest of Part 3 is structured around this cycle:
 
 - **Phases 1 → 4** walk **one full pass** through it — alert (you'll see the firing alert), evidence (you'll run a CLI to see what the workflow gathered), policy (you'll read the decision in Loki), action (you'll look at the silence in Alertmanager and the record it wrote).
@@ -112,10 +133,10 @@ The bigger point — and the reason this matters even outside this lab — is th
        alert payload
             │
             ▼
-       collect_evidence  ── SoT (Infrahub) + metrics (Prom) + logs (Loki)
+       evidence_flow  ── SoT (Infrahub) + metrics (Prom) + logs (Loki)
             │
             ▼
-       evaluate_policy  ── deterministic decision tree
+       policy_flow  ── deterministic decision tree
             │
             ▼
        one of: proceed · skip · resolved · stop
@@ -123,7 +144,7 @@ The bigger point — and the reason this matters even outside this lab — is th
 
     The policy writes one of **three decisions** for any given alert — `proceed`, `skip`, or `resolved`. The reason there are *four paths* below is that `skip` happens for two different reasons (healthy peer / device in maintenance), and we list each reason separately because they're operationally different. There's also a rare bail-out value (`stop`) for one edge case — explained at the end of this fold.
 
-    Every decision the flow makes lands in Loki as an **audit record** — one log line per evaluation, written by the `annotate_decision` task right after `evaluate_policy` returns. The record carries the device, the peer, and a `decision` label. That label is what lets you slice the audit trail by decision outcome — "how many `proceed` decisions in the last hour?" — directly in Loki. Phase 6 is the unguided exercise where you answer that question yourself.
+    Every decision the flow makes lands in Loki as an **audit record** — one log line per evaluation, written by the `annotate_decision` task, the last task inside `policy_flow`. The record carries the device, the peer, and a `decision` label. That label is what lets you slice the audit trail by decision outcome — "how many `proceed` decisions in the last hour?" — directly in Loki. Phase 6 is the unguided exercise where you answer that question yourself.
 
     | Path | Trigger | Decision | Outcome |
     |------|---------|---------|---------|
@@ -212,7 +233,7 @@ The bigger point — and the reason this matters even outside this lab — is th
 
         Three ways to query the live metrics, in order of friction (lowest to highest):
 
-        1. **Via `nobs packt evidence [OPTIONS] DEVICE PEER`** — the workshop's pre-built convenience command that consolidates SoT + metrics + recent logs into one CLI output. The `BGP metrics snapshot` panel is exactly what the flow's `collect_evidence` task pulls. Phase 2's evidence walkthrough drives it directly.
+        1. **Via `nobs packt evidence [OPTIONS] DEVICE PEER`** — the workshop's pre-built convenience command that consolidates SoT + metrics + recent logs into one CLI output. The `BGP metrics snapshot` panel is exactly what the flow's `fetch_metrics` task pulls. Phase 2's evidence walkthrough drives it directly.
         2. **Via Grafana Explore** at <http://localhost:3000>. Pick the Prometheus datasource and run each query separately (one per query row):
             ```promql
             bgp_admin_state{device="srl1", peer_address="10.1.99.2"}
@@ -300,17 +321,17 @@ The path from "alert in Alertmanager" to "workflow running" looks like this:
    │  (30 min in this lab).                   │
    └──────────────────┬───────────────────────┘
                       │ HTTP POST (webhook)
-   ┌── Orchestration (Prefect) ────────────────┐
-   │                  ▼                         │
-   │      alert_receiver flow                  │
-   │              │ dispatches by alertname    │
-   │              ▼                            │
-   │      quarantine_bgp_flow                  │
-   │              │                            │
-   │              ▼                            │
-   │      Evidence (§2) ─► Policy (§3) ─► Action (§4)
-   │                                            │
-   └────────────────────────────────────────────┘
+   ┌── Orchestration (Prefect) ──────────────────────────────────────┐
+   │                  ▼                                              │
+   │      alert_receiver flow                                        │
+   │              │ routes by alertname                              │
+   │              ▼                                                  │
+   │      quarantine_bgp_flow                                        │
+   │              │                                                  │
+   │              ▼                                                  │
+   │      evidence_flow (§2) ─► policy_flow (§3) ─► action_flow (§4) │
+   │                                                                 │
+   └─────────────────────────────────────────────────────────────────┘
 ```
 
 !!! warning "Heads-up for the rest of Part 3 — Alertmanager's `repeat_interval`"
@@ -329,27 +350,54 @@ For Part 3, we focus on what happens *after* the alert is `firing`: the workflow
 
 ### 2. Evidence — what the workflow collected
 
-Under the hood, gathering evidence looks like this:
+You are in the `evidence` row of the flow-runs panel now. Before the workflow decides anything, it gathers facts about the peer the alert is firing on. We call this the **evidence**: what the source of truth intends, what the metrics measure, and what the recent logs say. Four tasks do it — three fetches and one that packs the results into a bundle.
 
 ```text
-   ┌── Orchestration (Prefect) ──────────────────────────────────┐
-   │                                                              │
-   │   collect_evidence task                                     │
-   │       │                                                      │
-   │       ├──► Infrahub    · GraphQL: WorkshopDevice (intent)   │
-   │       ├──► Prometheus  · PromQL:  bgp_*_state, routes       │ ◄── nobs packt evidence
-   │       └──► Loki        · LogQL:   BGP-filtered log lines    │     (same three sources,
-   │       │                                                      │      run ad-hoc, no flow)
-   │       ▼  EvidenceBundle                                     │
-   │                                                              │
-   │   evaluate_policy task ──► §3 Policy                        │
-   │                                                              │
-   └──────────────────────────────────────────────────────────────┘
+   ┌── evidence_flow ────────────────────────────────────────────────┐
+   │                                                                 │
+   │   fetch_sot      ──► Infrahub    · GraphQL: WorkshopDevice      │
+   │   fetch_metrics  ──► Prometheus  · PromQL:  bgp_*_state, routes │ ◄── nobs packt evidence
+   │   fetch_logs     ──► Loki        · LogQL:   BGP-filtered lines  │     (same three sources,
+   │       │             all three submitted together                │      run by hand, no flow)
+   │       ▼                                                         │
+   │   assemble_evidence ──► EvidenceBundle ──► §3 policy_flow       │
+   │                                                                 │
+   └─────────────────────────────────────────────────────────────────┘
 ```
 
-Before the workflow decides anything, it gathers facts about the peer the alert is firing on. We call this the **evidence**: three pieces of information about the peer, plus a preview of what the workflow's decision rule would say given those facts.
+Here is the whole block in code:
 
-You can see exactly what the workflow sees with one command:
+```python title="automation/flows.py — evidence_flow"
+@flow(log_prints=True, flow_run_name="evidence | {device}:{peer_address}")
+def evidence_flow(device, peer_address, afi_safi, instance_name, ...) -> EvidenceBundle:
+    sot     = fetch_sot_task.submit(device=device, peer_address=peer_address, afi_safi=afi_safi)
+    metrics = fetch_metrics_task.submit(device=device, peer_address=peer_address, ...)
+    logs    = fetch_logs_task.submit(device=device, peer_address=peer_address, ...)
+    return assemble_evidence_task(sot=sot, metrics=metrics, logs=logs, ...)
+```
+
+`.submit()` starts a task and moves on without waiting for it. The three arrows in the diagram are three tasks running at once, not one task doing three things in a row. `assemble_evidence_task` takes their results as arguments, so it waits for all three before it runs.
+
+**What the block returns.** Tail the workflow logs with `nobs packt logs prefect-flows` (or open the run in the Prefect UI) and drive a fresh cycle. The evidence block prints this:
+
+```text
+Task run 'fetch_sot[srl1:10.1.99.2]' - 🔎 [evidence] SoT gate for srl1:10.1.99.2 (ipv4-unicast)
+Task run 'fetch_metrics[srl1:10.1.99.2]' - 🔎 [evidence] BGP metrics snapshot for srl1:10.1.99.2
+Task run 'fetch_logs[srl1:10.1.99.2]' - 🔎 [evidence] last 30m of logs for srl1:10.1.99.2
+Task run 'fetch_logs[srl1:10.1.99.2]' - Finished in state Completed()
+Task run 'fetch_metrics[srl1:10.1.99.2]' - Finished in state Completed()
+Task run 'fetch_sot[srl1:10.1.99.2]' - Finished in state Completed()
+Task run 'assemble_evidence[srl1:10.1.99.2]' - ✅ [evidence] sot.found=True maintenance=False intended=True expected_state=established reason='ip-mismatch-demo'
+Task run 'assemble_evidence[srl1:10.1.99.2]' -    metrics={'admin_state': 1.0, 'oper_state': 5.0, 'received_routes': 0.0, 'sent_routes': 10.0, 'suppressed_routes': 0.0, 'active_routes': 10.0}
+Task run 'assemble_evidence[srl1:10.1.99.2]' -    logs collected: 50 lines
+```
+
+Two things to read out of that trace:
+
+- **The fetches start in one order and finish in another** — `fetch_logs` finishes first, `fetch_sot` last. That is the proof they ran at the same time. A retry on one source does not re-fetch the other two.
+- **The last three lines are the bundle** — intent from the source of truth, the metrics dict, the log line count. That bundle is the only input `policy_flow` gets in §3.
+
+You can gather the same three facts by hand, without an alert, with one command:
 
 ```bash
 nobs packt evidence srl1 10.1.99.2
@@ -379,7 +427,7 @@ The output is four panels. Each answers a different question:
     │ reason          ip-mismatch-demo                                     │
     │ remote_as       65102                                                │
     ╰──────────────────────────────────────────────────────────────────────╯
-            ↑ Same fields the Prefect flow's `collect_evidence` task reads via GraphQL.
+            ↑ Same fields the Prefect flow's `fetch_sot` task reads via GraphQL.
               `maintenance=false` → stage 1 of the policy proceeds to the metrics check.
               `expected_state=established` → SoT says this peer should be up.
 
@@ -423,8 +471,9 @@ The output is four panels. Each answers a different question:
     │           show mismatch                     │
     ╰─────────────────────────────────────────────╯
             ↑ The deterministic policy's verdict on this exact bundle. The Prefect
-              flow's `evaluate_policy` task computes the same answer and writes it
-              to Loki as the `decision=proceed` audit record you'll see in Phase 3.
+              flow's `evaluate_metrics_gate` task computes the same answer, and
+              `annotate_decision` writes it to Loki as the `decision=proceed`
+              audit record you'll see in Phase 3.
     ```
 
     All four panels together are the full picture for one peer: what the SoT believes, what the metrics measure, what the recent logs say, and what the policy concludes. The `Policy hint` is the same answer the Prefect flow reaches in production — `nobs packt evidence` just surfaces it on the CLI first, so you can predict the decision before an alert ever fires.
@@ -489,19 +538,7 @@ The output is four panels. Each answers a different question:
 
     Numeric protocol enums are great on the wire and useless on a dashboard — this is the entire translation layer.
 
-    **All four wired together** — the only thing the Prefect task calls:
-
-    ```python
-    def collect_bgp_evidence(self, device, peer_address, afi_safi, instance_name, ...):
-        ev = EvidenceBundle(device=device, peer_address=peer_address, ...)
-        ev.sot     = self.bgp_gate(device, peer_address, afi_safi)
-        ev.metrics = self.bgp_metrics_snapshot(device, peer_address, afi_safi, instance_name)
-        ev.sot["decoded"] = decode_bgp_states(ev.metrics)
-        ev.logs    = self.bgp_logs(device, peer_address)
-        return ev
-    ```
-
-    Three reads, one decode, return a dataclass. The whole "evidence-gathering" step is roughly ten lines of orchestration; the rest of [`workshop_sdk.py`](https://github.com/network-observability/workshops/blob/main/workshops/packt/automation/workshop_sdk.py) is thin HTTP clients (`self.prom`, `self.loki`, `self.sot`, `self.am`) that talk to each store.
+    One method per source, one decode, and `assemble_evidence_task` packs the three results into the bundle. The rest of [`workshop_sdk.py`](https://github.com/network-observability/workshops/blob/main/workshops/packt/automation/workshop_sdk.py) is thin HTTP clients (`self.prom`, `self.loki`, `self.sot`, `self.am`) that talk to each store.
 
 The first two panels are the key pair:
 
@@ -519,25 +556,38 @@ You can see the same source-of-truth data in the Infrahub browser UI. Open <http
 
 ### 3. Policy — what was decided and why
 
-Under the hood, the policy stage looks like this:
+You are in the `policy` row now. It reads the bundle the evidence block returned and answers one question: act, or don't. Two stages, then the audit record.
 
-```text
-   ┌── Orchestration (Prefect) ──────────────────────────────┐
-   │                                                          │
-   │   evaluate_policy task                                  │
-   │       │ DecisionPolicy.evaluate(EvidenceBundle)         │
-   │       ▼                                                  │
-   │     Decision { proceed | skip | resolved }              │
-   │       │                                                  │
-   │       ├──► annotate_decision (writes Loki audit record) │ ◄── nobs packt rca
-   │       │                                                  │     (renders the latest
-   │       ▼                                                  │      audit record as MD)
-   │     §4 Action                                            │
-   │                                                          │
-   └──────────────────────────────────────────────────────────┘
+```python title="automation/flows.py — policy_flow"
+@flow(log_prints=True, flow_run_name="policy | {device}:{peer_address}")
+def policy_flow(device, peer_address, ev: EvidenceBundle, workflow=...) -> Decision:
+    decision = evaluate_sot_gate_task(device=device, peer_address=peer_address, ev=ev)
+    if decision.decision not in {"stop", "skip"}:
+        decision = evaluate_metrics_gate_task(device=device, peer_address=peer_address, ev=ev)
+    annotate_decision_task(workflow=workflow, device=device, peer_address=peer_address, decision=decision)
+    return decision
 ```
 
-Phase 2 showed you the *facts* the workflow gathered. Phase 3 looks at the **decision** the workflow made from those facts — and where to find a written record of it.
+Stage 1 reads the source of truth only. Stage 2 runs only when stage 1 did not already answer `skip` or `stop`.
+
+**What the block returns.** On the broken peer, with `maintenance=false` in Infrahub, both stages run:
+
+```text
+Task run 'evaluate_sot_gate[srl1:10.1.99.2]' - 🧠 [policy] stage1 SoT-only → proceed (SoT expects up; metrics not provided (collect evidence))
+Task run 'evaluate_metrics_gate[srl1:10.1.99.2]' - 🧠 [policy] stage2 SoT+metrics → proceed (SoT expects peer up, but metrics show mismatch)
+Task run 'annotate_decision[srl1:10.1.99.2]' - 📝 [annotate] decision=proceed reason=SoT expects peer up, but metrics show mismatch
+```
+
+Same peer with `maintenance=true` — stage 1 answers on its own, and `evaluate_metrics_gate` never runs. You drive this run yourself in Phase 5:
+
+```text
+Task run 'evaluate_sot_gate[srl1:10.1.99.2]' - 🧠 [policy] stage1 SoT-only → skip (device under maintenance)
+Task run 'annotate_decision[srl1:10.1.99.2]' - 📝 [annotate] decision=skip reason=device under maintenance
+```
+
+Same alert, same evidence, one fewer task. The missing `evaluate_metrics_gate` line is visible proof that the source of truth ended the question before any metric was read.
+
+The block returns a `Decision`: the outcome (`proceed`), a plain-English reason, and the details behind it. That record outlives the run.
 
 When the workflow finishes looking at a peer, it writes one line to the **log store (Loki)** describing what it decided. We call this an **audit record** — same shape as a normal log line, with extra labels saying which workflow ran, which peer it was for, and what it decided. The record survives long after the alert is gone, so you can ask Loki *"what did the workflow do an hour ago?"* or *"what did it decide on srl1 last week?"* and get an answer.
 
@@ -622,28 +672,43 @@ Three different decisions, all written to the same audit trail, all queryable wi
 
 ### 4. Action — what `proceed` actually does
 
-Under the hood, the action stage forks into two parallel sub-stages once the policy decides — a **deterministic action** (only fires on `proceed`) and an **AI narrative** (always fires, content varies by decision):
+You are in the `action` row, the last one. It always writes a narrative record to Loki, and it only acts when the decision is `proceed`. Acting means two tasks: `quarantine` asks Alertmanager for a silence, and `annotate_action` writes down what was done.
+
+```python title="automation/flows.py — action_flow"
+@flow(log_prints=True, flow_run_name="action | {device}:{peer_address}")
+def action_flow(device, peer_address, decision: Decision, ev: EvidenceBundle, ...) -> dict:
+    if is_ai_rca_enabled() and decision.decision != "proceed":
+        rca_text = ai_rca_skipped_task(...)
+    else:
+        rca_text = ai_rca_task(...)
+
+    if decision.decision != "proceed":
+        return {"action": "none", "silence_id": None, "ai_rca": rca_text}
+
+    silence_id = quarantine_task(device=device, peer_address=peer_address, minutes=quarantine_minutes)
+    annotate_action_task(workflow=workflow, device=device, peer_address=peer_address, silence_id=silence_id)
+    return {"action": "quarantine", "silence_id": silence_id, "ai_rca": rca_text}
+```
+
+**What the block returns.** On a `proceed` decision, four task lines and a silence ID:
 
 ```text
-   ┌── Orchestration (Prefect) ──────────────────────────────────────────┐
-   │                                                                      │
-   │   Decision (from §3)                                                │
-   │       │                                                              │
-   │       │   ┌── Deterministic action (only on `proceed`) ────────────┐│
-   │       ├──►│  quarantine_task                                        ││
-   │       │   │      ├──► Alertmanager  · silence (20m)                ││
-   │       │   │      └──► Loki          · QUARANTINE applied audit     ││
-   │       │   └──────────────────────────────────────────────────────────┘│
-   │       │                                                              │
-   │       │   ┌── AI narrative (always runs; content varies) ───────────┐│ ◄── nobs packt cycle
-   │       └──►│  ai_rca_task / ai_rca_skipped_task                      ││     (renders the cycle's
-   │           │      ├─ proceed   → Loki + LLM call (RCA narrative)    ││      four panels in one
-   │           │      ├─ skip      → Loki ("not run — policy=skip")     ││      command)
-   │           │      └─ disabled  → Loki ("AI RCA disabled")           ││
-   │           └──────────────────────────────────────────────────────────┘│
-   │                                                                      │
-   └──────────────────────────────────────────────────────────────────────┘
+Task run 'ai_rca[srl1:10.1.99.2]' - 🤖 [ai_rca] running (gated by ENABLE_AI_RCA)
+Task run 'quarantine[srl1:10.1.99.2]' - 🔕 [quarantine] silencing srl1:10.1.99.2 for 20m
+Task run 'quarantine[srl1:10.1.99.2]' - ✅ [quarantine] silence id=d9419759-0b0a-40ce-8bda-21e6298b0bb3
+Task run 'annotate_action[srl1:10.1.99.2]' - Finished in state Completed()
 ```
+
+The block hands back `{"action": "quarantine", "silence_id": "d9419759-…", "ai_rca": "…"}`. That silence ID is what you go looking for in Alertmanager in §A below.
+
+On a `skip` decision the block writes the narrative record and stops. Different task name, no `quarantine`, no silence:
+
+```text
+Task run 'ai_rca_skipped[srl1:10.1.99.2]' - ⏭️  [ai_rca] skipped (decision=skip)
+Flow run 'action | srl1:10.1.99.2' - ✅ [action] no deterministic action (skip — device under maintenance)
+```
+
+
 
 (`resolved` decisions go through a separate `resolved_bgp_flow` — same shape, different path.)
 
@@ -922,6 +987,6 @@ There's no single right answer. The point is that the same tool isn't equally va
     nobs packt maintenance --device srl1 --clear         # cleanup
     ```
 
-    The punchline lives in the **Flow runs panel** of the last `cycle` output: two adjacent rows for the same alert, one `decision=proceed` (from the third command), one `decision=skip` (from the fifth). The **Silences panel** grows by one row only on the proceed run — the absence of a silence on the skip run is the visible proof that *the policy decided not to act*. A third side-effect lives in Loki: querying `{source="prefect", ai_rca="true"} | json` shows the proceed run produced a multi-section narrative, while the skip run wrote *"AI RCA not run — policy decided skip…"*. **Same alert, same evidence, opposite decisions, the entire workflow behavior (silence + LLM call + audit trail) flipped by one field in the source of truth.**
+    The punchline lives in the last `cycle` output. The **Flow runs panel** shows both runs with the same three child rows — `evidence`, `policy`, `action` — because the same three blocks ran either way. What changed is the **Most recent decision** panel: `proceed` after the third command, `skip` after the fifth. The **Silences panel** grows by one row only on the proceed run — the absence of a silence on the skip run is the visible proof that *the policy decided not to act*. A third side-effect lives in Loki: querying `{source="prefect", ai_rca="true"} | json` shows the proceed run produced a multi-section narrative, while the skip run wrote *"AI RCA not run — policy decided skip…"*. **Same alert, same evidence, opposite decisions, the entire workflow behavior (silence + LLM call + audit trail) flipped by one field in the source of truth.**
 
     The phases above explain *why* each panel reads the way it does, and walk the same story through Alertmanager, Loki, and Prefect's own UIs.
