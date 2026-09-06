@@ -73,28 +73,7 @@ Three hours, one laptop, one on-call investigation. You'll write PromQL and LogQ
 
     **Watching.** Locked-down machine, not enough RAM, no time to prepare? Come anyway. Every command and every expected output is written out in the guides, we drive the whole session on screen, and Packt records it. The [Take it home](take-home.md) page lets you do the hands-on parts later with more time than three hours allows.
 
-    Part 2 is a guided demo for everybody, so a stack that's still pulling images at 15:30 costs you nothing.
-
----
-
-## The three hours
-
-Times are Dublin / EDT.
-
-| Dublin | EDT | Block |
-|---|---|---|
-| 14:00 | 09:00 | Stack check — preflight, status, sort out anything red |
-| 14:10 | 09:10 | Framing — why observability, the two-device lab, what the three parts are |
-| 14:25 | 09:25 | **Part 1** — metrics with PromQL |
-| 14:50 | 09:50 | **Part 1** — logs with LogQL, and the metric-to-log bridge |
-| 15:10 | 10:10 | **Part 1 — your turn.** Two questions; answers in the Q&A panel |
-| 15:20 | 10:20 | Break |
-| 15:30 | 10:30 | **Part 2 (demo)** — build a flap-rate panel, drive a flap |
-| 15:40 | 10:40 | **Part 2 (demo)** — the alert lifecycle, firing to silenced to resolved |
-| 15:50 | 10:50 | **Part 3** — setup, enable AI RCA, the alert → evidence → policy → action cycle |
-| 16:05 | 11:05 | **Part 3** — walk the cycle, steps 1–5, including the maintenance branch |
-| 16:40 | 11:40 | **Part 3 — your turn** plus the reflection question |
-| 16:55 | 11:55 | Wrap |
+    Part 2 is a guided demo for everybody, so a stack that's still pulling images by then costs you nothing.
 
 ---
 
