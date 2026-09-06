@@ -14,7 +14,7 @@ Speakers: Christian Adell, David Flores.
 
 **Hands-on lane** — your laptop runs the stack and you type along. This is the better experience, and the pre-work below is what makes it work.
 
-**Watching lane** — your laptop cannot run the stack (locked-down machine, not enough RAM, no time to prepare). Come anyway. Every command and every expected output is written out in the guides, we drive the whole session on screen, and Packt records it. The [take-home page](guides/take-home.md) lets you do the hands-on parts later at your own pace, with more time than three hours allows.
+**Watching lane** — your laptop cannot run the stack (locked-down machine, not enough RAM, no time to prepare). Come anyway. Every command and every expected output is written out in the guides, and the [take-home page](guides/take-home.md) lets you do the hands-on parts later at your own pace, with more time than three hours allows.
 
 Part 2 is a **guided demo for everybody** — nothing in it is required for Part 3, so a stack that is still pulling images during Part 2 costs you nothing.
 
@@ -60,7 +60,7 @@ nobs packt destroy    # full reset (drops volumes too)
 
 ## The three hours
 
-Three parts with a break in the middle. Questions go through Packt's Q&A panel in the app — we read them out at block boundaries rather than mid-explanation.
+Three parts with a break in the middle.
 
 ### Part 1 — Network telemetry and queries · ~55 min
 
@@ -118,7 +118,7 @@ No, by default. All telemetry, alerts, and dashboards are local. The AI RCA step
 Yes — Packt records it and distributes the replay through your Packt account.
 
 **Where do I ask questions?**
-During the session, through the Q&A panel in Packt's app; we read them out at block boundaries. Afterwards, open an issue on [the workshops repo](https://github.com/network-observability/workshops/issues).
+During the session, through the Q&A panel in Packt's app. Before and after, open an issue on [the workshops repo](https://github.com/network-observability/workshops/issues).
 
 **Why simulated devices instead of real network OS containers?**
 Real SR Linux or vEOS containers need 4–6 GB of RAM each, which would price most laptops out of a multi-device lab. Sonda emits the same raw shapes a real device would — gNMI for `srl1` (SR Linux-style), SNMP for `srl2` (Cisco/Arista/Juniper-style) — plus the matching syslog events, so the queries you write here are the same ones you'd run against production. If you want the full lab with real containers, the companion repo is [`network-observability-lab`](https://github.com/network-observability/network-observability-lab).

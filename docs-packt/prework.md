@@ -25,7 +25,7 @@ The whole workshop runs on your own laptop — a complete observability stack in
 
 **Hands-on lane.** Your laptop runs the stack and you type along with us. This is the better experience and the rest of this page is how you get there.
 
-**Watching lane.** If your laptop can't run the stack — a locked-down corporate machine, not enough RAM, no time to prepare — come anyway. Every command and every expected output is written out in the guides, we drive the whole session on screen, and Packt records it. You will get the ideas either way, and the [Take it home](take-home.md) page lets you do the hands-on parts later with more time than three hours allows. It is not a consolation prize.
+**Watching lane.** If your laptop can't run the stack — a locked-down corporate machine, not enough RAM, no time to prepare — come anyway. Every command and every expected output is written out in the guides, and the [Take it home](take-home.md) page lets you do the hands-on parts later with more time than three hours allows. It is not a consolation prize.
 
 Part 2 is a guided demo for everybody, so a stack that's still pulling images at 15:30 Dublin costs you nothing.
 
@@ -149,7 +149,7 @@ Then head to [Part 1](part-1.md).
 
 Start with the usual culprits: Docker Desktop not actually running, Compose v1 still first on `PATH`, low disk, a corporate proxy blocking `ghcr.io` or `registry.opsmill.io`, and WSL 2 not enabled on Windows.
 
-If it still fails, open an issue on [the workshops repo](https://github.com/network-observability/workshops/issues) and paste your `nobs preflight` output — the whole block, copied out of your terminal. A red preflight a few days out is fixable; a red one at 09:00 EDT is not, and we won't spend the session debugging individual machines.
+If it still fails, open an issue on [the workshops repo](https://github.com/network-observability/workshops/issues) and paste your `nobs preflight` output — the whole block, copied out of your terminal.
 
 And if it can't be sorted in time, come anyway. The watching lane is written for exactly this, and the [Take it home](take-home.md) page lets you do the hands-on parts later at your own pace.
 
