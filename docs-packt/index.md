@@ -71,7 +71,7 @@ Three hours, one laptop, one on-call investigation. You'll write PromQL and LogQ
 
     **Hands-on.** Your laptop runs the stack and you type along. Better experience, and the [pre-work](prework.md) is what makes it work — do it a few days ahead, not on the morning.
 
-    **Watching.** Locked-down machine, not enough RAM, no time to prepare? Come anyway. Every command and every expected output is written out in the guides, we drive the whole session on screen, and Packt records it. The [Take it home](take-home.md) page lets you do the hands-on parts later with more time than three hours allows.
+    **Watching.** Locked-down machine, not enough RAM, no time to prepare? Come anyway. Every command and every expected output is written out in the guides, and the [Take it home](take-home.md) page lets you do the hands-on parts later with more time than three hours allows.
 
     Part 2 is a guided demo for everybody, so a stack that's still pulling images by then costs you nothing.
 
@@ -113,7 +113,7 @@ Three hours, one laptop, one on-call investigation. You'll write PromQL and LogQ
 
 ??? question "Where do I ask questions?"
 
-    During the session, through the Q&A panel in Packt's app — we read them out at block boundaries rather than mid-explanation, so keep them coming as you go. Before and after, open an issue on [the workshops repo](https://github.com/network-observability/workshops/issues) — a stuck pre-work install is fair game.
+    During the session, through the Q&A panel in Packt's app. Before and after, open an issue on [the workshops repo](https://github.com/network-observability/workshops/issues) — a stuck pre-work install is fair game.
 
 ---
 
