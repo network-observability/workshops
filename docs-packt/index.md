@@ -113,7 +113,7 @@ Three hours, one laptop, one on-call investigation. You'll write PromQL and LogQ
 
 ??? question "Where do I ask questions?"
 
-    During the session, through the Q&A panel in Packt's app — we read them out at block boundaries rather than mid-explanation, so keep them coming as you go. Afterwards, open an issue on [the workshops repo](https://github.com/network-observability/workshops/issues).
+    During the session, through the Q&A panel in Packt's app — we read them out at block boundaries rather than mid-explanation, so keep them coming as you go. Before and after, open an issue on [the workshops repo](https://github.com/network-observability/workshops/issues) — a stuck pre-work install is fair game.
 
 ---
 
