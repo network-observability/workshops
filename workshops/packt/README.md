@@ -4,7 +4,6 @@ A three-hour, online, laptop-friendly workshop from Packt Publishing.
 You bring a laptop with Docker; we bring a self-contained observability stack (Prometheus, Loki, Grafana, Alertmanager) plus a synthetic telemetry generator that stands in for a small network.
 By the end you'll have queried real-shaped telemetry, seen a dashboard built to answer an operational question, and driven an automated alert-response workflow — including an opt-in AI RCA step — yourself.
 
-**Saturday 19 September 2026 · 09:00–12:00 EDT · 14:00–17:00 Europe/Dublin**
 Speakers: Christian Adell, David Flores.
 [Registration on Eventbrite](https://www.eventbrite.co.uk/e/building-a-network-observability-stack-with-tools-automation-and-ai-tickets-1993849714168).
 
@@ -113,9 +112,6 @@ Yes, once the first `nobs packt up` has finished. That first run both pulls imag
 
 **Is anything sent to a remote service?**
 No, by default. All telemetry, alerts, and dashboards are local. The AI RCA step defaults to a `demo` provider that generates its narrative from a local template, and only calls OpenAI or Anthropic if you set a key in `.env`.
-
-**Is the session recorded?**
-Yes — Packt records it and distributes the replay through your Packt account.
 
 **Where do I ask questions?**
 During the session, through the Q&A panel in Packt's app. Before and after, open an issue on [the workshops repo](https://github.com/network-observability/workshops/issues).

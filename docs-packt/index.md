@@ -22,7 +22,6 @@ Three hours, one laptop, one on-call investigation. You'll write PromQL and LogQ
 [Register on Eventbrite :material-arrow-right:](https://www.eventbrite.co.uk/e/building-a-network-observability-stack-with-tools-automation-and-ai-tickets-1993849714168){ .md-button }
 
 <p class="packt-hero__meta">
-  <span>Sat 19 Sep 2026 · 09:00–12:00 EDT · 14:00–17:00 Dublin</span>
   <span>Christian Adell &amp; David Flores</span>
   <span>Everything runs locally — no shared backend, no live gear</span>
 </p>
@@ -106,10 +105,6 @@ Three hours, one laptop, one on-call investigation. You'll write PromQL and LogQ
 ??? question "Is anything sent to a remote service?"
 
     No, by default. All telemetry, alerts, dashboards and audit records are local. The AI RCA step defaults to a `demo` provider that writes its narrative from a local template — no network calls. It only reaches OpenAI or Anthropic if you put your own key in `.env`, which is entirely optional and not needed for any part of the session.
-
-??? question "Is it recorded?"
-
-    Yes — Packt records the session and distributes the replay through your Packt account.
 
 ??? question "Where do I ask questions?"
 
