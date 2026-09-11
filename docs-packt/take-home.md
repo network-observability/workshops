@@ -1,6 +1,6 @@
 ---
 title: Take it home
-description: Everything the three hours couldn't fit — recording rules, alert rules, the full ten-step panel build, the real-LLM swap, and the end-to-end 02:14 capstone.
+description: Optional exercises on recording rules, alerts, the full dashboard build, a real AI provider, and an end-to-end incident.
 ---
 
 <div class="packt-section-hero" markdown>
@@ -9,9 +9,9 @@ description: Everything the three hours couldn't fit — recording rules, alert 
 
 <h1 class="packt-section-hero__title">Take it home</h1>
 
-<p class="packt-section-hero__subtitle">Everything we skipped, in the order you'd actually do it.</p>
+<p class="packt-section-hero__subtitle">Optional exercises to explore at your own pace.</p>
 
-Three hours is enough to walk the arc once. It isn't enough to walk it slowly. The stack is still on your laptop and it costs nothing to leave it there — bring it back up whenever you have an evening and pick a section.
+The stack stays on your laptop after the workshop. Bring it back up whenever you have time, then choose the section that interests you.
 
 <p class="packt-section-hero__meta">
   <span>Recording rules, alert rules, the Part 1 capstone</span>

@@ -1,6 +1,6 @@
 ---
 title: Part 2 — Dashboards and alerts (demo)
-description: A guided demo. A post-mortem email lands — we build the flap-rate panel with thresholds matching the alert rule, then walk the same alert from firing to silenced.
+description: A guided demo. Build a flap-rate panel, match its thresholds to the alert rule, and follow the alert from firing to silenced.
 ---
 
 <div class="packt-section-hero" markdown>
@@ -11,7 +11,7 @@ description: A guided demo. A post-mortem email lands — we build the flap-rate
 
 <p class="packt-section-hero__subtitle">We drive; you watch. Nothing here is required for Part 3.</p>
 
-A post-mortem email lands: last night's page lost ten minutes because a flap-rate panel didn't exist yet. We build it on screen — thresholds matching the actual alert rule — then follow the same alert from panel to firing to silenced. Follow along on your own Grafana if you like, but if your stack is slow or you'd simply rather watch, that's the intended way to take this block.
+A follow-up from last night's incident asks for a flap-rate panel. We build it on screen, match its thresholds to the alert rule, then follow the alert from firing to silenced. You can follow along in Grafana or simply watch the demo.
 
 <p class="packt-section-hero__meta">
   <span>No hands-on</span>

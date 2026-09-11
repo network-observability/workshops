@@ -31,63 +31,99 @@ Open the **Workshop Home** dashboard once (`/d/workshop-home`) so you've seen th
 
 ### Metrics — PromQL
 
-> Your senior taps the screen. *"Before we touch anything else this morning, you need to know what's even talking to us — and what shape it arrives in. Two devices, two telemetry dialects on the wire, and yet every query you write today is going to treat them as one shape. Let's start at the source, before any of it is cleaned up. This is the part that bites every operator who jumps from one vendor's network to another."*
+> Your senior taps the screen. *"Before we start querying, let's see how two devices report the same interface state. Once the names match, one query can cover both."*
 
-#### 1. Normalization — two raw shapes, one shared schema
+#### 1. One fact, two device languages
 
-The two devices speak different protocols at the source:
+Both devices report whether an interface is up, but they name that fact differently:
 
-- **`srl1` emits gNMI** — that's the telemetry shape SR Linux puts on the wire natively. Field names like `srl_interface_oper_state`, tags like `source`. **Telegraf-srl1** scrapes this raw shape, renames `srl_*` to canonical (`interface_*`, `bgp_*`) and `source` to `device`. Out the other side: the shared schema this workshop's dashboards and alerts speak.
-- **`srl2` emits SNMP** — the classic shape from IF-MIB / BGP4-MIB. Field names like `ifOperStatus`, `ifHCInOctets`; tags like `agent_host`, `ifDescr`. **Telegraf-srl2** scrapes the raw SNMP shape and renames every field and every tag to the same canonical schema. Out the other side: byte-for-byte identical to what srl1 produces.
+- **`srl1` uses gNMI:** the metric is `srl_interface_oper_state`, and the device name is stored in `source`.
+- **`srl2` uses SNMP:** the metric is `ifOperStatus`, and the device name is stored in `agent_host`.
 
-Both raw shapes live on `sonda-server` (the lab's synthetic-telemetry runtime). Each Telegraf scrapes its device's per-scenario `/scenarios/metrics` endpoints on a 10-second cadence — same scrape pattern Prometheus would use against real exporters in production.
+Telegraf translates both into the same format before Prometheus stores them:
 
-#### See the raw shape, before Telegraf touches it
+```text
+interface_oper_state{device="srl1",name="ethernet-1/1"} 1
+interface_oper_state{device="srl2",name="ethernet-1/1"} 1
+```
 
-> Your senior pulls up a terminal. *"You don't have to take the bullet list on faith. Each layer of the pipeline has its own URL — just click them and see the same fact in three different shapes."*
+This translation is called **normalization**. The underlying fact and value stay the same; only the names are made consistent so one query can work across both devices.
 
-The pipeline has three layers you can inspect directly from your browser:
+#### See what each device sends before Telegraf { #see-the-raw-shape-before-telegraf-touches-it }
 
-1. **Raw gNMI from srl1** (sonda-server, before Telegraf): <http://localhost:8085/scenarios/metrics?label=source:srl1>
+> Your senior pulls up a terminal. *"Let's look at what each device sends, then at what Prometheus stores."*
 
-    Look for `srl_*` metric names and the `source="srl1"` tag. This is what an SR Linux device emits on its gNMI stream. For example:
+Open these links in your browser and follow the interface-state metric from its original name to the shared name. You do not need to understand every line; focus on the metric name and the label that identifies the device.
+
+??? example "Source excerpts — the same interface state in two formats"
+
+    === "srl1 · gNMI"
+
+        From [`workshops/packt/sonda/catalog/srlinux-gnmi-interface-raw.yaml`](https://github.com/network-observability/workshops/blob/main/workshops/packt/sonda/catalog/srlinux-gnmi-interface-raw.yaml):
+
+        ```yaml
+        shared_labels:
+          source: ""             # Telegraf renames -> device
+          name: ""
+          collection_type: gnmi
+
+        metrics:
+          - name: srl_interface_oper_state
+            generator:
+              type: constant
+              value: 1.0
+        ```
+
+    === "srl2 · SNMP"
+
+        From [`workshops/packt/sonda/catalog/cisco-snmp-interface-raw.yaml`](https://github.com/network-observability/workshops/blob/main/workshops/packt/sonda/catalog/cisco-snmp-interface-raw.yaml):
+
+        ```yaml
+        shared_labels:
+          agent_host: ""         # Telegraf renames -> device
+          ifDescr: ""            # Telegraf renames -> name
+          collection_type: snmp
+
+        metrics:
+          - name: ifOperStatus
+            generator:
+              type: constant
+              value: 1.0
+        ```
+
+1. **srl1 before Telegraf:** <http://localhost:8085/scenarios/metrics?label=source:srl1>
+
+    Look for `srl_interface_oper_state` and `source="srl1"`. The value `1` means the interface is up:
 
     ```
     srl_interface_oper_state{collection_type="gnmi",name="ethernet-1/1",source="srl1"} 1
     ```
 
-    The pack `workshops/packt/sonda/catalog/srlinux-gnmi-interface-raw.yaml` lists every metric in this shape.
+    The source file [`workshops/packt/sonda/catalog/srlinux-gnmi-interface-raw.yaml`](https://github.com/network-observability/workshops/blob/main/workshops/packt/sonda/catalog/srlinux-gnmi-interface-raw.yaml) lists every metric in this format.
 
-2. **Raw SNMP from srl2** (sonda-server, before Telegraf): <http://localhost:8085/scenarios/metrics?label=agent_host:srl2>
+2. **srl2 before Telegraf:** <http://localhost:8085/scenarios/metrics?label=agent_host:srl2>
 
-    Different shape entirely — IF-MIB names (`ifOperStatus`, `ifHCInOctets`) and the `agent_host="srl2"` tag. For example:
+    The same fact is called `ifOperStatus`, and the device is identified by `agent_host="srl2"`:
 
     ```
     ifOperStatus{agent_host="srl2",collection_type="snmp",ifDescr="ethernet-1/1"} 1
     ```
 
-    Same logical concept (interface operational state) as srl1's `srl_interface_oper_state`, completely different field name, completely different label keys. Pack: `workshops/packt/sonda/catalog/cisco-snmp-interface-raw.yaml`.
+    This is still interface operational state; only the metric and label names differ. Source file: [`workshops/packt/sonda/catalog/cisco-snmp-interface-raw.yaml`](https://github.com/network-observability/workshops/blob/main/workshops/packt/sonda/catalog/cisco-snmp-interface-raw.yaml).
 
-3. **Telegraf-srl1's normalized output** (after gNMI → canonical rename): <http://localhost:9005/metrics>
+3. **srl1 after Telegraf:** <http://localhost:9005/metrics>
 
-    Now `srl_interface_oper_state` is plain `interface_oper_state`. The `source="srl1"` tag is now `device="srl1"`. Same data, canonical shape.
+    Find the same sample under `interface_oper_state`. Telegraf has also changed `source="srl1"` to `device="srl1"`.
 
-4. **Telegraf-srl2's normalized output** (after SNMP → canonical rename): <http://localhost:9006/metrics>
+4. **srl2 after Telegraf:** <http://localhost:9006/metrics>
 
-    `ifOperStatus` is now also `interface_oper_state`. The `agent_host="srl2"` tag is now `device="srl2"`. Identical structure to telegraf-srl1's output — except for one label we keep on purpose: `collection_type=gnmi` vs `collection_type=snmp`, so you can debug which pipeline a sample came from.
+    `ifOperStatus` is now also `interface_oper_state`, and `agent_host="srl2"` is now `device="srl2"`. Both devices finally use the same names.
 
 5. **Final view in Prometheus**: <http://localhost:9090/graph?g0.expr=interface_oper_state&g0.tab=1>
 
-    A single PromQL query for `interface_oper_state` returns rows from both devices in the same shape. The vendor difference is invisible at this layer.
+    A single query returns rows from both devices. It no longer needs to know whether the original data came from gNMI or SNMP.
 
-??? info "Why the sonda `/scenarios/metrics` endpoint is safe for two readers at once"
-
-    `sonda-server` exposes two shapes of metric endpoint: the **aggregate** `/scenarios/metrics?label=key:value` you just used, and a **per-scenario** `/scenarios/{id}/metrics` for a single scenario by ID.
-
-    - The aggregate endpoint is **snapshot-style**: each scrape gets a consistent picture without consuming anything. Telegraf reads it every 10 seconds; you can read it concurrently from your browser; both see the same bytes.
-    - The per-scenario endpoint is **drain-on-read**: each read consumes the scenario's emission buffer. Telegraf doesn't use this endpoint precisely because two consumers can't share a drain-on-read buffer without racing.
-
-    That difference is the production scrape architecture in miniature: **single-consumer endpoints drain, multi-consumer endpoints snapshot**. The aggregate endpoint is what Telegraf actually scrapes; the per-scenario endpoint is there for the scenario's own tooling.
+Want to understand Sonda itself? The [Sonda server section of **Tour the stack**](https://network-observability.github.io/workshops/workshop/tour/#sonda-server-the-synthetic-telemetry-control-plane) explains its role, scenarios, and HTTP endpoints. That component detail applies to both workshop stacks but is not needed for this exercise.
 
 Now flip to the Prometheus query browser and look at the same data after all the renames:
 
@@ -95,30 +131,30 @@ Now flip to the Prometheus query browser and look at the same data after all the
 interface_oper_state{intf_role="peer"}
 ```
 
-Six rows, all `interface_oper_state{device=..., name=..., intf_role="peer", ...}`. Same metric name, same label keys, regardless of whether the upstream was `srl_interface_oper_state{source=srl1}` or `ifOperStatus{agent_host=srl2}`. That's the rename rules in `telegraf-{srl1,srl2}.conf.toml` doing the lift.
+You should see six rows with the same metric name and label names. The rename rules live in [`telegraf-srl1.conf.toml`](https://github.com/network-observability/workshops/blob/main/workshops/packt/telegraf/telegraf-srl1.conf.toml) and [`telegraf-srl2.conf.toml`](https://github.com/network-observability/workshops/blob/main/workshops/packt/telegraf/telegraf-srl2.conf.toml).
 
-But look closer at the filter you just ran. `interface_oper_state` and `device` are *renames* — the raw stream already carried that fact (`srl_interface_oper_state`, `source=srl1`), Telegraf just relabelled it to the canonical schema. `intf_role="peer"`, though, is a label that *did not exist on the wire at all*. No SR Linux gNMI message and no SNMP MIB emits an "interface role." Telegraf derives it from the interface name with a regex processor (`telegraf-{srl1,srl2}.conf.toml`, the `[[processors.regex]]` block with `result_key = "intf_role"`). That's a second, distinct operation:
+There is one new label: `intf_role="peer"`. The devices did not send an interface role. Telegraf worked it out from the interface name and added it. That introduces a second useful term:
 
-- **Normalization** — *renaming* what's already there to a shared shape. `srl_interface_oper_state` → `interface_oper_state`, `source` → `device`. No new facts, just a common vocabulary. Lossless and mechanical.
-- **Enrichment** — *adding* context the device never sent. `intf_role="peer"` is inferred here from the name; in a real fleet it more often comes from a source of truth (which interface is a peer link, which site a device sits in, who owns it). New facts, joined in at ingest.
+- **Normalization** renames existing data: `srl_interface_oper_state` becomes `interface_oper_state`.
+- **Enrichment** adds useful context: Telegraf adds `intf_role="peer"`.
 
-You filter on both kinds of label the same way in PromQL — `{device="srl1"}` (normalized) and `{intf_role="peer"}` (enriched) read identically. The difference is in *where the value came from*: one was renamed off the wire, the other was attached by the pipeline. Keep the two straight, because they fail differently — a broken rename means a vendor's data goes missing from a query; broken enrichment means the data is all there but you can't slice it by the business context you expected. (Part 3 leans hard on enrichment: alerts get routed and annotated using exactly this kind of source-of-truth context.)
+PromQL treats both the same way, but the distinction helps when troubleshooting: a bad rename can hide a device's data from a shared query, while missing enrichment leaves the data present but removes useful context.
 
-The one label that records which raw shape a series came from is `collection_type` — `gnmi` for srl1, `snmp` for srl2. Click into a srl1 result and a srl2 result and compare the full label set — `device`, `name`, `intf_role`, `collection_type`. The *only* meaningful difference is the `collection_type` value. Everything else lines up: same metric name, same label keys, three peer interfaces on each side. The same fact two vendor dialects were carrying, now expressed once.
+Telegraf keeps one label from the original path: `collection_type="gnmi"` for srl1 and `collection_type="snmp"` for srl2. Use it when troubleshooting how data was collected. Leave it out of normal dashboards and alerts so the same query covers every device.
 
-That alignment is what "normalization" actually buys you:
+The payoff is simple:
 
-- The query layer doesn't see the dialects. `interface_oper_state{device="srl1"}` and `interface_oper_state{device="srl2"}` return rows in the same shape, even though one came in as gNMI and the other as SNMP.
-- Real fleets are mixed. Nokia SR Linux via gNMI, Cisco IOS-XR via Model-Driven Telemetry, Juniper via OpenConfig, legacy boxes via SNMP — each speaks its own dialect. Without normalization, every dashboard, alert rule, and runbook fragments per vendor. With it, the *query layer* doesn't see the dialects at all.
-- Telegraf is doing the renaming work for both devices in this lab. In production it might be Telegraf, OpenTelemetry collectors, custom processors — different tools, same job.
+- One query works for both devices.
+- A new vendor does not require another copy of every dashboard and alert.
+- The collection method remains available when you need to troubleshoot it.
 
-> Your senior closes the laptop slightly. *"You'll meet engineers who hate normalization because it abstracts away vendor specifics. They're not wrong about the cost — but the cost of not normalizing, in this lab and in production, is that every alert rule has to be written six times and every dashboard has six panels for the same thing. Pick your trade. We've picked normalization."*
+> Your senior closes the laptop slightly. *"We haven't hidden where the data came from. We've just stopped every dashboard and alert from needing a version for each vendor."*
 
-**Stop and notice.** The `collection_type` label is for inspecting the normalization itself: *"which raw shape did this sample come from, is that path healthy?"* It's not for branching your query logic. If you write `interface_oper_state{collection_type="gnmi"}` into a dashboard, you've narrowed to one vendor — useful for debugging that pipeline, but you'll miss every device whose data arrives via any other protocol. Default to collection-type-agnostic queries; reach for the label when you're debugging the normalization, not the network.
+**Stop and notice.** `collection_type` answers *how did this data arrive?* Use `device` and `name` to ask *what is happening on the network?*
 
 #### 2. Discover what's in the lab
 
-You've watched the metric get *built* — raw dialects in, one canonical shape out. Now work with the finished article. Switch to Grafana **Explore**, pick the `prometheus` datasource, and run the bare metric with no filter:
+You've seen Telegraf turn two device formats into one. Now work with the stored data. Switch to Grafana **Explore**, pick the `prometheus` datasource, and run the metric with no filter:
 
 ```promql
 interface_oper_state

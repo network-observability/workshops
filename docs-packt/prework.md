@@ -31,7 +31,7 @@ Part 2 is a guided demo for everybody, so a stack that's still pulling images at
 
 ## What you need
 
-- **Docker** with Compose v2 — Docker Desktop, Colima, OrbStack or Rancher Desktop all work. `docker compose version` should report v2 or later.
+- **Docker** with the Compose plugin, version 2 or later — Docker Desktop, Colima, OrbStack or Rancher Desktop all work. Newer major versions, including v5, are fine.
 - **[uv](https://docs.astral.sh/uv/)** for the Python tooling. One install command, and it brings its own Python.
 - **~5.5 GB of free RAM** while the stack is running, and **~5 GB of free disk** for images.
 - **Git**, and outbound HTTPS to `github.com`, `ghcr.io`, `docker.io`, `registry.opsmill.io` (Infrahub) and
@@ -62,12 +62,12 @@ Verify:
 
 ```bash
 docker compose version
-# Docker Compose version v2.x.x
+# Docker Compose version v2.x.x (or later, such as v5.x.x)
 docker ps
 # (an empty table is a healthy result — daemon's up, no containers yet)
 ```
 
-If you only see `docker-compose` (with a hyphen) reporting v1.x, install Compose v2 alongside it. The workshop expects v2.
+Any `docker compose` version from v2 onward is supported; the version number does not need to start with 2. If you only see `docker-compose` (with a hyphen) reporting v1.x, install the Compose plugin alongside it — the workshop does not support the legacy v1 command.
 
 ### Installing uv
 
@@ -82,7 +82,7 @@ uv installs its own pinned Python from the repo's `.python-version`, so you don'
 
 ## Run the preflight
 
-Clone the repo and let the preflight check Docker, Compose v2, RAM, disk and registry reachability in one shot:
+Clone the repo and let the preflight check Docker, Compose v2 or later, RAM, disk and registry reachability in one shot:
 
 ```bash
 git clone https://github.com/network-observability/workshops.git
@@ -104,6 +104,10 @@ nobs packt up                   # first run pulls + builds images, ~15–30 min
 nobs packt status               # repeat until every row says 'ok'
 nobs packt load-infrahub
 ```
+
+!!! info "A Grafana pull warning on the first run is expected"
+
+    Compose may initially report `pull access denied for packt/grafana` before switching to a local build. The workshop's Grafana image is not pulled from a registry: `nobs packt up` builds it from the official Grafana base image and adds the required plugin. The run succeeded if the final summary says the `packt/grafana` image was **Built**, the `grafana` container was **Started**, and `nobs packt status` reports Grafana as `ok`.
 
 Activating `.venv/` is what lets you drop the `uv run` prefix. If you'd rather not, prefix everything with `uv run` (`uv run nobs packt up`, and so on) — the guides read the same either way.
 
