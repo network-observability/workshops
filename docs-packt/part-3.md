@@ -1,6 +1,6 @@
 ---
 title: Part 3 — Alerts, automation and AI
-description: A real alert lands. Walk the cycle — alert, evidence, policy, action — then flip one source-of-truth flag and watch the same alert reach the opposite decision.
+description: Follow an alert through a workflow, change one maintenance flag, and see why the workflow makes a different decision.
 ---
 
 <div class="packt-section-hero" markdown>
@@ -9,13 +9,13 @@ description: A real alert lands. Walk the cycle — alert, evidence, policy, act
 
 <h1 class="packt-section-hero__title">Alerts, automation and AI</h1>
 
-<p class="packt-section-hero__subtitle">One alert, four paths, and the calls you'd still keep for a human.</p>
+<p class="packt-section-hero__subtitle">One alert, four possible paths, and the decisions that still need a person.</p>
 
-An alert fires and a workflow handles it without you. Walk what it did — alert, evidence, policy, action — then flip one flag in the source of truth and watch the same alert reach the opposite decision on the same evidence. The AI RCA step writes a root-cause narrative alongside each decision; by the end you'll have a view on which paths you'd trust it on at 02:14 and which you wouldn't.
+An alert fires and a workflow handles it. Follow each step: receive the alert, gather facts, apply fixed rules, and take action. Then mark the device as under maintenance and see why the result changes. An optional AI step writes a root-cause summary, but it never chooses the action.
 
 <p class="packt-section-hero__meta">
   <span>Alertmanager → webhook → Prefect → Infrahub</span>
-  <span>Deterministic policy, AI narrative</span>
+  <span>Fixed rules, optional AI summary</span>
   <span>Ends with your turn and a reflection</span>
 </p>
 

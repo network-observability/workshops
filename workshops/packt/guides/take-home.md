@@ -2,7 +2,7 @@
 
 ## What you'll do here
 
-Three hours is enough to walk the arc once. It is not enough to walk it slowly. This page is everything we cut to fit the session, written in the order you would actually work through it at your own pace — no rush, no runsheet, nobody moving on without you.
+This page contains the exercises that did not fit into the live session. Work through any section at your own pace; you do not need to finish the whole page.
 
 The stack is still on your laptop and it costs nothing to leave it there. Bring it back up whenever you have an evening:
 
@@ -14,11 +14,11 @@ nobs packt status          # repeat until every row says ok
 nobs packt load-infrahub
 ```
 
-Then pick a section. They are independent — you do not have to do them in order, though the order below is the one that builds on itself best.
+Then choose a section. They are independent, although the order below builds from the basics to the full investigation.
 
 !!! note "Numbering on this page is the original full sequence"
 
-    These sections keep the step and exercise numbers from the complete, untrimmed workshop, because their internal cross-references depend on them. They do **not** line up with the numbering in the session guides — the session runs a subset and renumbers. When a section here says "step 6", it means step 6 *of this section*, not step 6 of Part 2.
+    The numbers belong to this longer take-home sequence, so they do not always match the shorter live guides.
 
 
 | Section | Roughly | What it adds |
@@ -37,19 +37,19 @@ Then pick a section. They are independent — you do not have to do them in orde
 
 ## Part 1 — recording rules and alerts
 
-We stopped Part 1 after the metric-to-log bridge. The two sections below are what comes next in the original arc: composing expensive queries into pre-computed metrics, then wrapping a query in an alert rule so it fires on its own. Read them in order — the alert rule in the second section is the intent-vs-reality query from exercise 4 with a `for:` clause bolted on, and it will not land unless the recording-rule idea is fresh.
+These exercises turn a query into a stored metric, then turn another query into an alert. Do them in order if both ideas are new to you.
 
 #### Recording rules — composed metrics
 
 ##### 6. Query a pre-computed metric
 
-> Your senior opens a file. *"Every query you just wrote in Explore can be baked into Prometheus as a recording rule. Instead of recomputing it on every dashboard load, Prometheus evaluates it on a schedule and stores the result as a new metric. Dashboards and alerts reference the pre-computed name — fast, consistent, one definition."*
+> Your senior opens a file. *"Prometheus can run a query for us on a schedule and save the answer under a name. Dashboards can then read that result directly."*
 
-A **recording rule** is Prometheus evaluating a PromQL expression on a fixed interval (typically every 15–60 seconds) and writing the result back as a new, named metric. You then query that name instead of the full expression. Three reasons this matters in practice:
+A **recording rule** runs a PromQL query on a schedule and saves the result as a new metric. You query the short name instead of repeating the full expression. This helps because:
 
-- **Dashboards stay fast.** A `sum by (device) (rate(...)[5m])` over a large fleet scans thousands of raw samples on every panel refresh. The recording rule pays that cost once per interval; the dashboard reads a single pre-computed row.
-- **Alerts are consistent.** When an alert rule and a dashboard panel reference the same recording rule name, they're looking at the same computed value — no drift from re-evaluating the same expression independently with slightly different timing.
-- **Complex expressions get a stable name.** The intent-vs-reality join you just wrote is seven lines of PromQL. Wrapping it in a recording rule gives it a short, searchable name that runbooks and incident comments can reference.
+- **Dashboards do less work.** Prometheus calculates the expensive expression once instead of on every panel refresh.
+- **Dashboards and alerts agree.** Both can read the same saved result.
+- **Long queries get a useful name.** Runbooks can refer to that name instead of copying several lines of PromQL.
 
 The naming convention is `<aggregation_labels>:<metric_name>:<time_window>`. This lab ships two traffic recording rules and one that fans a Loki-derived UPDOWN rate back into Prometheus:
 
@@ -74,9 +74,9 @@ Try querying the pre-computed metric directly in Explore:
 device:network_traffic_in_bps:rate_2m
 ```
 
-Two rows — one per device, total inbound throughput in bits/sec, already computed. This is the same result you got in exercise 3 with `sum by (device) (rate(interface_in_octets{name!~"mgmt0.*"}[5m])) * 8` — but the PromQL complexity is gone from the query site. No `rate()`, no `sum by` needed at query time. The dashboard panel that shows device traffic references this name, not the raw expression.
+You should see two rows: total inbound traffic for each device, already calculated. The dashboard reads this short metric name instead of running `rate()` and `sum by` itself.
 
-**Stop and notice.** A recording rule is just a query that Prometheus runs on a schedule and stores. The result is a first-class metric — you can filter it, alert on it, and reference it from other rules. The naming convention is a readability contract, not a technical requirement: `aggregation:source_metric:window` tells you at a glance what the number represents and over what window it was computed.
+**Stop and notice.** A recording rule does not create new source data. It saves the result of a query so other queries, panels, and alerts can reuse it.
 
 #### Alerts
 
@@ -84,14 +84,14 @@ Two rows — one per device, total inbound throughput in bits/sec, already compu
 
 > Your senior closes the rules file. *"A query answers a question. An alert is the same query with one addition: if the answer is true, act. That's all an alert rule is."*
 
-A **Prometheus alert rule** is a PromQL expression evaluated on a schedule — the same way a recording rule is — but instead of storing the result as a metric, Prometheus watches whether the expression returns any rows. If it does, the alert is *firing*; if it returns nothing, it's *inactive*. When an alert fires, Prometheus forwards it to **Alertmanager**, which handles routing, deduplication, and silencing before sending a notification to the on-call channel.
+An **alert rule** runs a PromQL query on a schedule and checks whether its condition is true. A matching result becomes `pending`, then `firing` after any configured wait. Prometheus sends firing alerts to Alertmanager, which decides where notifications go and whether any are silenced.
 
 Two fields shape how the alert behaves in practice:
 
-- **`for:`** — how long the condition must stay true before the alert actually fires. Without it, a single bad scrape triggers a page. With `for: 2m`, transient flaps and brief collection gaps are silently ignored.
-- **`labels:` / `annotations:`** — labels route the alert (Alertmanager uses them to decide who gets paged and how); annotations carry human-readable context that lands in the notification itself.
+- **`for:`** says how long the condition must stay true. This prevents one brief bad sample from paging someone.
+- **`labels:`** identify and route the alert. **`annotations:`** provide the summary and description a person reads.
 
-You already have the PromQL for this — the intent-vs-reality query from exercise 4. Wrapping it in an alert rule is the mechanical step that turns a query you ran once in Explore into something that watches the network continuously.
+The expression below asks whether an interface is configured up but currently down. The alert rule runs that question continuously.
 
 ###### The expression
 
@@ -135,15 +135,15 @@ groups:
             This usually indicates a cabling, peer, or physical-layer issue.
 ```
 
-- **`for: 2m`** — the condition must hold for 2 minutes before the alert fires. Filters out flap noise.
-- **`labels:`** — static key-value pairs attached to the alert. `severity` and `category` are what Alertmanager routes on in Part 3.
-- **`annotations:`** — human-readable context. `{{ $labels.name }}` and `{{ $labels.device }}` are template variables that expand to the alert's label values — the notification tells you exactly which interface on which device.
+- **`for: 2m`** waits two minutes before firing.
+- **`labels:`** attach values used for routing and filtering.
+- **`annotations:`** build readable notification text. Grafana replaces `{{ $labels.name }}` and `{{ $labels.device }}` with the affected interface and device.
 
 ###### Lab: see this alert in the stack
 
 The `InterfaceAdminUpOperDown` alert is already loaded. The lab's deliberately broken interfaces (`ethernet-1/11` on both devices) satisfy the expression right now.
 
-1. **Prometheus** — open [http://localhost:9090](http://localhost:9090), paste `ALERTS{alertname="InterfaceAdminUpOperDown"}` into the expression bar and run it. You should see one row per device with `alertstate="firing"`. If the lab just started, wait two minutes for the `for: 2m` window to elapse — until then the expression returns no rows because the alert is still in its pending period. (Prefer the rendered list? The [alerts page](http://localhost:9090/alerts) shows the same alert with its `INACTIVE`/`PENDING`/`FIRING` state without writing any PromQL.)
+1. **Prometheus** — open [http://localhost:9090](http://localhost:9090), run `ALERTS{alertname="InterfaceAdminUpOperDown"}`, and expect one firing row per device. If the lab just started, wait two minutes. The [alerts page](http://localhost:9090/alerts) shows the same states without a query.
 
 2. **Grafana Explore** — the `ALERTS` metric exposes firing alerts as a queryable time series:
 
@@ -151,23 +151,23 @@ The `InterfaceAdminUpOperDown` alert is already loaded. The lab's deliberately b
     ALERTS{alertname="InterfaceAdminUpOperDown"}
     ```
 
-    Each row is a firing instance. The label set is the alert's labels merged with the expression's output labels — `device`, `name`, `severity`, `category` all present.
+    Each row is one firing alert with its `device`, `name`, `severity`, and `category` labels.
 
 3. **Alertmanager** — open [http://localhost:9093](http://localhost:9093) and confirm the alert arrived and was routed. In Part 3 you'll trace exactly what happens next.
 
-**Stop and notice.** The alert rule you just read is the same intent-vs-reality query from exercise 4, with `> 0`, `for:`, `labels:`, and `annotations:` added. The query is the logic; everything else is operational scaffolding — how long to wait before paging, what labels to route on, what message to show on call. This is the pattern every alert in this lab follows.
+**Stop and notice.** The query decides *what is wrong*. The remaining fields decide *when to fire*, *how to route it*, and *what to tell the on-call*.
 
 ---
 
 ## Part 1 — the capstone and stretch goals
 
-The capstone is the exercise worth doing first if you only do one thing on this page. Four browser tabs, one command, and every layer of the stack reacting in causal order — it is the moment the separate concepts stop being separate.
+If you do only one take-home exercise, choose this one. Four browser tabs and one command show the failure moving from interface to BGP to alerts.
 
 ### Capstone — everything at once
 
 ##### 14. Trigger a cascade and watch metrics, logs, and alerts react
 
-> Your senior gestures at the keyboard. *"You've now seen metrics, normalization, recording rules, alerts, and logs as separate concepts. This exercise puts them all on screen at the same time. One command, one cascade — you watch every layer respond in causal order."*
+> Your senior gestures at the keyboard. *"One command will start the fault. Watch the interface, BGP session, logs, and alert respond in that order."*
 
 This is the capstone exercise for Part 1. Open four browser tabs before you run anything:
 
@@ -212,7 +212,7 @@ Switch to `Live` mode (the toggle in the top-right of Explore). Log lines will s
 nobs packt flap-interface --device srl1 --interface ethernet-1/1
 ```
 
-One command posts a 4-minute cascade to sonda: the interface flaps on a 30s-up / 60s-down cadence, BGP follows after a 10s hold-down, and every signal snaps back cleanly when the gate closes.
+This starts a four-minute scripted incident. The interface alternates between 30 seconds up and 60 seconds down. BGP follows about 10 seconds after each failure, and all values recover when the incident ends.
 
 ??? tip "Trip just the flap, not BGP"
 
@@ -241,7 +241,7 @@ UPDOWN log lines start appearing in the live stream within seconds of the first 
 - After ~30 seconds in the down state, check the Prometheus alerts page. You should see `PeerInterfaceFlapping` move from `INACTIVE` → `PENDING` → `FIRING` as the UPDOWN event count crosses the threshold and holds for `for: 30s`.
 - Once `FIRING`, switch to Alertmanager — the alert arrives there routed by its `severity` and `category` labels. In Part 3 you'll trace exactly what the webhook does with it.
 
-**Stop and notice.** Everything you used today is on screen at the same time: a metric query (interface state), a causal chain (interface → BGP → prefixes), a log stream with matching labels, a recording rule feeding the alert expression, and an alert firing and routing. Each layer was a separate concept earlier in Part 1. Under pressure at 2am, this is the view you'll have open — and every piece of it is a query you now know how to write.
+**Stop and notice.** The interface fails first, BGP and routes follow, logs explain the change, and the alert fires last. That order helps you separate the cause from its later symptoms.
 
 ### Stretch goals (optional — pick one if you have time)
 
@@ -261,7 +261,7 @@ UPDOWN log lines start appearing in the live stream within seconds of the first 
         srl1 / ethernet-1/1     ~12,700 bytes/sec
         ```
 
-        At rest the synthetic emitter ticks every healthy interface at roughly the same `step_size`, so the three winners are essentially tied — `topk` picks 3 of them somewhat arbitrarily. Drive a flap (`nobs packt flap-interface --device srl1 --interface ethernet-1/1`) and the broken/flapping interface stops contributing during DOWN phases — the result list changes accordingly.
+        At rest, healthy interfaces receive traffic at about the same rate, so `topk` may return any three of them. During a flap, the affected interface stops increasing while it is down and may leave the list.
 
 - **List every distinct severity level present in srl1 logs in the last hour.** What does the lab actually seed?
 
@@ -281,7 +281,7 @@ UPDOWN log lines start appearing in the live stream within seconds of the first 
         | `warn`  | ~70 (broken peer retries, admin-up/oper-down events) |
         | `error` | ~15 (BGP neighbor "connection refused" lines) |
 
-        The lab seeds three severity buckets on purpose — `info` is the baseline noise, `warn` is the steady-state broken-interface emission, `error` is what the broken peer actively produces. In a real network the distribution looks similar: most lines are routine, a fraction are warnings about expected state, and a smaller fraction are errors worth paging on.
+        The lab uses `info` for routine events, `warn` for the always-broken interface, and `error` for the broken BGP peer.
 
 - **Run the broken-peer query against srl2 only.** Same shape as exercise 5 (the intent-vs-reality BGP query), but scoped to one device. Confirm you get exactly one row.
 
@@ -299,7 +299,7 @@ UPDOWN log lines start appearing in the live stream within seconds of the first 
         bgp_admin_state{device="srl2", peer_address="10.1.11.1", ...} = 1
         ```
 
-        That's srl2's deliberately broken peer — admin says "should be up", oper says it isn't. Same shape as srl1's broken peer (`10.1.99.2` from exercise 5), just on the SNMP-shape device. The intent-vs-reality pattern is device-shape-agnostic because the normalization step gives both pipelines the same metric names and labels.
+        This is srl2's deliberately broken peer. The same query works on both devices because Part 1 made their metric and label names consistent.
 
 - **Plot CPU and memory side by side.** Two queries in one Explore panel — what should both lines look like at rest?
 
@@ -318,7 +318,7 @@ UPDOWN log lines start appearing in the live stream within seconds of the first 
         - `cpu_used{device="srl1"}` ≈ 10–40% (amplitude 15, offset 25, period 120s)
         - `memory_utilization{device="srl1"}` ≈ 34–50% (amplitude 8, offset 42, period 240s)
 
-        Both lines sit comfortably below any operationally interesting threshold — the lab seeds these as "the box is healthy" baseline so you can compare them against the genuinely interesting interface/BGP signals. If either climbed into the 80–90% range, that'd be a "device itself is unhealthy" signal worth investigating (we ruled this out at the top of Act 2 in Advanced exactly for this reason).
+        Both stay low by design. If either reached 80–90%, the device itself would deserve investigation.
 
 - **Inspect the raw shape Telegraf normalizes.** Compare the three layers of the pipeline directly — what does the same fact look like before Telegraf, after Telegraf, and after Prometheus has stored it?
 
@@ -338,17 +338,17 @@ UPDOWN log lines start appearing in the live stream within seconds of the first 
         | Telegraf `/metrics` (after rename) | `bgp_active_routes{collection_type="snmp", device="srl2", peer_address="10.1.11.1", ..., pipeline="telegraf"} 10` |
         | Prometheus (after one more scrape) | identical to the line above — Prometheus just stores it |
 
-        Same number (`10`), same physical fact (this peer has 10 active routes), three different shapes depending on which layer you sample at. The rename ruleset that bridges them lives in `telegraf/telegraf-srl2.conf.toml` — `tag.source → device`, `bgpPeerRemoteAddr → peer_address`, plus the metric-name rewrites. The point of the exercise is to convince yourself that "normalization" isn't a black box — it's a config file you can read.
+        The value stays `10` at every step. Only the names change. The rules are in [`workshops/packt/telegraf/telegraf-srl2.conf.toml`](https://github.com/network-observability/workshops/blob/main/workshops/packt/telegraf/telegraf-srl2.conf.toml).
 
 ---
 
 ## Part 2 — the full ten-step panel build
 
-We drove four of these ten steps as a demo. Here is the whole build, in order, so you can do it yourself — including the four you watched. Start from a clean dashboard: if you followed along during the session and saved a panel, `nobs packt restart grafana` puts **Workshop Lab 2026** back to the layout the workshop ships with.
+Here is the complete click-by-click build. To restore the original **Workshop Lab 2026** dashboard first, run `nobs packt restart grafana`.
 
 ### Build the dashboard panel
 
-You're adding a **flap rate** panel: how many UPDOWN log events per minute, broken out per interface, with thresholds that match the `PeerInterfaceFlapping` alert rule.
+You're adding a **flap rate** panel: the number of UPDOWN log events per interface during the last two minutes. Its thresholds match the `PeerInterfaceFlapping` alert rule.
 
 #### 1. Enter edit mode
 
@@ -375,13 +375,13 @@ Adding a panel in Grafana 13 takes a few clicks:
 
 #### 2. Pick the datasource
 
-> *"What datasource? Think about the data shape — flap rate is a count of log events, not a metric Prometheus is scraping for us."*
+> *"This panel counts log events, so its data comes from Loki."*
 
-Choose **`loki`** in the datasource picker. Flap rate is a *log-derived metric* — Loki counts log lines, not Prometheus samples. (Part 1's [exercise 9 — log aggregation](../../../docs-packt/part-1.md#9-aggregation-log-queries-that-produce-metrics) walks the same `count_over_time(...)` shape if you want a refresher.)
+Choose **`loki`** in the datasource picker. [Part 1's log-counting exercise](../../../docs-packt/part-1.md#9-aggregation-log-queries-that-produce-metrics) explains the same `count_over_time(...)` pattern.
 
 #### 3. Write the query
 
-> *"Same shape as the LogQL aggregation we wrote together earlier. UPDOWN log events, grouped per interface, counted in a 1-minute window. Use the dashboard variable so this panel works for both devices."*
+> *"Count UPDOWN events for each interface during the last two minutes. Use the dashboard variable so one panel works for both devices."*
 
 The query box defaults to **Builder** mode — a click-to-build form with Label filters and Operations. To paste a raw LogQL query, toggle to **Code** mode using the `Builder | Code` switch on the right side of the query toolbar.
 
@@ -391,13 +391,13 @@ In the Loki query box (now in Code mode), paste:
 sum by (interface)(count_over_time({device="$device", vendor_facility_process="UPDOWN"}[2m]))
 ```
 
-Three things to notice:
+Read the query from the inside out:
 
-- `$device` is the dashboard variable. Grafana substitutes it before sending the query, so this panel becomes `srl1`-aware or `srl2`-aware automatically.
-- `{device="$device", vendor_facility_process="UPDOWN"}` is a **stream selector** — Loki's way of saying *"pick log streams whose labels match these values"*. The label `vendor_facility_process="UPDOWN"` matches every interface state-change log line emitted by either of the two log pipelines the lab runs (`direct` = sonda pushes the line straight to Loki; `vector` = the same line passes through a Vector router before landing in Loki — Part 1 walks both).
-- `count_over_time(...[2m])` counts UPDOWN log lines in a rolling 2-minute window — the same window the `PeerInterfaceFlapping` alert rule uses. `sum by (interface)` groups so each interface gets its own line.
+- The braces keep UPDOWN logs for the device selected in the dashboard.
+- `count_over_time(...[2m])` counts those logs during the last two minutes.
+- `sum by (interface)` gives each interface its own line.
 
-Click **Run query**. **Before you trigger any flap, you'll sometimes see a single line for `ethernet-1/11` at the value `1` — well below the alert threshold of 3.** That interface is wired into the lab as a permanent fault (we'll call it the **always-broken interface** from here on) so steady-state alerts are always visible. It emits one log line every ~2 minutes, so the panel briefly shows `1` right after each one and drops back to empty in between. Healthy interfaces don't show up at all — if nothing is flapping, the panel stays empty, which is what you want to see:
+Click **Run query**. The panel is usually empty before you trigger a flap. You may briefly see `ethernet-1/11` at `1`; that interface is broken by design and writes about one event every two minutes.
 
 <figure class="section-preview" markdown>
 
@@ -451,13 +451,13 @@ In the right-hand options pane, scroll down to find the **Thresholds** section �
 | :orange_circle: Orange | `2` | "early heads-up — activity above the always-broken `ethernet-1/11` baseline (which sits at 1)" |
 | :red_circle: Red | `3` | "alert firing — the `PeerInterfaceFlapping` rule's `> 3` condition has been crossed" |
 
-Then under **Graph styles** → **Show thresholds**, pick `As lines`. **You should now see two horizontal lines on the panel preview — orange at 2, red at 3.** Setting orange at `2` (rather than `1`) keeps the threshold line visually separate from the always-broken `ethernet-1/11` line that sits at `1` — they'd otherwise overlap. A flap rate above the red line means an alert is firing.
+Under **Graph styles** → **Show thresholds**, choose `As lines`. You should see orange at 2 and red at 3. Orange is an early warning above the broken interface's usual value of 1. Crossing red makes the alert condition true; the rule then waits 30 seconds before firing.
 
 > Your senior glances over. *"Thresholds matching the alert rule? Good. When the line crosses the orange one, an interface just logged a state change — that's your early heads-up. When it crosses the red one, the alert is firing and someone's pager goes off. The panel makes both moments visible without a separate alerts pane."*
 
 #### 7. Smooth out the gaps
 
-> *"That `count_over_time` query returns nothing when no logs land in the rolling window. By default Grafana renders those empty stretches as broken lines — easier to read as one continuous line."*
+> *"When no matching logs arrive, the query returns a gap. Connect those gaps so the line is easier to follow."*
 
 In the right-hand options, still in the **Graph styles** section where you set the threshold lines, find **Connect null values** and change it from `Never` to **Always**.
 
@@ -477,7 +477,7 @@ In a terminal:
 nobs packt flap-interface --device srl1 --interface ethernet-1/1
 ```
 
-This kicks off a 4-minute **cascade** — a scripted sequence of state changes the lab plays back to imitate a real incident. For this command the interface cycles `30s up, 60s down` for four minutes. UPDOWN log lines emit at a steady cadence (~one every two seconds) during each down window. Switch the dashboard's `Device` dropdown to `srl1` if you aren't already there.
+This starts a four-minute scripted incident. The interface alternates between 30 seconds up and 60 seconds down. While it is down, the lab writes about one UPDOWN event every two seconds. Set the dashboard's **Device** dropdown to `srl1`.
 
 !!! tip "Turn on auto-refresh so the panel updates live"
 
@@ -492,13 +492,12 @@ This kicks off a 4-minute **cascade** — a scripted sequence of state changes t
 
 </figure>
 
-**What you should see, in order:**
+**What you should see:**
 
-- **First ~45 seconds** are quiet. The cascade starts the interface in the *up* state and walks through one 30-second up phase before the first down phase begins. UPDOWN log emission begins ~10 seconds into the down phase.
-- **Around t+60s**: a line for `interface=ethernet-1/1` appears at around `10`. It's already past both the orange (2) and red (3) thresholds — the down phase's emission rate (~one log every two seconds) means the rolling 2-minute count climbs fast.
-- **Around t+90s**: the line is somewhere in the `25–40` range — well above red, matching the alert rule's "> 3 events in 2 minutes" condition many times over.
-- **Between cycles 1 and 2**: the line **plateaus** around `25` rather than dropping. The rolling 2-minute window still contains the events from cycle 1's down phase — they haven't aged out yet.
-- **Cycle 2 around t+120s**: cycle 2's down-phase events stack onto the still-in-window events from cycle 1, so the count climbs higher — typically `40–60`. The plateau-then-climb shape is what real flap-rate dashboards look like during an active flap.
+- The first 45 seconds are quiet because the interface starts up.
+- Around one minute, `ethernet-1/1` appears and quickly crosses both thresholds.
+- The count may flatten while the interface is up, then climb during the next down period.
+- It falls only after older events leave the two-minute window.
 
 > Your senior taps the screen. *"Watch the orange line — that's the early heads-up, an interface just logged a state change. Watch the red line — that's where someone's pager goes off because the alert rule fired. The panel makes both moments visible without a separate alerts pane."*
 
@@ -520,19 +519,7 @@ Watch the spike land on `srl2`'s `ethernet-1/10` line — same ramp shape, same 
 
 **Stop and notice.** One panel, two devices. That's what the dashboard variable bought you. If you'd hard-coded `device="srl1"` in the query, you'd need a duplicate panel for every device you ever add — and one to maintain per device when the schema changes.
 
-Worth noting: `srl1` and `srl2` arrive through different upstream pipelines (gNMI vs SNMP) — meaning the raw metric names and labels their devices emit look completely different. The lab **normalises** them in a layer above (renames the fields, re-keys the labels) so by the time your panel queries either device, they look identical. That's why the same `$device` variable works for both. The fold below walks the full normalisation pipeline if you want to see it end-to-end.
-
-??? tip "Bonus — same panel, two pipelines"
-
-    `srl1`'s metrics emit as raw gNMI shapes (`srl_*` field names) and Telegraf-srl1 normalizes them; `srl2`'s metrics emit as raw SNMP shapes (`ifHC*`, `bgpPeer*`) and Telegraf-srl2 normalizes them. By the time your panel queries them, both look identical — same metric names, same label keys. Hover the **Collection Type** panel on the Device Health dashboard to see which raw shape each device came in as.
-
-    **See it yourself — five URLs walk the three layers of each pipeline:**
-
-    1. **Raw gNMI from srl1** (sonda-server, before Telegraf): <http://localhost:8085/scenarios/metrics?label=source:srl1>. Look for `srl_*` metric names (`srl_interface_oper_state`, `srl_bgp_oper_state`) and the `source="srl1"` tag — what an SR Linux device emits on its gNMI stream.
-    2. **Raw SNMP from srl2** (sonda-server, before Telegraf): <http://localhost:8085/scenarios/metrics?label=agent_host:srl2>. Look for the IF-MIB / BGP4-MIB names (`ifHCInOctets`, `bgpPeerState`, `cbgpPeerOperStatus`) and the `agent_host="srl2"` tag — the classic SNMP shape.
-    3. **Telegraf-srl1's normalized output**: <http://localhost:9005/metrics>. The `srl_*` names are now plain `interface_*` / `bgp_*`, and the `source` tag has been renamed to `device`. Same data, canonical shape.
-    4. **Telegraf-srl2's normalized output**: <http://localhost:9006/metrics>. The SNMP names (`ifHCInOctets`, etc.) are now also `interface_*` / `bgp_*`, and `agent_host` is now `device`. Identical to telegraf-srl1's output above — except for one label we keep on purpose: `collection_type=gnmi` vs `collection_type=snmp`, so you can debug which pipeline a sample came from.
-    5. **Final view in Prometheus**: <http://localhost:9090/graph?g0.expr=interface_oper_state%7Bdevice%3D~%22srl1%7Csrl2%22%7D&g0.tab=1>. A single query for `interface_oper_state{device=~"srl1|srl2"}` returns rows from both devices in the same shape — the vendor difference is invisible at this layer.
+The panel works for both devices because Part 1 made their different source names consistent before storage. [Revisit the before-and-after comparison](../../../docs-packt/part-1.md#see-the-raw-shape-before-telegraf-touches-it) if you want a refresher.
 
 > Your senior nods at the screen. *"That's the panel. Six hours from now when somebody on the rotation gets paged on a similar shape, this view is on screen the moment they open the dashboard. Ten minutes saved off the next triage. That's the work."*
 
@@ -540,7 +527,7 @@ Worth noting: `srl1` and `srl2` arrive through different upstream pipelines (gNM
 
 ## Part 2 — the rest of the alert lifecycle
 
-Two steps from the alert-lifecycle walk that we skipped: reading alert state from the terminal, and the whole lifecycle drawn as one diagram. The CLI step slots in after step 1 (the rule, live); the diagram closes the walk.
+These two exercises show the alert states in the terminal and then place those states in one diagram.
 
 #### 2. Inspect alerts from the CLI
 
@@ -550,9 +537,9 @@ The lab ships a small CLI that prints the current alert state in a table — sam
 nobs packt alerts
 ```
 
-> Give the cascade ~90 seconds from when you ran `flap-interface` before you expect the `PeerInterfaceFlapping` row to appear. The count crosses `> 3` after the first down phase, and the rule's `for: 30s` clause then has to hold before the alert promotes from `pending` to `firing`. If you check too early, you'll see only the four steady-state rows.
+> Wait about 90 seconds after `flap-interface`. The event count must cross 3 and remain there for 30 seconds before the alert changes from `pending` to `firing`.
 
-You'll see five rows once the alert fires. Before you look at them — a quick map of what to expect, because the lab is wired with a couple of *always-firing* alerts on top of whatever you just triggered. Two tiers:
+Once it fires, expect five rows in two groups:
 
 - **Steady-state alerts** — always there, every time you walk this lab:
     - **`InterfaceAdminUpOperDown × 2`** — `ethernet-1/11` on each device is wired `admin up` but its `oper` state is `down` (the always-broken interface from step 3). The rule matches continuously; it never ages out.
@@ -601,13 +588,13 @@ Four steady-state rows + one transient — and the last column (`Age`) tells you
      firing  ─── continues until condition resolves
 ```
 
-Three transitions every alert can make — and `resolved` isn't a dead end: if the condition starts matching again later, the alert re-enters `pending` and the cycle restarts. Memorise this shape, it's the same on every alerting stack worth using.
+If a resolved condition becomes true again, the alert returns to `pending` and starts the cycle again.
 
 ??? info "Why has `BgpSessionNotUp` been sitting in `firing` this whole time? — preview of Part 3"
 
-    `BgpSessionNotUp` has been sitting at `firing` for both devices the whole time you've been on this dashboard. They never resolved because the broken peers are *deliberately* broken — the lab keeps them that way as a steady-state target. In Part 3, a **workflow** (a small program that runs automatically when an alert fires) picks these alerts up via an **Alertmanager webhook** (an HTTP call Alertmanager makes to a configured URL every time an alert fires, so external systems can react to it), decides whether each one deserves human attention or can be silenced automatically, and applies the silence programmatically — exactly the same `firing → suppressed → firing` cycle you just walked by hand. Part 3 explains what the workflow is, how it's triggered, and what its decision policy looks like.
+    Both peers are broken by design, so `BgpSessionNotUp` remains active. Part 3 shows a workflow receiving those alerts, checking their context, and applying the same kind of silence you created by hand.
 
-For now: you've seen the full alert surface. CLI, Alertmanager UI, Grafana ALERTS metric, manual silence. That's the substrate Part 3 builds on.
+You have now seen the same alert in the CLI, Alertmanager, and Grafana, and you have silenced one manually. Part 3 automates that response.
 
 ---
 
@@ -670,13 +657,13 @@ Add a second panel: a table that summarises flap activity per device + interface
 
     A 1-hour window is "what's been flapping today" — wider than the 2-minute alert window so the table holds stable rows even between flaps.
 
-    Below the query box, expand **Options** and switch **Type** from `Range` to `Instant`. For a table, we want one row per device + interface pair — not one row per time sample. Instant returns the most-recent value per series; Range would return a row per scrape interval, multiplying the table by 50× without adding signal.
+    Below the query box, expand **Options** and switch **Type** from `Range` to `Instant`. `Instant` gives the table one current value for each device and interface. `Range` would add a row for every point in time.
 
     Click **Run query**.
 
     **3. Switch the panel type.** On the right-hand sidebar, click the **All visualizations** tab and pick **Table**. The result lands as a single-row table with a value column and the labels mashed into one cell — that's because Loki returns time-series-shaped data and the table needs help turning labels into proper columns.
 
-    **4. Reshape with transformations.** Below the query box, click the **Transformations** tab → **Add transformation**. A search dialog opens with every available transformation as a tile.
+    **4. Turn labels into table columns.** Below the query box, click **Transformations** → **Add transformation**.
 
     - Pick **Labels to fields**. Each Loki label (`device`, `interface`) becomes its own column.
     - Add a second transformation (click **Add another transformation**): **Organize fields by name**. Hide `Time` (click the eye icon next to it — the table doesn't need it), reorder so `device` is first and `interface` second, and rename `Value #A` to `Total flaps` in the rename input next to that row.
@@ -688,7 +675,7 @@ Add a second panel: a table that summarises flap activity per device + interface
     - **Title**: `Flap history (last 1h)`
     - **Description**: `UPDOWN events per device + interface over the last hour. Click any device cell to drill into Device Health for that device, time range preserved.`
 
-    **6. Colour-code the flap counts with a gauge.** A glance at the table should tell you which rows are quiet and which are alarming without reading numbers. Right-hand options → **Overrides** → **Add field override** → **Fields with name** → pick `Total flaps`. Then click **Add override property** (once per property) and add:
+    **6. Colour-code the flap counts.** Right-hand options → **Overrides** → **Add field override** → **Fields with name** → pick `Total flaps`. Then add:
 
     - **Cell options → Cell type**: `Gauge`
     - **Cell options → Gauge display mode**: `LCD gauge` (the retro pixel-bar style — coloured stripes that fill horizontally)
@@ -696,7 +683,7 @@ Add a second panel: a table that summarises flap activity per device + interface
     - **Standard options → Max**: `100`
     - **Thresholds** (set them inside this same override): Green base, Orange at `30`, Red at `60`
 
-    The threshold numbers are higher than the 2-minute flap-rate panel above because this table uses a **1-hour window**: the always-broken interfaces alone accumulate around 28 UPDOWN events per hour just sitting there. So below 30 is "background noise", 30–60 is "something extra is happening", and 60+ is "real flap activity in the last hour".
+    These thresholds are higher than the earlier panel because this table counts a full hour. The lab's always-broken interfaces produce about 28 events in that time, so values above 30 show extra activity.
 
     Each row's `Total flaps` cell now renders as a horizontal LCD bar that fills green → yellow → red as the count climbs. At-a-glance triage without reading numbers.
 
@@ -731,11 +718,11 @@ Add a second panel: a table that summarises flap activity per device + interface
     - The `device` cells are blue underlined links. Clicking `srl1` takes you to **Device Health** with `var-device=srl1` and the dashboard's current time range carried forward.
     - The `Total flaps` cells render as horizontal LCD gauges that fill green → orange → red as the count grows. Background noise (always-broken interfaces) sits around 28 (mostly green). An actively-flapping interface climbs past 60 in a few minutes and goes mostly red.
 
-    **Stop and notice.** Tables are the dashboard equivalent of "a list of things to investigate, each row a one-click entry into deeper context". The time-series panel above tells you *something is flapping*. The table tells you *which one, how badly, and here's the next dashboard*. The data-link override is what binds the two dashboards into one navigation flow — no copy-pasting device names, no losing the time range.
+    **Stop and notice.** The chart shows *when* flapping happened. The table shows *which* interface flapped and gives you a direct link to investigate it without losing the time range.
 
 #### Group the dashboard into tabs
 
-The eight panels on **Workshop Lab 2026** are a lot to scroll past when you're triaging at 2am. Use Grafana 13's new **Group into tabs** feature to split the dashboard into a few tabs so each one answers one operational question instead of showing everything at once.
+Use Grafana's **Group into tabs** feature to arrange the dashboard by question instead of showing all eight panels at once.
 
 ??? success "Solution — steps + what the dashboard looks like after"
 
@@ -759,31 +746,25 @@ The eight panels on **Workshop Lab 2026** are a lot to scroll past when you're t
 
     If a panel ended up in the wrong tab, drag it between tabs while in Edit mode. The provisioned YAML resets the layout on `nobs packt restart grafana`, so don't worry about breaking anything permanently.
 
-    **Stop and notice.** Tabs only change how the dashboard is laid out — the panels and queries themselves don't change. What changes is *which questions the dashboard answers when you open it*. The Overview tab is for "is anything wrong"; the Flap tab is for "show me the symptom" — different operational questions, same dashboard, same data. Building this split before an incident means the page lands and the right view is already there.
+    **Stop and notice.** Tabs change the layout, not the queries. **Overview** answers “is anything wrong?” while **Flap** answers “which interface is flapping?”
 
 ---
 
 ## Part 3 — swap in a real LLM
 
-The session ran the whole of Part 3 on the **demo** RCA provider — a deterministic template, free and offline, which is the right default for a room full of laptops. This section swaps it for a real model so you can read the two narratives side by side on the same evidence. You need an OpenAI or Anthropic API key; the cost is a few cents.
+Part 3 used an offline template for the RCA summary. This optional section sends the same facts to an OpenAI or Anthropic model so you can compare the summaries. You need an API key, and your provider may charge for the call.
 
 #### 6. (Optional) Swap to a real LLM provider for the narrative
 
-Every decision you've seen so far has been **deterministic**: the workflow looks at the evidence and makes a yes/no call based on a fixed rule. *Same inputs, same outputs, every time.* That's by design — the workflow has to be replayable, reviewable, auditable.
-
-What you've *also* been seeing since Setup is the **AI RCA** step — a short narrative the workflow writes alongside each `proceed` decision (the records with `ai_rca="true"` in your Loki queries). RCA stands for *Root Cause Analysis*. **The AI does not decide what to do.** The deterministic policy still picks `proceed` or `skip`. The AI just writes a paragraph alongside the decision — think of it as the on-call's first-draft writeup, generated automatically and stapled to the audit record.
-
-The `demo` provider you enabled in Setup writes a *templated* narrative — deterministic, free, offline, but only as smart as the evidence dict it stitches together. **This phase is the optional upgrade**: swap to a real LLM (OpenAI or Anthropic) with an API key, and the workflow makes a real model call. Same evidence in, real reasoning out. Skip this phase if you don't have a key — none of Part 3's lessons depend on it.
+The workflow still uses fixed rules to choose `proceed` or `skip`. The model cannot change that result. It only writes a short root-cause analysis (RCA) summary beside a `proceed` decision. Skip this section if you do not have a key; the rest of the workshop does not depend on it.
 
 ??? tip "Going further — three common gotchas when wiring up a real OpenAI or Anthropic key"
 
-    Worth a 30-second skim before you set a real API key.
+    **ChatGPT Plus and the OpenAI API are billed separately.** A ChatGPT subscription does not include API credit. Check your API billing if the first call returns `429 Too Many Requests`.
 
-    **ChatGPT Plus is not the same product as the OpenAI API.** They share a login but have separate billing — a Plus subscription gives you ChatGPT.com access only; it does **not** include API credits or higher API rate limits. A fresh API key on an account that's never funded the API will return `429 Too Many Requests` on the very first call (the free-tier API quota is $0). Fix: go to <https://platform.openai.com/settings/organization/billing/overview>, add a payment method, prepay $5 (a single RCA call costs roughly $​0.001–$​0.01 depending on the model), wait ~1–2 minutes for the credit to propagate, then retry.
+    **`AI_RCA_MODEL` must name a model available to your API account.** A typo or unavailable model usually produces a 4xx error. Check this value first if Loki shows `AI RCA call failed`.
 
-    **`AI_RCA_MODEL` must be a real model identifier.** The string gets sent verbatim to the provider's `/chat/completions` (OpenAI) or `/messages` (Anthropic) endpoint, so a typo means a server-side error — usually `404 model_not_found`, sometimes wrapped as `429` depending on the account state. Use a real OpenAI model like `gpt-4o-mini`, `gpt-5`, or `gpt-5-mini`; for Anthropic, something like `claude-haiku-4-5-20251001`. If Loki shows `AI RCA call failed: HTTPError: 4xx ...`, the model string is the first thing to check.
-
-    **After any `.env` edit, re-run `nobs packt up`** (or the underlying `docker compose --project-name packt up -d --force-recreate prefect-flows`). A plain `docker compose restart prefect-flows` will *not* pick up the new value — `restart` reuses the container's existing env, while `up -d` recreates it against the current `.env`. If you swap an API key and then see `401 Unauthorized` in Loki, the container is almost certainly still holding the old (revoked) key. Quick check that the container actually got the new key — compare `tail=` against the last four chars of the key in your `.env`:
+    **After any `.env` edit, run `nobs packt up`.** A plain container restart keeps its old environment. If you see `401 Unauthorized`, use this check to confirm the container received the new key. Compare `tail=` with the final four characters in `.env`:
 
     ```bash
     docker compose --project-name packt exec prefect-flows \
@@ -792,7 +773,7 @@ The `demo` provider you enabled in Setup writes a *templated* narrative — dete
 
     If they don't match, the container is stale — re-run `nobs packt up`.
 
-    **Reasoning models (`gpt-5`, `o1`, `o3`) often exceed the workshop's HTTP timeout.** They think internally before answering and a single call can take 30–60+ seconds. The lab's HTTP client gives up after 60s and writes `AI RCA call failed: ReadTimeout: ...` to Loki. Stick with `gpt-4o-mini`, `gpt-5-mini`, or `claude-haiku-4-5-20251001` for the workshop — they respond in 1–3 seconds, the narrative is short and bounded, and you don't pay reasoning-model rates for output a faster model already nails.
+    **Slow model calls may exceed the workshop's 60-second timeout.** If Loki shows `ReadTimeout`, choose a faster model available to your account and try again.
 
 ##### Step 1 · Swap the provider and key in `.env`
 
@@ -817,15 +798,15 @@ nobs packt cycle srl1 10.1.99.2 --trigger
 nobs packt rca srl1 10.1.99.2
 ```
 
-The first command posts a fresh alert payload (bypassing Alertmanager's `repeat_interval`) and re-renders the cycle state once the new flow run lands. The second renders the latest AI narrative for that peer as Markdown in the terminal.
+The first command starts a fresh workflow run without waiting for Alertmanager to resend the alert. The second prints the latest AI summary for that peer.
 
-Compare the rendered narrative to the demo voice you've been seeing all along. A real LLM (OpenAI or Anthropic) typically adds:
+Compare the new summary with the demo template. A model may:
 
-- **Domain inference** — translates raw metric values into operational hypotheses ("`oper_state=5` with `received_routes=0` is consistent with a TCP reachability failure or AS-number mismatch — the FSM is trying but not authenticating") instead of just restating them.
-- **Wider context** — references the BGP state machine, common causes for "stuck in active", suggested next debug steps (traceroute, configured remote-as check).
-- **Calibrated uncertainty** — phrases like "most likely" or "consistent with" rather than confident pronouncements.
+- explain what the raw values might mean;
+- suggest useful checks; and
+- say when its conclusion is uncertain.
 
-The deterministic policy decision is **unchanged** between demo and real provider. The narrative is the only thing that swapped — different voice, identical evidence, identical decision.
+The fixed-rule decision is unchanged. Only the written summary is different.
 
 !!! tip "Read the narrative in its rendered shape"
 
@@ -847,7 +828,7 @@ The deterministic policy decision is **unchanged** between demo and real provide
 
 ??? info "What the demo AI RCA narrative actually contains"
 
-    With `AI_RCA_PROVIDER=demo`, the workshop ships a templated narrative that fills three sections (Most likely cause / Immediate actions / What to verify next) from the same evidence the deterministic policy reads. Here's what the demo writes for the broken peer:
+    With `AI_RCA_PROVIDER=demo`, the workshop fills three sections from the same facts used by the fixed rules. Here is the summary for the broken peer:
 
     ```text
     AI RCA:
@@ -878,9 +859,9 @@ The deterministic policy decision is **unchanged** between demo and real provide
     severity=info
     ```
 
-    The narrative is grounded in the *same* evidence the deterministic policy used — SoT's `expected_state`, the metric values, the prefix counter. The template doesn't invent facts; it stitches the evidence into prose. When you flip `AI_RCA_PROVIDER` to `openai` or `anthropic` later, the model gets that same evidence dict and writes its own three-section response — different voice, identical inputs. The `ai_rca="true"` label is what distinguishes these records from the deterministic `decision=...` records in the same Loki stream.
+    The template uses the same intended state, metric values, and prefix count as the fixed rules. A real provider receives those same facts and writes its own response. The `ai_rca="true"` label separates summaries from `decision=...` records in Loki.
 
-The split between **decision** (deterministic) and **narrative** (AI) is the lesson the workshop is most insistent about — see [Part 3, step 4 §C](../../../docs-packt/part-3.md#c-the-ai-narrative-same-evidence-different-voice) for the *big idea* framing. With a real LLM provider, the narrative side gets richer; the deterministic decision is unchanged.
+The important boundary is unchanged: fixed rules make the **decision**, while AI writes the **summary**. [Part 3, step 4 §C](../../../docs-packt/part-3.md#c-the-ai-narrative-same-evidence-different-voice) explains why.
 
 !!! tip "Done experimenting? Revert to the offline `demo` provider"
 
@@ -904,11 +885,11 @@ The split between **decision** (deterministic) and **narrative** (AI) is the les
 
 ### Optional deep dives
 
-The phases above walk one full cycle with all the concepts spelled out. If you want to go further — see all four paths run at once, look at the workflow in the Prefect UI, or trigger the workflow directly without an alert — pick whichever fold sounds useful. Each one is independent of the others.
+Each fold below is an independent optional exercise. You can run all four paths, inspect a run in Prefect, or start the workflow directly.
 
 ??? info "Walk all four paths at once with `try-it --auto`"
 
-    The phases above had you walk one path by hand (`proceed`) and then a second path by flipping a flag (`skip` via maintenance). The workshop also ships a single command that walks *all four* paths in about 30 seconds with synthetic payloads, so you can see the whole arc at once:
+    The command below sends four example alerts in about 30 seconds so you can see every result together:
 
     ```bash
     nobs packt try-it --auto
@@ -935,7 +916,7 @@ The phases above walk one full cycle with all the concepts spelled out. If you w
        ✓ resolved_bgp_flow ran and annotated 'resolved'
     ```
 
-    Each path posts an alert payload directly to the webhook and waits for the matching log line to land in Loki. Four `✓` rows means the workflow walked every branch correctly. After it finishes, Phase 7's LogQL query gives you the aggregated counts across all four paths.
+    Each path sends alert details to the webhook and waits for its Loki record. Four `✓` rows means all four paths completed.
 
 ??? info "Tour the Prefect UI"
 
@@ -945,14 +926,14 @@ The phases above walk one full cycle with all the concepts spelled out. If you w
 
     You'll see:
 
-    - **Subflow runs** — three rows nested under the parent run: `evidence`, `policy`, `action`. Same three blocks as the Phase 2–4 walk. Click one to see its tasks — `fetch_sot` / `fetch_metrics` / `fetch_logs` / `assemble_evidence` under `evidence`, `evaluate_sot_gate` / `evaluate_metrics_gate` / `annotate_decision` under `policy`, `ai_rca` / `quarantine` / `annotate_action` under `action`.
+    - **Child runs** — three rows under the main run: `evidence`, `policy`, and `action`. Click one to see the tasks inside it.
     - **Per-task logs** — every line the workflow printed, indexed by task. Same content as `nobs packt logs prefect-flows`, but searchable per task.
     - **Tags** — labels on each task like `device:srl1`, `peer_address:10.1.99.2`, `action:quarantine`. These are what an operator filters on to find "every run that touched this peer."
 
 
 ??? tip "Trigger the workflow directly without an alert"
 
-    The webhook is one way to drive the workflow. You can also drive it manually from the CLI — useful when you want to skip the alert lifecycle entirely (no Alertmanager `repeat_interval` wait), test a payload shape, or iterate on the policy.
+    You can start the workflow from the CLI without waiting for Alertmanager. This is useful while testing a change.
 
     The workshop wrapper is:
 
@@ -960,7 +941,7 @@ The phases above walk one full cycle with all the concepts spelled out. If you w
     nobs packt cycle srl1 10.1.99.2 --trigger
     ```
 
-    Under the hood, the wrapper posts an `AlertmanagerAlert`-shaped payload to the Prefect `alert_receiver` flow's webhook, polls Prefect until a fresh flow run appears for this peer, then renders the resulting state. The raw `prefect deployment run` equivalent (useful when scripting outside the lab) is:
+    The wrapper sends the same alert details to Prefect, waits for the new run, and displays the result. Here is the raw Prefect command for reference:
 
     ```bash
     docker compose --project-name packt exec prefect-flows \
@@ -1080,7 +1061,7 @@ The phases above walk one full cycle with all the concepts spelled out. If you w
 
         Same record. The `message` is `"device under maintenance"` — same reason the policy gave for srl1 earlier, only the subject changed.
 
-        The point of the exercise: the policy is **device-agnostic**. It consults the SoT for whichever device the alert payload names. Flipping maintenance on any device routes that device's alerts to skip, automatically. The decision logic isn't hard-coded to a particular device.
+        The rule works for either device. It looks up whichever device the alert names, so marking that device as under maintenance changes its result to `skip`.
 
         Don't forget `nobs packt maintenance --device srl2 --clear` afterwards (or run `nobs packt reset` — it clears both devices).
 
@@ -1150,21 +1131,17 @@ The phases above walk one full cycle with all the concepts spelled out. If you w
         - **Wider context** — references the BGP state machine, common causes for "stuck in active", suggested next debug steps (traceroute, configured remote-as check).
         - **Calibrated uncertainty** — phrases like "most likely" or "consistent with" rather than confident pronouncements.
 
-        The template can't do any of this — it can only fill slots. But the template is **deterministic** and **free**; the LLM is **inference-richer** but **non-deterministic** and costs per call. The trade-off is the lesson: the policy *decides what to act on*; the narrative — template or LLM — *explains why for a human reader*. Pick the right narrative tool for the audience and the budget.
+        The template can only fill known fields. A model may add a more useful explanation, but its wording can vary and the provider may charge for each call. In both cases, fixed rules still decide whether to act.
 
 ---
 
 ## Advanced — the 02:14 page
 
-The capstone the session never had room for. Hours after your senior signs off, your phone rings and you are alone on the rotation. Triage with PromQL and LogQL, contain with maintenance, fix the root cause, write the runbook — end to end, no buddy, no runsheet.
-
-Do the rest of this page first. This one assumes Parts 1, 2 and 3 are behind you and does not re-explain anything.
+This optional capstone combines the earlier lessons into one incident. Complete Parts 1–3 first; this section assumes you already know the commands and query basics.
 
 ### What you'll do here
 
-It's 02:14. Your phone just buzzed. By the end of this guide you'll have triaged the page with PromQL and LogQL, watched a real cascade unfold across the dashboards, built a panel that would have caught it sooner, contained the noise with the maintenance flow, simulated the fix, and written the top of your own runbook entry.
-
-This is the workshop's capstone. It assumes Parts 1, 2, and 3 are already behind you — the metric names, the basic PromQL/LogQL patterns, the dashboard layouts, and what `nobs packt alerts`, `flap-interface`, and `maintenance` do are all going to come out under time pressure here. If you haven't walked the three core guides yet, do those first; the pacing here will leave you behind otherwise. Budget **60 to 90 minutes** of wall-clock — longer than the part-guides on purpose, because you're integrating everything.
+It is 02:14 and an alert wakes you. You will check it with PromQL and LogQL, watch a link failure cause later symptoms, pause automated action with the maintenance flag, reset the lab, and write a short runbook entry. Allow **60 to 90 minutes**.
 
 ### Setup check
 
@@ -1176,14 +1153,14 @@ nobs packt incident --help
 
 You should see options for `--device`, `--primary-interface`, `--backup-interface`, `--duration`, and `--kind` (default `link-failover`). If `incident` isn't a recognised subcommand, pull and re-run.
 
-Reset to known-good baseline and confirm the stack is healthy. The investigation puts the lab into states the part guides didn't — so the reset matters more here. Run it before you start:
+Reset the lab and confirm the stack is healthy:
 
 ```bash
 nobs packt reset
 nobs packt status
 ```
 
-`reset` is safe to run repeatedly — it re-loads the Infrahub source-of-truth, clears any device maintenance flags, re-applies sonda's baseline scenarios (so the steady-state broken peers stay firing), and expires any workshop-related Alertmanager silences. `status` should show every row `ok`; if anything is yellow or red, flag it before continuing.
+`reset` restores the lab's starting data, clears maintenance flags, and expires workshop silences. It is safe to run more than once. Wait until every `status` row says `ok`.
 
 Two browser tabs ready:
 
@@ -1203,7 +1180,7 @@ Don't forget to reload the workflow after enabling AI RCA:
 nobs packt up
 ```
 
-A scratch text file open on the side. The closing act has you write the top five lines of your own runbook entry, and you'll want somewhere to put them.
+Also open a scratch text file for the runbook exercise at the end.
 
 ### The exercises
 
@@ -1216,19 +1193,17 @@ last seen Established: ~3 minutes ago
 You're awake. The dashboard is your only friend.
 ```
 
-Recognise that peer? `10.1.99.2` is the deliberately broken peer you found in Part 1 with the intent-vs-reality query. The alert has been firing in the background of the lab the whole day — it's been there waiting for someone to actually respond to it. Tonight, that's you.
-
-First move from the couch: confirm the page is real and the alert is still firing.
+`10.1.99.2` is the deliberately broken peer from Part 1. First, confirm that its alert is still firing:
 
 ```bash
 nobs packt alerts
 ```
 
-You'll see four alerts firing — the two `BgpSessionNotUp` rows (one per broken peer) and the two `InterfaceAdminUpOperDown` rows you met in Part 2. Tonight's page is the **srl1 → 10.1.99.2** row in the first group. The other three are the same steady-state noise that's been on the dashboard all day. **Stop and notice.** This isn't an alert the cascade just manufactured — it's the alert that's been firing since the lab started up, because the lab is set up with a deliberately broken peer wired in. The page is real in lab terms. So: what do you do next?
+You should see two `BgpSessionNotUp` alerts and two `InterfaceAdminUpOperDown` alerts. Investigate the **srl1 → 10.1.99.2** row. The other three are known lab faults.
 
 #### Act 2 — Triage with PromQL and LogQL
 
-Triage is a decision tree, not a single query. You don't yet know what kind of failure this is. Work through it step by step — each query rules out a class of failure.
+Use each query to narrow the problem: first the device, then its interfaces, then the BGP peer, and finally its logs.
 
 **Is the device itself unhealthy?** Check CPU and memory in the `prometheus` datasource:
 
@@ -1240,7 +1215,7 @@ cpu_used{device="srl1"}
 memory_utilization{device="srl1"}
 ```
 
-Both should sit in normal range. **Conclusion:** the device is fine. This isn't a CPU pegging or a memory leak; it's not the box.
+Both should be in their normal range. **Conclusion:** high CPU or memory use is not causing this alert.
 
 **Are interfaces flapping?** Check the operational state:
 
@@ -1248,7 +1223,7 @@ Both should sit in normal range. **Conclusion:** the device is fine. This isn't 
 interface_oper_state{device="srl1"}
 ```
 
-Most interfaces read `1` (UP). You'll see one — `ethernet-1/11` — at `2` (DOWN). That's the always-broken interface you met in Part 1; it's why one of the `InterfaceAdminUpOperDown` alerts is firing. For tonight's page (a BGP session not coming up to a peer), it's a known-quantity background fault, not the symptom. **Conclusion:** no *new* interface fault. The lit interfaces are healthy — whatever is going on, it isn't on the wire to the broken peer's network. This is BGP-only.
+Most interfaces read `1` (up). `ethernet-1/11` reads `2` (down), but that is the known broken interface from Part 1. **Conclusion:** there is no new interface failure to explain this alert.
 
 **Is the peer reachable at the BGP layer?** Check intent and reality on this specific peer:
 
@@ -1260,7 +1235,7 @@ bgp_admin_state{device="srl1", peer_address="10.1.99.2"}
 bgp_oper_state{device="srl1", peer_address="10.1.99.2"}
 ```
 
-Admin reads `1` — the configured intent is "this peer should be up". Oper reads `5` — `active, retrying` in the gNMI enum convention from Part 1. Reality says "BGP is trying and not succeeding". **Conclusion:** intent-vs-reality mismatch on this specific peer. This is exactly what the alert is firing on.
+Admin reads `1`: the peer is enabled. Oper reads `5`: BGP is active and retrying. **Conclusion:** the peer should be up, but the session is not establishing.
 
 **Is there a log line that explains why?** Bridge to Loki — same labels, different datasource:
 
@@ -1268,9 +1243,9 @@ Admin reads `1` — the configured intent is "this peer should be up". Oper read
 {device="srl1", peer_address="10.1.99.2"} |~ "BGP|peer|session"
 ```
 
-You'll see BGP-related lines for that specific peer — fsm transitions, retry attempts, whatever the lab's continuous emitters are producing for the broken session. The metric told you *something* is wrong. The logs tell you *why*.
+The matching lines show connection failures and retries for this peer. The metrics showed *what* was wrong; the logs add the likely reason.
 
-**Stop and notice.** You narrowed down the problem from a single alert to a specific peer with a specific configured intent that reality isn't matching. This is the triage every on-call walks. The fact that it took four queries instead of one says you're doing it right — `count by` collapses noise, `bgp_oper_state` answers the targeted question, the LogQL bridge explains the why. You worked top-down: device, interface, peer, log evidence. Each layer ruled out a class of failure before you went deeper.
+**Stop and notice.** Four small checks narrowed one alert to a BGP problem on one peer. Each check ruled out a wider cause before you moved deeper.
 
 !!! tip "Want to see what the automation already thinks about this alert?"
 
@@ -1280,17 +1255,17 @@ You'll see BGP-related lines for that specific peer — fsm transitions, retry a
     nobs packt rca srl1 10.1.99.2
     ```
 
-    Compare it against your own conclusion. Where does the narrative agree with what you found? Where does it surface something you missed — or miss something you caught? A useful frame for the rest of the investigation: automation does the routine work, the human does the judgment. (If the output reads *"AI RCA disabled..."*, the AI step is off — go back and check the setup instructions at the top of this guide. You may also need to wait a moment for the Prefect workflow to complete, then try again.)
+    Compare the summary with your own conclusion. Note anything it caught or missed. If it says *"AI RCA disabled..."*, check the setup above. You may also need to wait for the workflow to finish and try again.
 
 #### Act 3 — Diagnose: drive the cascade and walk the shape
 
-While you were triaging, things escalated. A different problem started developing on the same device — the kind of cascade that starts with a flap and ends with customers complaining about latency. Time to drive it and read it as it unfolds:
+Now start a separate incident on the same device. It begins with an interface flap, moves traffic to a backup link, and later increases latency:
 
 ```bash
 nobs packt incident --device srl1
 ```
 
-The CLI returns immediately and prints three IDs (one per cascade stage). The cascade is now unfolding in the lab — wall-clock timing is in the callout below. Open the **Workshop Lab 2026** dashboard — you'll be running three queries against the `prometheus` datasource in Explore as the incident develops. The **Workshop Home** dashboard's **Recent events** feed is also reflecting it; switch tabs occasionally to keep both in view.
+The command returns immediately and prints one ID for each stage. Open **Workshop Lab 2026** and run the next three queries in Prometheus Explore as the incident develops. Keep **Workshop Home** open to watch **Recent events**.
 
 **The first thing that catches your eye — primary degrading.** The interface starts flipping:
 
@@ -1298,9 +1273,9 @@ The CLI returns immediately and prints three IDs (one per cascade stage). The ca
 interface_oper_state{device="srl1", source="incident-cascade"}
 ```
 
-Switch to **Time series**. Within seconds you'll see the line flip between `1` (up) and `0` (down). Roughly 60s up, 30s down. An interface flap is the classic *something physical is wrong* signal — in a real network this is what makes you walk to the rack. By default the cascade targets `ethernet-1/10` as the primary — that's the line that flips. The `source="incident-cascade"` filter scopes the query to this incident's signals and keeps the lab's baseline interface noise (Parts 1–3's always-broken `ethernet-1/11`, etc.) off this chart.
+Switch to **Time series**. `ethernet-1/10` alternates between `1` (up) and `0` (down): about 60 seconds up, then 30 seconds down. The `source="incident-cascade"` filter hides the lab's unrelated interface data.
 
-**Stop and notice.** The values are `0` and `1`, not the `1`/`2` gNMI-enum pair you saw in Parts 1–3. This cascade is a different shape of incident — generic up/down rather than the BGP-coupled interface story — so it emits with the simpler `0`/`1` scheme and the unique `source=incident-cascade` label. That's also why the existing `BgpSessionNotUp` alert doesn't trip on this incident: the alert rule matches on `bgp_oper_state`, and this cascade emits its own three signals, none of them `bgp_oper_state`. Different incidents, different signal shapes, different alerts. The label is the scoping handle that keeps them separable.
+**Stop and notice.** This scripted incident uses `0` and `1`, while earlier device data used `1` and `2`. Its `source="incident-cascade"` label keeps the two sets separate. It also does not emit `bgp_oper_state`, so it does not start the existing BGP alert.
 
 **Did failover work?**
 
@@ -1310,7 +1285,7 @@ incident_backup_link_utilization{source="incident-cascade"}
 
 Empty for the first ~60 seconds — you'll see "no data" or a flat panel. Once the primary drops to `0` for the first time, the metric appears and ramps from around 20% toward 85% over the next two minutes.
 
-**Stop and notice.** The backup didn't start carrying traffic until the primary actually failed. That's failover working as intended. But notice the *direction* — utilisation is climbing past where the link is comfortable. This is the early-warning shape an experienced on-call reads as *we're going to have a latency problem in a couple of minutes if this doesn't recover*. The empty panel for the first minute isn't a query bug — backup-utilisation samples only start landing once the failover is real. Empty panels at the start of an incident are information, not bugs.
+**Stop and notice.** The backup metric appears only after the primary fails. That means failover worked, but the rising value warns that the backup may run out of capacity. “No data” during the first minute is expected.
 
 **The symptom your customers feel — latency:**
 
@@ -1318,35 +1293,35 @@ Empty for the first ~60 seconds — you'll see "no data" or a flat panel. Once t
 incident_latency_ms{source="incident-cascade"}
 ```
 
-Empty even longer — latency only starts emitting once the backup has saturated past its baseline, so for the first couple of minutes the panel is silent. Once it lights up, it ramps from ~5ms toward 150ms over three minutes. The chain effect is a feature, not a bug: latency-as-a-symptom typically arrives a few minutes after the root cause is already in motion.
+This metric appears after the backup becomes busy. It then rises from about 5 ms toward 150 ms over three minutes.
 
-**Stop and notice.** By the time latency is the visible problem, the actual root cause — the primary uplink fault — happened minutes ago. This is why incident timelines matter. The latency spike is a *symptom*. The flapping interface was the *cause*. If your alert fires on latency, your runbook needs to walk back through the cascade to find the real failure. The cascade is the story; the metrics are the chapters. Operators read incidents this way every day.
+**Stop and notice.** Latency is a late symptom. The interface began failing minutes earlier. Reading the timeline from the first change helps you find the cause instead of stopping at the customer-visible symptom.
 
 ??? info "Why the cascade takes longer than the --duration flag suggests"
 
-    There's a wall-clock detail worth calling out. The default `--duration 3m` is the bounded lifetime of *each* signal in the cascade, not the total lifetime end-to-end. Each phase has to wait for the previous one to escalate before it starts (the flap has to drop, then backup has to saturate past 70%), so the cascade as a whole takes longer than three minutes to fully unfold. Root cause leads symptoms by minutes — that's the lesson, regardless of the wall-clock numbers.
+    `--duration 3m` applies to each signal, not to the whole incident. Later signals wait for earlier conditions, so the full sequence takes longer than three minutes.
 
 #### Act 4 — Read the dashboards you already have
 
-The cascade is still unfolding. Latency is climbing, the backup is saturating, the primary is still flapping. The temptation under pressure is to open Grafana's panel editor and start building — *don't*. Real on-call doesn't build dashboards during a fire; you read what's already there.
+The incident is still running. Read the dashboards you already have; an active incident is not the time to design new panels.
 
 > *"Your dashboards earned their keep this morning, when you built them in peacetime. Tonight, you just read them."*
 
 Open **Workshop Lab 2026** and walk the panels you already have.
 
-**The Flap rate panel you built in Part 2.** Set the `Device` dropdown to `srl1`, time range **Last 15 minutes**. You'll see a baseline trickle below the red threshold — and the panel stays quiet, which is itself information. Tonight's `incident` cascade emits three *metrics* (`interface_oper_state`, `incident_backup_link_utilization`, `incident_latency_ms`) and no UPDOWN log lines, so a log-derived flap panel has nothing to count. The panel you built is the right panel for a `PeerInterfaceFlapping` incident; tonight's incident is a different shape.
+**The Flap rate panel from Part 2.** Choose `srl1` and **Last 15 minutes**. The panel stays below its red threshold because this incident emits metrics but no UPDOWN log lines. That quiet panel rules out the kind of log-based flap it was built to detect.
 
-**Interface Operational Status and Interface Traffic.** Same dashboard, same `$device`. The cascade's metrics carry `source="incident-cascade"` rather than the `srl1`/`srl2` labels the provisioned panels filter on, so to see this incident's exact signals you bounce to **Explore** with Act 3's three queries. The dashboard panels show the *baseline* alongside the incident — the lab's steady-state shape during the same window, so you can read deviation against normal noise.
+**Interface Operational Status and Interface Traffic.** These panels show the lab's usual device data. Use Explore with the three Act 3 queries for the incident's `source="incident-cascade"` metrics.
 
-**Workshop Home.** Switch tabs. The **Currently Firing Alerts** table still shows the same four steady-state rows from Act 1 — this cascade has its own signals and doesn't trip the existing rules, so the table looks calm. The **Recent events** feed is reflecting cascade activity as it flows. One tab over keeps you aware without losing the detail view.
+**Workshop Home.** The alert table still shows the four known alerts because this incident does not match those rules. **Recent events** shows the new activity.
 
-The dashboards together tell the cascade's story — flap on Operational Status, pressure rising on Interface Traffic, latency climbing in Explore. The chapters Act 3's queries walked, now visible without typing. Queries are how you discover something is wrong. Dashboards are how you stay aware while you fix it.
+Together, the views show the sequence: primary link failure, rising backup use, then latency.
 
-**Stop and notice.** Dashboards earn their keep *before* incidents, by being there when the page lands. You build during calm; you read during fire. The panel you built in Part 2 didn't move tonight — and that's the right outcome, because tonight wasn't a `PeerInterfaceFlapping` incident. Tomorrow's might be. The work is done before the page, not after.
+**Stop and notice.** A panel that stays quiet can still be useful: it tells you this incident is not the condition that panel measures.
 
 #### Act 5 — Contain: silence the noise with maintenance
 
-The cascade is still running and the dashboards are still on fire. You're going to need quiet to investigate without the automated alert response also firing on every BGP wobble and flap. The on-call's containment move: flag `srl1` as in maintenance.
+Mark `srl1` as under maintenance so the automated workflow will not act on new alerts while you investigate:
 
 ```bash
 nobs packt maintenance --device srl1 --state
@@ -1358,7 +1333,7 @@ Verify the alert flow's response will now change for this device:
 nobs packt alerts
 ```
 
-The `BgpSessionNotUp` row is still in the firing list — that's expected. The alert isn't "fixed" by going into maintenance; what changes is the *response* path. The webhook flow consults Infrahub on every alert it receives, sees `srl1.maintenance=true`, and decides `skip` (reason: `device under maintenance`) instead of `quarantine`. Open Workshop Home and look at the **Recent events** feed: the next time Alertmanager's webhook fires for this alert, the new annotation reads `skip` rather than `quarantine`. Alertmanager's `repeat_interval` for this alert is 30 minutes (covered in Part 3 Phase 1), so you may not see the `skip` annotation appear within the time you spend in this guide.
+`BgpSessionNotUp` remains firing because maintenance does not repair the peer. It changes only the response: the workflow reads `maintenance=true` from Infrahub and chooses `skip`. Alertmanager normally waits 30 minutes before resending the same alert, so use the tip below if you want to see that result now.
 
 !!! tip "Want to see the skip annotation land *now*?"
 
@@ -1376,25 +1351,25 @@ The `BgpSessionNotUp` row is still in the firing list — that's expected. The a
 
     Either surface shows the `decision=skip` / `reason=device under maintenance` record the workflow just wrote.
 
-**Stop and notice.** Maintenance isn't a static config attribute on the device — it's a *containment lever* the on-call engineer uses live during an incident. Setting the flag signals to the automation: "someone is actively working here; hold off on automated actions." The flow consults the source of truth at decision time, so the change takes effect on the very next alert that arrives. This is the source-of-truth integration paying off.
+**Stop and notice.** The maintenance flag tells automation that a person is working on the device. The next workflow run reads the new value and leaves the alert alone.
 
 #### Act 6 — Fix and recover
 
-Time to simulate the fix landing. Stop the cascade mid-flight — `nobs packt reset` is the standard way to clear in-flight cascade scenarios:
+Stop the scripted incident and restore the starting state:
 
 ```bash
 nobs packt reset
 ```
 
-Reset is safe to run repeatedly — it re-loads Infrahub, clears any device maintenance flags, re-applies sonda's baseline scenarios, deletes any cascade scenarios still running, and expires any workshop-related Alertmanager silences. Watch the dashboards. Within ~30 seconds the cascade signals stop changing, the lab's continuous emitters take over, the panels drift back toward green. Latency drops on `incident_latency_ms`. `incident_backup_link_utilization` flatlines.
+Within about 30 seconds, the incident values stop changing and the usual lab data takes over. `reset` also clears maintenance flags and workshop silences.
 
-Note that `reset` already cleared the maintenance flag for `srl1` as part of returning the lab to known-good state. Re-run `nobs packt alerts`: the original `BgpSessionNotUp` is still firing — the deliberately broken peer hasn't been "fixed" because that's a configuration issue baked into the lab, not what we just simulated. But the *response* path is back to default: the next alert routing through the flow will get the full policy treatment again.
+Run `nobs packt alerts` again. The original `BgpSessionNotUp` alert still fires because that deliberately broken peer is part of the lab's starting state. The temporary incident and maintenance setting are gone.
 
-**Stop and notice.** The dashboard goes green. Latency drops. The metrics tell the recovery story the same way they told the failure story — in causal order, with timing that matches what an operator's intuition would expect. Real fixes don't always look this clean — the lab's synthetic data lets us show recovery as a proper signal so you see the full arc, not just the degradation half.
+**Stop and notice.** Recovery also has an order: the incident stops, backup use settles, and latency falls. Real recovery may be less tidy, but the same timeline method applies.
 
 #### Act 7 — Write the runbook stub
 
-Last act. You've just walked an incident end-to-end. The most valuable thing you can do with that fresh memory is write down what would help the next on-call. Open your scratch file and finish this template in your own words:
+While the investigation is fresh, write the first few lines of a runbook for the next on-call:
 
 ```markdown
 ### Runbook — primary uplink degradation cascade
@@ -1411,13 +1386,13 @@ Last act. You've just walked an incident end-to-end. The most valuable thing you
 **What "fixed" looks like in the dashboard:** _________________
 ```
 
-Fill the blanks based on what you actually walked through. Don't reach for textbook answers — what *did* you check first? What query gave you the most signal per second? What did you do to stop the bleeding so you could think?
+Fill the blanks with the checks and actions that were useful in this exercise.
 
 Then re-read what you wrote.
 
 > If a colleague got paged at 2am with this same symptom and you weren't around, would your five lines get them through it?
 
-**Stop and notice.** Runbooks are the artefact every observability investment is ultimately for. Telemetry shapes you can query, dashboards you can read, alerts that fire at the right time — they all funnel into the runbook entries that make the next on-call's job survivable. You just walked through the shape; you wrote the entry. That's the loop.
+**Stop and notice.** A short runbook turns what you learned during one incident into a faster starting point for the next person.
 
 ### Stretch goals (optional — pick one if you have time)
 
@@ -1433,9 +1408,7 @@ Then re-read what you wrote.
         bgp_oper_state{device="srl2", peer_address="10.1.11.1"}
         ```
 
-        You'll see the same shape: `oper_state=5` (stuck in active) on a peer whose SoT says `expected_state=established`. The triage decision tree doesn't care about the device label — it's the same intent-vs-reality pattern.
-
-        If your runbook stub *didn't* apply when you swapped to srl2, it was either too device-specific ("check srl1's config") or accidentally encoded a vendor-shape assumption that doesn't survive the SNMP path.
+        You should see `oper_state=5` while Infrahub says `expected_state=established`. If your runbook does not work for srl2, replace any device-specific or collection-specific instructions.
 
 - **Predict the customer-impact window.** At what point in the cascade would a customer's response-time SLO break? Back the answer with data from Act 3's queries, not feel.
 
@@ -1447,38 +1420,36 @@ Then re-read what you wrote.
         - At t ≈ 5:30, latency hits 150 ms (3 min of ramp).
         - `latency ≈ 5 + (t − 2:30) × (150 − 5) / 3` ms.
 
-        A typical web-service SLO target is **p99 < 200 ms total**, with maybe 30–50 ms of that budget allowed for backend round-trips. So latency above ~50 ms consumes the SLO budget; above ~100 ms breaks it.
+        For this exercise, suppose the service allows 50 ms of network latency and considers 100 ms a breach.
 
         - **50 ms reached at t ≈ 3:25** (start eating SLO budget — about 55 seconds after the primary's first DOWN edge).
         - **100 ms reached at t ≈ 4:30** (SLO breach — about 2 minutes after the primary's first DOWN edge).
 
-        The lesson: by the time customers complain (p99 broken), the primary uplink fault is **already 3–4 minutes old**. The alert needs to fire on a root-cause signal (the flap, or backup utilisation crossing threshold), not on the latency symptom — otherwise you're permanently 3 minutes behind the customer impact.
+        By the time latency reaches the example limit, the primary link has already been failing for several minutes. An earlier signal, such as the flap or rising backup use, gives the on-call more time to respond.
 
 - **Compare the investigation arc to the automated path.** Contrast the manual investigation you just walked against Part 3's automated flow. Where does each one belong in a real operation?
 
     ??? success "Solution — command to run + the qualitative comparison"
 
-        Run `nobs packt try-it` from Part 3 — it walks the four alert paths automatically. `try-it` is the automation handling routine cases without you; the investigation game you just walked is what you do when *automation isn't enough* — when you need to know what the workflow would have done, why, and whether to override it.
+        Run `nobs packt try-it` from Part 3 to exercise the four automated paths. Compare those fixed responses with the questions you asked during the manual investigation.
 
         Two different jobs, both useful:
 
         | Aspect | Investigation (Acts 1–6) | Automation (`try-it`) |
         |---|---|---|
-        | When you do it | Reactive, post-page, under pressure | Pre-computed, in calm |
+        | When it runs | After a page, guided by a person | Automatically for each matching alert |
         | Latency | Minutes per query, hours for the full arc | Seconds end-to-end |
-        | What it produces | A runbook entry, a hypothesis, a fix | A categorised decision + an audit annotation |
+        | What it produces | A diagnosis, a fix, and a runbook update | A fixed decision and a record of it |
         | Where it excels | When you have time and a specific question | When alert volume exceeds human attention |
         | Where it falls short | At 2am with 50 alerts firing simultaneously | When the situation is novel — outside the policy's rule set |
 
-        The lesson: automation handles routine cases (broken peer, BGP mismatch, device in maintenance — one second per alert). Investigation handles the unusual cases — where you need to question the policy's reasoning, decide whether to override, or change the policy itself.
-
-        In production, both run in parallel: the flow handles 95% of alerts on autopilot, and the on-call engineer steps in only for the 5% the policy escalates or can't confidently classify.
+        Automation is useful for known cases with agreed rules. A person is still needed for unfamiliar failures, exceptions, and changes to those rules.
 
 ### What you took away
 
-- The shape of an interface-degradation incident — primary fault → failover → backup pressure → latency — is universal. Latency is almost always a symptom; walk back through the cascade to find the cause.
-- Same labels on metrics and logs means correlation is one query change away. Metric tells you *what*; log tells you *why*. The metric-to-log bridge is the single most useful pattern under pressure.
-- Dashboards are built in peacetime and read in crisis; runbooks are the durable artefact every observability investment funnels into. Five good lines, written while the memory is fresh, are worth more than a polished page nobody can find at 02:14.
+- The primary link failed first; backup pressure and latency followed. Start with the timeline to separate cause from symptom.
+- Matching labels let you move from a metric to the related logs without searching again.
+- Build dashboards before an incident and update the runbook while the useful details are fresh.
 
 ---
 
