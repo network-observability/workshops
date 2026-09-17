@@ -6,10 +6,6 @@ Late morning. The clock is creeping toward lunch. The flap-rate panel from befor
 
 > *"Watch what the workflow handles on its own. Then we'll change the facts and see it make a different choice. By the end, you'll know what the automation can do and what still needs a person."*
 
-!!! info "Allow 60–75 minutes"
-
-    The commands themselves finish quickly. Most of the time goes into reading the output and checking the same run in Infrahub, Grafana, Alertmanager, and Prefect. The optional **Curious?** and **Deep dive** sections add another 20–30 minutes if you open all of them.
-
 ## Setup check
 
 !!! warning "First time spinning up the lab?"
@@ -21,7 +17,7 @@ Late morning. The clock is creeping toward lunch. The flap-rate panel from befor
     nobs packt status
     ```
 
-    With the images already downloaded, startup took about a minute in testing. Loki may be the last service to turn green.
+    Loki may be the last service to turn green.
 
     If you landed straight on Part 3 without running Quickstart, seed Infrahub once after the stack is ready. Infrahub stores the intended network state that the workflow checks on every alert:
 
