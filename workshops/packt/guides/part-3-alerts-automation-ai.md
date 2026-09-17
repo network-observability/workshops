@@ -291,17 +291,8 @@ An alert tells you that a condition is true. The workflow adds the context neede
 
 ### 1. Alert — see it fire
 
-<div class="packt-workflow-focus packt-workflow-focus--alert" markdown>
-
-<p class="packt-workflow-focus__label"><span>You are here</span> ↓ Confirm that the alert arrived.</p>
-
-<div class="packt-workflow-focus__viewport" markdown>
-
-![Workflow map zoomed to Alert](../../../docs-packt/assets/diagrams/part-3-cycle-light.svg#only-light){ .packt-workflow-focus__image }
-![Workflow map zoomed to Alert](../../../docs-packt/assets/diagrams/part-3-cycle-dark.svg#only-dark){ .packt-workflow-focus__image }
-
-</div>
-</div>
+![You are here — Alert: confirm that the alert and its labels arrived](../../../docs-packt/assets/diagrams/part-3-focus-alert-light.svg#only-light){ .screenshot loading=lazy }
+![You are here — Alert: confirm that the alert and its labels arrived](../../../docs-packt/assets/diagrams/part-3-focus-alert-dark.svg#only-dark){ .screenshot loading=lazy }
 
 The workflow can't do anything until an alert exists. Start here: confirm the lab has alerts to work with.
 
@@ -360,17 +351,8 @@ For Part 3, we focus on what happens *after* the alert is `firing`: the workflow
 
 ### 2. Evidence — what the workflow collected
 
-<div class="packt-workflow-focus packt-workflow-focus--evidence" markdown>
-
-<p class="packt-workflow-focus__label"><span>You are here</span> ↓ Gather the facts before choosing an action.</p>
-
-<div class="packt-workflow-focus__viewport" markdown>
-
-![Workflow map zoomed to Evidence](../../../docs-packt/assets/diagrams/part-3-cycle-light.svg#only-light){ .packt-workflow-focus__image }
-![Workflow map zoomed to Evidence](../../../docs-packt/assets/diagrams/part-3-cycle-dark.svg#only-dark){ .packt-workflow-focus__image }
-
-</div>
-</div>
+![You are here — Evidence: gather intended state, current metrics, and recent logs](../../../docs-packt/assets/diagrams/part-3-focus-evidence-light.svg#only-light){ .screenshot loading=lazy }
+![You are here — Evidence: gather intended state, current metrics, and recent logs](../../../docs-packt/assets/diagrams/part-3-focus-evidence-dark.svg#only-dark){ .screenshot loading=lazy }
 
 Before choosing an action, the workflow gathers three kinds of evidence:
 
@@ -543,17 +525,8 @@ You can also see the intended state in Infrahub. Open <http://localhost:8000>, c
 
 ### 3. Decision rules — what was decided and why
 
-<div class="packt-workflow-focus packt-workflow-focus--policy" markdown>
-
-<p class="packt-workflow-focus__label"><span>You are here</span> ↓ Apply the same rules to those facts.</p>
-
-<div class="packt-workflow-focus__viewport" markdown>
-
-![Workflow map zoomed to Policy](../../../docs-packt/assets/diagrams/part-3-cycle-light.svg#only-light){ .packt-workflow-focus__image }
-![Workflow map zoomed to Policy](../../../docs-packt/assets/diagrams/part-3-cycle-dark.svg#only-dark){ .packt-workflow-focus__image }
-
-</div>
-</div>
+![You are here — Decision: apply the same fixed rules to the gathered facts](../../../docs-packt/assets/diagrams/part-3-focus-decision-light.svg#only-light){ .screenshot loading=lazy }
+![You are here — Decision: apply the same fixed rules to the gathered facts](../../../docs-packt/assets/diagrams/part-3-focus-decision-dark.svg#only-dark){ .screenshot loading=lazy }
 
 Prefect calls this step **policy**. In plain language, it is a short list of decision rules. The workflow asks two questions in order:
 
@@ -677,17 +650,8 @@ All three decisions use the same record format. Step 5 changes one maintenance f
 
 ### 4. Action — what `proceed` actually does
 
-<div class="packt-workflow-focus packt-workflow-focus--action" markdown>
-
-<p class="packt-workflow-focus__label"><span>You are here</span> ↓ Carry out and record the decision.</p>
-
-<div class="packt-workflow-focus__viewport" markdown>
-
-![Workflow map zoomed to Action](../../../docs-packt/assets/diagrams/part-3-cycle-light.svg#only-light){ .packt-workflow-focus__image }
-![Workflow map zoomed to Action](../../../docs-packt/assets/diagrams/part-3-cycle-dark.svg#only-dark){ .packt-workflow-focus__image }
-
-</div>
-</div>
+![You are here — Action: carry out and record the decision](../../../docs-packt/assets/diagrams/part-3-focus-action-light.svg#only-light){ .screenshot loading=lazy }
+![You are here — Action: carry out and record the decision](../../../docs-packt/assets/diagrams/part-3-focus-action-dark.svg#only-dark){ .screenshot loading=lazy }
 
 The last step acts only when the decision is `proceed`. It creates a temporary silence, records that action, and writes the RCA summary. A `skip` or `resolved` decision records why no action was taken.
 
@@ -831,17 +795,8 @@ Worth saying out loud, so it doesn't trip you up:
 
 ### 5. Maintenance branch — same drill, opposite decision
 
-<div class="packt-workflow-focus packt-workflow-focus--policy" markdown>
-
-<p class="packt-workflow-focus__label"><span>Back here</span> ↓ Change one fact, then run the same decision rules again.</p>
-
-<div class="packt-workflow-focus__viewport" markdown>
-
-![Workflow map zoomed to Policy for the maintenance branch](../../../docs-packt/assets/diagrams/part-3-cycle-light.svg#only-light){ .packt-workflow-focus__image }
-![Workflow map zoomed to Policy for the maintenance branch](../../../docs-packt/assets/diagrams/part-3-cycle-dark.svg#only-dark){ .packt-workflow-focus__image }
-
-</div>
-</div>
+![Back at the Decision step: change one fact, then run the same rules again](../../../docs-packt/assets/diagrams/part-3-focus-decision-light.svg#only-light){ .screenshot loading=lazy }
+![Back at the Decision step: change one fact, then run the same rules again](../../../docs-packt/assets/diagrams/part-3-focus-decision-dark.svg#only-dark){ .screenshot loading=lazy }
 
 You've now walked the cycle once: alert → evidence → policy → action. The workflow saw a real mismatch and decided `proceed`.
 
@@ -944,17 +899,8 @@ nobs packt maintenance --device srl1 --clear
 
 ### 6. Your turn — find what the workflow actually did
 
-<div class="packt-workflow-focus packt-workflow-focus--action" markdown>
-
-<p class="packt-workflow-focus__label"><span>Finish here</span> ↓ Read and count the records the workflow left behind.</p>
-
-<div class="packt-workflow-focus__viewport" markdown>
-
-![Workflow map zoomed to the records created during Action](../../../docs-packt/assets/diagrams/part-3-cycle-light.svg#only-light){ .packt-workflow-focus__image }
-![Workflow map zoomed to the records created during Action](../../../docs-packt/assets/diagrams/part-3-cycle-dark.svg#only-dark){ .packt-workflow-focus__image }
-
-</div>
-</div>
+![Finish at the Action step by reading and counting the records it created](../../../docs-packt/assets/diagrams/part-3-focus-action-light.svg#only-light){ .screenshot loading=lazy }
+![Finish at the Action step by reading and counting the records it created](../../../docs-packt/assets/diagrams/part-3-focus-action-dark.svg#only-dark){ .screenshot loading=lazy }
 
 You've walked every step of the cycle. Now use what you've seen.
 
