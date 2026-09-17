@@ -5,7 +5,7 @@ description: Follow an alert through a workflow, change one maintenance flag, an
 
 <div class="packt-section-hero" markdown>
 
-<span class="packt-section-hero__badge">Part 3 of 3 · ~65 min · hands-on</span>
+<span class="packt-section-hero__badge">Part 3 of 3 · 60–75 min · hands-on</span>
 
 <h1 class="packt-section-hero__title">Alerts, automation and AI</h1>
 

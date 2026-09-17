@@ -707,7 +707,7 @@ class WorkshopSDK:
         }
 
     def bgp_logql(self, device: str, peer_address: str) -> str:
-        return f'{{device="{device}"}} != "license" |~ "(bgp|BGP|neighbor|session|route|ipv4-unicast|{peer_address})"'
+        return f'{{device="{device}",peer_address="{peer_address}"}} != "license"'
 
     def bgp_logs(self, device: str, peer_address: str, minutes: int = 10, limit: int = 200) -> list[str]:
         return self.loki.query_range(

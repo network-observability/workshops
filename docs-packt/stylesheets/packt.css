@@ -374,6 +374,106 @@
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.40);
 }
 
+/* ---------- Part 3 workflow wayfinding ------------------------------------ */
+/* Reuse the full cycle diagram at each major step, but crop and scale it so
+ * the current phase is centered. This keeps one source image while giving the
+ * student a visual "you are here" marker throughout the exercise. */
+
+.md-typeset .packt-workflow-focus {
+  --packt-workflow-position: 50%;
+  --packt-workflow-origin: center;
+  margin: 1rem 0 1.5rem;
+}
+
+.md-typeset .packt-workflow-focus__label {
+  margin: 0;
+  padding: 0.55rem 0.85rem;
+  border: 1px solid rgba(184, 67, 10, 0.25);
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
+  background: rgba(232, 89, 12, 0.08);
+  color: var(--md-default-fg-color--light);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.md-typeset .packt-workflow-focus__label span {
+  display: inline-block;
+  margin-right: 0.35rem;
+  padding: 0.12rem 0.48rem;
+  border-radius: 999px;
+  background: var(--packt-gradient-mid);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.md-typeset .packt-workflow-focus__viewport {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 2.1 / 1;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0 0 8px 8px;
+  background: var(--md-default-bg-color);
+}
+
+.md-typeset .packt-workflow-focus__viewport > p {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+.md-typeset img.packt-workflow-focus__image {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  object-fit: cover;
+  object-position: var(--packt-workflow-position) center;
+  transform: scale(1.3);
+  transform-origin: var(--packt-workflow-origin) center;
+}
+
+.md-typeset .packt-workflow-focus--alert {
+  --packt-workflow-position: left;
+  --packt-workflow-origin: left;
+}
+
+.md-typeset .packt-workflow-focus--evidence {
+  --packt-workflow-position: 34%;
+  --packt-workflow-origin: 34%;
+}
+
+.md-typeset .packt-workflow-focus--policy {
+  --packt-workflow-position: 72%;
+  --packt-workflow-origin: 72%;
+}
+
+.md-typeset .packt-workflow-focus--action {
+  --packt-workflow-position: right;
+  --packt-workflow-origin: right;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .packt-workflow-focus__label {
+  border-color: rgba(255, 154, 92, 0.3);
+  background: rgba(255, 154, 92, 0.08);
+}
+
+@media (max-width: 600px) {
+  .md-typeset .packt-workflow-focus__viewport {
+    aspect-ratio: 1.45 / 1;
+  }
+
+  .md-typeset img.packt-workflow-focus__image {
+    transform: scale(1.55);
+  }
+}
+
 /* Per-part section preview — a single screenshot right after the section
  * hero, tighter caption, full width of the content area. */
 .md-typeset figure.section-preview {

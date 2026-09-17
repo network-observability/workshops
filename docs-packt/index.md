@@ -58,9 +58,9 @@ Three hours, one laptop, one on-call investigation. You'll write PromQL and LogQ
 
     ---
 
-    ~65 min · hands-on
+    60–75 min · hands-on
 
-    A real alert lands. Walk the cycle — alert, evidence, policy, action — then flip one source-of-truth flag and watch the same alert reach the opposite decision. Toggle the AI RCA step and decide what you'd trust it on at 02:14.
+    A real alert lands. Walk the cycle — alert, facts, decision, action — then flip one intended-state flag and watch the same alert reach the opposite decision. Enable the root-cause summary and decide what you'd trust it on at 02:14.
 
     [:octicons-arrow-right-24: Open Part 3](part-3.md)
 

@@ -170,7 +170,7 @@ def _fetch_metrics(prom_url: str, device: str, peer: str, afi_safi: str, instanc
 
 def _fetch_logs(loki_url: str, device: str, peer: str, minutes: int, limit: int) -> list[str]:
     client = LokiClient(loki_url)
-    query = f'{{device="{device}"}} != "license" |~ "(bgp|BGP|neighbor|session|route|ipv4-unicast|{peer})"'
+    query = f'{{device="{device}",peer_address="{peer}"}} != "license"'
     try:
         return client.query_range(query, minutes=minutes, limit=limit)
     except Exception:
