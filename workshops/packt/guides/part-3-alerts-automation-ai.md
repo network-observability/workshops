@@ -10,7 +10,16 @@ Late morning. The clock is creeping toward lunch. The flap-rate panel from befor
 
 !!! warning "First time spinning up the lab?"
 
-    If you landed straight on Part 3 without running Quickstart, seed Infrahub once before continuing — the workflow reads from it on every alert:
+    If the lab is stopped, start it and wait until every service says `ok`:
+
+    ```bash
+    nobs packt up
+    nobs packt status
+    ```
+
+    Loki may be the last service to turn green.
+
+    If you landed straight on Part 3 without running Quickstart, seed Infrahub once after the stack is ready. Infrahub stores the intended network state that the workflow checks on every alert:
 
     ```bash
     nobs packt load-infrahub
@@ -23,25 +32,23 @@ nobs packt reset
 nobs packt alerts
 ```
 
-You should see four alerts firing — same shape you saw in Part 2:
+Look for the two `BgpSessionNotUp` alerts below. Those are the only rows you need in Part 3:
 
 ```
 | Alertname                | Severity | Device / target  |   State |  Age |
 | BgpSessionNotUp          | warning  | srl1 → 10.1.99.2 |  firing |  ... |
 | BgpSessionNotUp          | warning  | srl2 → 10.1.11.1 |  firing |  ... |
-| InterfaceAdminUpOperDown | warning  | srl1             |  firing |  ... |
-| InterfaceAdminUpOperDown | warning  | srl2             |  firing |  ... |
 ```
 
 If you missed Part 2's [Walk the alert lifecycle](../../../docs-packt/part-2.md#walk-the-alert-lifecycle), skim it now — the Alertmanager UI, the `ALERTS` metric, and what `firing ↔ suppressed` means are all explained there. Part 3 picks up where that leaves off.
 
-We will follow the two `BgpSessionNotUp` alerts. The workflow temporarily silences each one, so its state changes from `firing` to `suppressed`. It returns to `firing` when the silence expires. Ignore the two `InterfaceAdminUpOperDown` rows in this part.
+The workflow temporarily silences each BGP alert, so its state changes from `firing` to `suppressed`. It returns to `firing` when the silence expires. Two `InterfaceAdminUpOperDown` rows may appear after about two minutes; they belong to another exercise, so ignore them here.
 
 If you see fewer than two `BgpSessionNotUp` rows, give the stack 60 seconds and try again — the rule has a `for: 30s` clause, so you might have caught it before promotion. A `PeerInterfaceFlapping` row from Part 2's flap cascade ages out within ~5 minutes.
 
 ### Enable the AI-written summary
 
-RCA means **root-cause analysis**. The lab can write a short RCA summary beside each workflow decision. Enable the offline **demo** provider now; it needs no API key and costs nothing:
+RCA means **root-cause analysis**: a short explanation of the likely cause and what to check next. Enable the offline **demo** provider now; it needs no API key and costs nothing:
 
 Edit `workshops/packt/.env` and set:
 
@@ -80,7 +87,7 @@ The demo provider fills a template with the facts gathered by the workflow. It d
             └── take or skip action
     ```
 
-    Prefect shows the three steps as `evidence`, `policy`, and `action`. The decision uses fixed rules: the same facts always produce the same result. The optional AI step writes a summary but does not choose the action.
+    Prefect shows the three steps as `evidence`, `policy`, and `action`. Here, **policy** simply means the fixed decision rules: the same facts always produce the same result. The optional AI step writes a summary but does not choose the action.
 
 > Tip: use the Prometheus datasource for metric queries and the Loki datasource for logs and workflow records. Both are available in Grafana Explore.
 
@@ -92,7 +99,7 @@ Two `BgpSessionNotUp` alerts are firing. A small Python workflow handles each on
 
 1. **Alert** — receive the alert.
 2. **Evidence** — gather the intended state, current metrics, and recent logs.
-3. **Policy** — apply fixed rules to those facts.
+3. **Decision rules** — apply fixed rules to those facts. Prefect calls this step `policy`.
 4. **Action** — silence the alert or leave it alone, then record why.
 
 ![The Part 3 cycle — alert, evidence, policy, action](../../../docs-packt/assets/diagrams/part-3-cycle-light.svg#only-light){ .screenshot loading=lazy }
@@ -280,13 +287,16 @@ An alert tells you that a condition is true. The workflow adds the context neede
 
 ### 1. Alert — see it fire
 
+![You are here — Alert: confirm that the alert and its labels arrived](../../../docs-packt/assets/diagrams/part-3-focus-alert-light.svg#only-light){ .screenshot loading=lazy }
+![You are here — Alert: confirm that the alert and its labels arrived](../../../docs-packt/assets/diagrams/part-3-focus-alert-dark.svg#only-dark){ .screenshot loading=lazy }
+
 The workflow can't do anything until an alert exists. Start here: confirm the lab has alerts to work with.
 
 ```bash
 nobs packt alerts
 ```
 
-You should see four rows. Two of them are `BgpSessionNotUp` — those are the alerts we'll follow through the rest of this part:
+You need the two `BgpSessionNotUp` rows shown below. The two interface rows may also be present by now, but they are not used in this part:
 
 ```
 | Alertname                | Severity | Device / target  |   State |  Age |
@@ -337,9 +347,12 @@ For Part 3, we focus on what happens *after* the alert is `firing`: the workflow
 
 ### 2. Evidence — what the workflow collected
 
+![You are here — Evidence: gather intended state, current metrics, and recent logs](../../../docs-packt/assets/diagrams/part-3-focus-evidence-light.svg#only-light){ .screenshot loading=lazy }
+![You are here — Evidence: gather intended state, current metrics, and recent logs](../../../docs-packt/assets/diagrams/part-3-focus-evidence-dark.svg#only-dark){ .screenshot loading=lazy }
+
 Before choosing an action, the workflow gathers three kinds of evidence:
 
-- **Infrahub:** should this peer be up, and is the device under maintenance?
+- **Infrahub:** the intended-state database — should this peer be up, and is the device under maintenance?
 - **Prometheus:** what state is the peer in now?
 - **Loki:** what happened recently?
 
@@ -355,7 +368,7 @@ The output is four panels. Each answers a different question:
 
 | Panel | Source | Answers |
 |---|---|---|
-| **Source of truth (Infrahub)** | The intent database | "Is this peer **supposed** to be up?" |
+| **Source of truth (Infrahub)** | The intended-state database | "Is this peer **supposed** to be up?" |
 | **BGP metrics snapshot (Prometheus)** | The metrics store | "Is this peer **actually** up?" |
 | **Loki — last 20 relevant log lines** | The log store | "What happened recently on this peer?" |
 | **Policy hint** | The workflow's decision rule | "What would the workflow decide right now?" |
@@ -454,14 +467,11 @@ The output is four panels. Each answers a different question:
         }
     ```
 
-    **Loki — keep recent BGP logs for this device and peer:**
+    **Loki — keep recent logs labelled with this device and peer:**
 
     ```python
     def bgp_logs(self, device, peer_address, minutes=10) -> list[str]:
-        query = (
-            f'{{device="{device}"}} '
-            f'|~ "(bgp|BGP|neighbor|session|route|{peer_address})"'
-        )
+        query = f'{{device="{device}", peer_address="{peer_address}"}}'
         return self.loki.query_range(query, minutes=minutes)
     ```
 
@@ -509,9 +519,12 @@ You can also see the intended state in Infrahub. Open <http://localhost:8000>, c
 
 > `BgpSessionNotUp` says only that a session is down. The intended state, maintenance flag, current metrics, and recent logs determine whether that needs action.
 
-### 3. Policy — what was decided and why
+### 3. Decision rules — what was decided and why
 
-The policy asks two questions in order:
+![You are here — Decision: apply the same fixed rules to the gathered facts](../../../docs-packt/assets/diagrams/part-3-focus-decision-light.svg#only-light){ .screenshot loading=lazy }
+![You are here — Decision: apply the same fixed rules to the gathered facts](../../../docs-packt/assets/diagrams/part-3-focus-decision-dark.svg#only-dark){ .screenshot loading=lazy }
+
+Prefect calls this step **policy**. In plain language, it is a short list of decision rules. The workflow asks two questions in order:
 
 1. Is the device known, and is it under maintenance?
 2. If normal checks should continue, do the current metrics match the intended state?
@@ -550,7 +563,7 @@ For `srl1 → 10.1.99.2`, Infrahub says the peer should be established, while Pr
     annotate_decision → decision=skip
     ```
 
-The workflow writes every decision to Loki. This **audit record** is a log line containing the device, peer, decision, and reason. It remains available after the alert disappears.
+The workflow writes every decision to Loki. This **decision record** — also called an audit record — is a log line containing the device, peer, decision, and reason. It remains available after the alert disappears.
 
 Open Grafana, switch to the **Loki** datasource in Explore, and paste:
 
@@ -633,6 +646,9 @@ All three decisions use the same record format. Step 5 changes one maintenance f
 
 ### 4. Action — what `proceed` actually does
 
+![You are here — Action: carry out and record the decision](../../../docs-packt/assets/diagrams/part-3-focus-action-light.svg#only-light){ .screenshot loading=lazy }
+![You are here — Action: carry out and record the decision](../../../docs-packt/assets/diagrams/part-3-focus-action-dark.svg#only-dark){ .screenshot loading=lazy }
+
 The last step acts only when the decision is `proceed`. It creates a temporary silence, records that action, and writes the RCA summary. A `skip` or `resolved` decision records why no action was taken.
 
 ??? info "Curious? See the action code and task output"
@@ -674,7 +690,7 @@ The last step acts only when the decision is `proceed`. It creates a temporary s
 
 Here are the three visible results of `proceed`.
 
-#### A · The silence — containment in Alertmanager
+#### A · The silence — stop repeat notifications
 
 The workflow asks Alertmanager to **silence** the alert for 20 minutes. Same kind of silence you created by hand in Part 2's "Create a silence by hand" section — only this one was created automatically, scoped to the specific peer.
 
@@ -711,11 +727,11 @@ Open Alertmanager at <http://localhost:9093/#/alerts> and enable the **Silenced*
     nobs packt cycle srl1 10.1.99.2 --trigger
     ```
 
-    Within ~10 seconds a new 20-minute silence is in place; refresh the Alertmanager page and the row should flip to `suppressed`.
+    Within ~15 seconds a new 20-minute silence is in place; refresh the Alertmanager page and the row should flip to `suppressed`.
 
 > Why silence rather than fix? This workflow is allowed to reduce repeated notifications, not change a network device. The peer remains broken and still needs investigation.
 
-#### B · The action audit + dashboard mark — Loki record, optionally visualised in Grafana
+#### B · The action record — saved in Loki and shown in Grafana
 
 The workflow writes a second Loki record describing the action:
 
@@ -733,7 +749,9 @@ You should see one row for each `proceed` run, with the time the silence was cre
 
 You can draw these records as vertical markers on a Grafana dashboard: **Edit → Dashboard options → Annotations → New annotation**, choose Loki, and use the query above. The marker answers a useful timeline question: *when did the workflow act?*
 
-#### C · The AI narrative — same evidence, different voice
+<a id="c-the-ai-narrative-same-evidence-different-voice"></a>
+
+#### C · The root-cause summary — same evidence, different voice
 
 The workflow also writes an **RCA summary** in plain language. What it writes depends on the decision:
 
@@ -772,6 +790,9 @@ Worth saying out loud, so it doesn't trip you up:
 `proceed` mutes repeat notifications, records when that happened, and writes a summary. It does not repair the network.
 
 ### 5. Maintenance branch — same drill, opposite decision
+
+![Back at the Decision step: change one fact, then run the same rules again](../../../docs-packt/assets/diagrams/part-3-focus-decision-light.svg#only-light){ .screenshot loading=lazy }
+![Back at the Decision step: change one fact, then run the same rules again](../../../docs-packt/assets/diagrams/part-3-focus-decision-dark.svg#only-dark){ .screenshot loading=lazy }
 
 You've now walked the cycle once: alert → evidence → policy → action. The workflow saw a real mismatch and decided `proceed`.
 
@@ -833,7 +854,7 @@ This starts the same workflow directly instead of waiting for Alertmanager's 30-
 
 #### Step 4 · Read the new decision in Loki
 
-Wait about 10 seconds, then re-run the Step 3 LogQL query in Grafana:
+When the command finishes, re-run the Step 3 LogQL query in Grafana:
 
 ```logql
 {source="prefect", workflow="packt_quarantine_bgp", device="srl1", decision=~"proceed|skip|resolved"} | json
@@ -847,6 +868,8 @@ The **most recent line** now reads:
 | `message` (field) | `device under maintenance` |
 
 The peer is still broken, but the result is now `skip` because Infrahub says the device is under maintenance.
+
+The alert may still show as `suppressed`: the earlier 20-minute silence keeps running until it expires. The proof of `skip` is that this run creates no **new** silence.
 
 The RCA step also skips because the workflow is not taking action. Confirm with:
 
@@ -871,6 +894,9 @@ nobs packt maintenance --device srl1 --clear
 > **The big idea.** Maintenance is context stored in Infrahub, not a special rule hidden in the workflow. One flag changes the decision because the workflow checks that context every time.
 
 ### 6. Your turn — find what the workflow actually did
+
+![Finish at the Action step by reading and counting the records it created](../../../docs-packt/assets/diagrams/part-3-focus-action-light.svg#only-light){ .screenshot loading=lazy }
+![Finish at the Action step by reading and counting the records it created](../../../docs-packt/assets/diagrams/part-3-focus-action-dark.svg#only-dark){ .screenshot loading=lazy }
 
 You've walked every step of the cycle. Now use what you've seen.
 
