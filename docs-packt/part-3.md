@@ -16,7 +16,7 @@ An alert fires and a workflow handles it. Follow each step: receive the alert, g
 <p class="packt-section-hero__meta">
   <span>Alertmanager → webhook → Prefect → Infrahub</span>
   <span>Fixed rules, optional AI summary</span>
-  <span>Ends with your turn and a reflection</span>
+  <span>Ends with a proceed/skip comparison and reflection</span>
 </p>
 
 </div>

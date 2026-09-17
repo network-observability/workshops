@@ -60,7 +60,7 @@ Three hours, one laptop, one on-call investigation. You'll write PromQL and LogQ
 
     Hands-on
 
-    A real alert lands. Walk the cycle — alert, facts, decision, action — then flip one intended-state flag and watch the same alert reach the opposite decision. Enable the root-cause summary and decide what you'd trust it on at 02:14.
+    A real alert lands. Walk the cycle — alert, facts, decision, action — then flip one intended-state flag and watch the same alert reach the opposite decision. Read the root-cause summary and decide what you'd trust it on at 02:14.
 
     [:octicons-arrow-right-24: Open Part 3](part-3.md)
 
