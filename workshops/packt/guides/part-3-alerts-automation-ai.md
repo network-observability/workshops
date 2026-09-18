@@ -313,6 +313,33 @@ Three things to notice:
 
 If either BGP row is missing, give the alert rule another 60 seconds to evaluate and run the command again.
 
+??? info "Optional — see the YAML that triggered `BgpSessionNotUp`"
+
+    Prometheus created the alert from this rule in [`alerting_rules.yml`](https://github.com/network-observability/workshops/blob/main/workshops/packt/prometheus/rules/alerting_rules.yml):
+
+    ```yaml
+    - alert: BgpSessionNotUp
+      expr: |
+        (
+          bgp_admin_state{afi_safi_name="ipv4-unicast", name="default"} == 1
+        )
+        and on (device, peer_address, afi_safi_name, name)
+        (
+          bgp_oper_state{afi_safi_name="ipv4-unicast", name="default"} != 1
+        )
+      for: 30s
+      labels:
+        severity: warning
+        workshop: "mno"
+      annotations:
+        summary: "BGP session not UP ({{ $labels.device }} ↔ {{ $labels.peer_address }})"
+        description: |
+          admin_state=enable (1) but oper_state is not up (1).
+          afi_safi_name={{ $labels.afi_safi_name }}, instance={{ $labels.name }}.
+    ```
+
+    In plain language: the BGP session is configured to be enabled (`admin_state == 1`), but it is not operationally up (`oper_state != 1`). `and on (...)` makes sure both measurements describe the same device and peer. If that mismatch lasts for 30 seconds, the alert moves from `pending` to `firing`.
+
 The same alert + suppressed state + silencing ID also shows in the **Alert panel** of `nobs packt cycle srl1 10.1.99.2` — useful if you'll be re-observing this step later.
 
 ??? info "Optional UI check — Alertmanager"
