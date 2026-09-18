@@ -5,7 +5,7 @@ The workshop is one continuous investigation. Over three hours you arrive on a n
 | Part | Guide | Format | What you'll do |
 |------|-------|--------|----------------|
 | 1 | [Telemetry and queries](part-1-telemetry-and-queries.md) | ~55 min · hands-on | Your senior walks you through the lab's telemetry shape. Find the broken peer, learn the metric-to-log bridge, then answer two questions of your own |
-| 2 | [Dashboards and Alerts](part-2-dashboards.md) | ~20 min · guided demo | A post-mortem email lands. We build the flap-rate panel on screen, then walk the same alert from panel to firing to silenced. Nothing here is required for Part 3 |
+| 2 | [Dashboards and Alerts](part-2-dashboards.md) | guided demo | A post-mortem email lands. We build the flap-rate panel, overlay its firing window, then silence a notification. Part 3 starts from a clean lab state |
 | 3 | [Alert response, Automation and AI](part-3-alerts-automation-ai.md) | hands-on | A real alert fires. Walk the cycle, flip one intended-state flag and reach the opposite decision, read the root-cause summary, and decide what you'd trust it on |
 | — | [Take it home](take-home.md) | your own pace | Everything the three hours couldn't fit, in the order you'd do it: recording rules, alert rules, the full ten-step panel build, the real-LLM swap, and the end-to-end 02:14 capstone |
 
