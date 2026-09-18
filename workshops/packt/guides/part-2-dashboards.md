@@ -20,9 +20,9 @@ Whoever's free, take it.
 
 !!! success "Follow the live demo"
 
-    The main route is numbered **Demo 1** through **Demo 4**. We drive; you watch. Follow the uncollapsed text to build one panel, trigger one flap, inspect its alert, and silence a notification safely.
+    The main route is numbered **Demo 1** through **Demo 5**. We drive; you watch. Follow the uncollapsed text to build one panel, trigger one flap, inspect its alert, overlay the firing window, and silence a notification safely.
 
-    Second-device testing, implementation details, troubleshooting, and the alert-marker build are inside collapsed **Optional** boxes. Part 3 starts from a clean `nobs packt reset` and does not depend on this panel, but it refers back to the alert states shown in Demo 3 and Demo 4.
+    Second-device testing, implementation details, and troubleshooting are inside collapsed **Optional** boxes. Part 3 starts from a clean `nobs packt reset` and does not depend on this panel, but it refers back to the alert states shown in Demo 3 and Demo 5.
 
 A "flap" is an interface bouncing up and down in quick succession. The flap-rate panel counts UPDOWN log events per interface in a rolling window — a number that climbs fast when something is flapping and sits at the floor when it isn't.
 
@@ -245,60 +245,50 @@ What to look at:
 - **The alerts list** — every alert the lab currently holds, grouped by label set. Click any row to expand and see all its labels (`device`, `interface`, `severity`, …) and annotations (`summary`, `description`).
 - **The filter box** at the top — paste `alertname="PeerInterfaceFlapping"` to scope down. Filters use the same label-matcher syntax as PromQL/LogQL selectors.
 - **The generator URL** on an expanded alert — the link back to the rule that fired this alert. For `PeerInterfaceFlapping` it points at the Loki ruler's evaluation.
-- **The Silences tab** in the top nav — this is where you'll create one in Demo 4.
+- **The Silences tab** in the top nav — this is where you'll create one in Demo 5.
 
-??? example "Optional extension — overlay firing alerts on the panel"
+### Demo 4 · Overlay the firing window on the panel
 
-    Prometheus exposes alert state as a metric. In Grafana Explore, pick the **prometheus** datasource and paste:
+Prometheus exposes alert state as a metric. A firing alert returns a series with value `1` and labels such as `alertname`, `device`, and `interface`:
 
-    ```promql
-    ALERTS{alertstate="firing"}
-    ```
+```promql
+ALERTS{alertname="PeerInterfaceFlapping", alertstate="firing"}
+```
 
-    Every currently-firing alert returns a series with value `1` and labels copying the alert's `alertname` and `severity`. Filter further:
+Grafana can draw that series as an **alert marker** over the flap-rate panel. Grafana calls this feature an **annotation**; it is unrelated to the `annotations:` notification text in an alert-rule file.
 
-    ```promql
-    ALERTS{alertname="PeerInterfaceFlapping"}
-    ```
+Add the marker while the recent flap is still inside the dashboard's time range:
 
-    This is how the **Currently firing alerts** panel on Workshop Home gets its data. Grafana can also draw the firing window as an **alert marker** over the flap-rate panel. Grafana calls this feature an **annotation**; it is unrelated to the `annotations:` notification text in an alert-rule file.
+1. Click **Edit** (top-right of the dashboard).
+2. Open **Dashboard options** in the right sidebar.
+3. Find **Annotations** and click **Add annotation query**.
+4. Set the outer options:
 
-    To add the marker:
+    | Field | Value |
+    |---|---|
+    | **Name** | `PeerInterfaceFlapping firing` |
+    | **Color** | red |
+    | **Show annotation controls in** | `Above dashboard` |
+    | **Show in** | `All panels` |
 
-    1. Click **Edit** (top-right of the dashboard).
-    2. Open **Dashboard options** in the right sidebar.
-    3. Find **Annotations** and click **Add annotation query**.
-    4. Set the outer options:
+5. Click **Open query editor** and set:
 
-        | Field | Value |
-        |---|---|
-        | **Name** | `PeerInterfaceFlapping firing` |
-        | **Color** | red |
-        | **Show annotation controls in** | `Above dashboard` |
-        | **Show in** | `All panels` |
+    | Field | Value |
+    |---|---|
+    | **Data source** | `prometheus` |
+    | **Query** | `ALERTS{alertname="PeerInterfaceFlapping", alertstate="firing"}` |
+    | **Title** | `{{alertname}}` |
+    | **Text** | `{{device}}/{{interface}}` |
 
-    5. Click **Open query editor** and set:
+6. Click **Test annotation query**, close the modal, then **Save** and **Exit edit**.
 
-        | Field | Value |
-        |---|---|
-        | **Data source** | `prometheus` |
-        | **Query** | `ALERTS{alertname="PeerInterfaceFlapping", alertstate="firing"}` |
-        | **Title** | `{{alertname}}` |
-        | **Text** | `{{device}}/{{interface}}` |
+The double braces tell Grafana to replace each name with that alert label. The hover text therefore reads like `PeerInterfaceFlapping — srl1/ethernet-1/1` instead of showing the template.
 
-    6. Click **Test annotation query**, close the modal, then **Save** and **Exit edit**.
+Return to the flap-rate panel. A red region now marks the period when the alert was firing, on top of the same line that crossed the threshold. You do not need to trigger another flap. If no marker appears, widen the dashboard time range so it includes the incident from Demo 2.
 
-    The double braces tell Grafana to replace each name with that alert label. The hover text therefore reads like `PeerInterfaceFlapping — srl1/ethernet-1/1` instead of showing the template.
+> **The payoff.** Threshold lines show when the data *should* trigger an alert. The red region shows when the rule *actually did*. The on-call can compare the signal and the decision without leaving the panel.
 
-    Drive another flap if you want to test the marker:
-
-    ```bash
-    nobs packt flap-interface --device srl1 --interface ethernet-1/1
-    ```
-
-    The panel should cross the red threshold, then show a red region for the period when the rule was firing. This helps during triage and when deciding whether a threshold, rolling window, or `for` clause needs adjustment.
-
-### Demo 4 · Silence and restore a notification
+### Demo 5 · Silence and restore a notification
 
 #### What a silence does
 
