@@ -48,9 +48,9 @@ Three hours, one laptop, one on-call investigation. You'll write PromQL and LogQ
 
     ---
 
-    ~20 min · watch only
+    Watch only
 
-    A post-mortem email lands: last night's page lost ten minutes because a flap-rate panel didn't exist. We build it on screen, thresholds matching the real alert rule, then walk the alert from firing to silenced. **Nothing here is required for Part 3.**
+    A post-mortem email lands: last night's page lost ten minutes because a flap-rate panel didn't exist. We build it on screen, thresholds matching the real alert rule, then walk the alert from firing to silenced. Part 3 starts from a clean lab state.
 
     [:octicons-arrow-right-24: Open Part 2](part-2.md)
 
