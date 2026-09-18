@@ -6,7 +6,15 @@ Late morning. The clock is creeping toward lunch. The flap-rate panel from befor
 
 > *"Watch what the workflow handles on its own. Then we'll change the facts and see it make a different choice. By the end, you'll know what the automation can do and what still needs a person."*
 
-## Setup check
+!!! success "Follow the live path"
+
+    The live path is numbered **Live 1** through **Live 5**. Run the commands and read the uncollapsed text in those sections. Browser tours, implementation details, and extra query practice are inside collapsed **Optional** or **Curious?** boxes; they are not required to complete the story.
+
+    The main route stays in the terminal until the final comparison: observe a real alert, gather its evidence, follow a `proceed` decision, then turn on maintenance and see the same alert return `skip`.
+
+## Before the live session
+
+Prepare the lab before learners begin. The live path starts with `nobs packt reset`, not with container startup or configuration.
 
 !!! warning "First time spinning up the lab?"
 
@@ -24,27 +32,6 @@ Late morning. The clock is creeping toward lunch. The flap-rate panel from befor
     ```bash
     nobs packt load-infrahub
     ```
-
-Reset to known-good baseline first — this expires any silences a prior `try-it` run might have created and clears any maintenance flags from earlier exercises:
-
-```bash
-nobs packt reset
-nobs packt alerts
-```
-
-Look for the two `BgpSessionNotUp` alerts below. Those are the only rows you need in Part 3:
-
-```
-| Alertname                | Severity | Device / target  |   State |  Age |
-| BgpSessionNotUp          | warning  | srl1 → 10.1.99.2 |  firing |  ... |
-| BgpSessionNotUp          | warning  | srl2 → 10.1.11.1 |  firing |  ... |
-```
-
-If you missed Part 2's [Walk the alert lifecycle](../../../docs-packt/part-2.md#walk-the-alert-lifecycle), skim it now — the Alertmanager UI, the `ALERTS` metric, and what `firing ↔ suppressed` means are all explained there. Part 3 picks up where that leaves off.
-
-The workflow temporarily silences each BGP alert, so its state changes from `firing` to `suppressed`. It returns to `firing` when the silence expires. Two `InterfaceAdminUpOperDown` rows may appear after about two minutes; they belong to another exercise, so ignore them here.
-
-If you see fewer than two `BgpSessionNotUp` rows, give the stack 60 seconds and try again — the rule has a `for: 30s` clause, so you might have caught it before promotion. A `PeerInterfaceFlapping` row from Part 2's flap cascade ages out within ~5 minutes.
 
 ### Enable the AI-written summary
 
@@ -89,9 +76,21 @@ The demo provider fills a template with the facts gathered by the workflow. It d
 
     Prefect shows the three steps as `evidence`, `policy`, and `action`. Here, **policy** simply means the fixed decision rules: the same facts always produce the same result. The optional AI step writes a summary but does not choose the action.
 
-> Tip: use the Prometheus datasource for metric queries and the Loki datasource for logs and workflow records. Both are available in Grafana Explore.
+## Start the live path
 
-Open **Workshop Home** at <http://localhost:3000/d/workshop-home>. The **Currently firing alerts** table at the bottom should show those same four rows. Keep this dashboard open in a tab — you'll watch it react to your CLI commands throughout this part.
+Reset to a known-good baseline. This expires silences from earlier exercises and clears any maintenance flags:
+
+```bash
+nobs packt reset
+```
+
+Continue to Live 1 to confirm the alerts.
+
+??? info "Optional UI check — Workshop Home"
+
+    Open **Workshop Home** at <http://localhost:3000/d/workshop-home>. The **Currently firing alerts** table shows the same alerts as `nobs packt alerts`.
+
+    Use the Prometheus datasource for metric queries and the Loki datasource for logs and workflow records. Both are available in Grafana Explore.
 
 ## The cycle — alert → evidence → policy → action
 
@@ -105,27 +104,29 @@ Two `BgpSessionNotUp` alerts are firing. A small Python workflow handles each on
 ![The Part 3 cycle — alert, evidence, policy, action](../../../docs-packt/assets/diagrams/part-3-cycle-light.svg#only-light){ .screenshot loading=lazy }
 ![The Part 3 cycle — alert, evidence, policy, action](../../../docs-packt/assets/diagrams/part-3-cycle-dark.svg#only-dark){ .screenshot loading=lazy }
 
-Run `nobs packt cycle srl1 10.1.99.2`. The **Prefect flow runs** panel shows the overall run followed by its three steps:
+??? info "Optional preview — inspect the latest workflow run"
 
-```text
-               Prefect flow runs (last 30m)
-┏━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ Started  ┃ State     ┃ Flow                            ┃
-┡━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
-│ 07:44:14 │ COMPLETED │ quarantine_bgp | srl1:10.1.99.2 │
-│ 07:44:14 │ COMPLETED │   ├─ evidence                   │
-│ 07:44:15 │ COMPLETED │   ├─ policy                     │
-│ 07:44:16 │ COMPLETED │   └─ action                     │
-└──────────┴───────────┴─────────────────────────────────┘
-```
+    Run `nobs packt cycle srl1 10.1.99.2`. The **Prefect flow runs** panel shows the overall run followed by its three steps:
 
-The same names appear in the Prefect UI at <http://localhost:4200/runs>.
+    ```text
+                   Prefect flow runs (last 30m)
+    ┏━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+    ┃ Started  ┃ State     ┃ Flow                            ┃
+    ┡━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+    │ 07:44:14 │ COMPLETED │ quarantine_bgp | srl1:10.1.99.2 │
+    │ 07:44:14 │ COMPLETED │   ├─ evidence                   │
+    │ 07:44:15 │ COMPLETED │   ├─ policy                     │
+    │ 07:44:16 │ COMPLETED │   └─ action                     │
+    └──────────┴───────────┴─────────────────────────────────┘
+    ```
+
+    The same flow and task names appear in the Prefect UI at <http://localhost:4200/runs>.
 
 The rest of Part 3 is structured around this cycle:
 
-- **Steps 1–4** follow one alert from receipt to action.
-- **Step 5** marks the device as under maintenance and runs the same alert again.
-- **Step 6** queries the record of all those decisions.
+- **Live 1–4** follow one alert from receipt to action.
+- **Live 5** marks the device as under maintenance and runs the same alert again.
+- **Optional practice** uses Loki to count the decisions after the live path is complete.
 
 An alert tells you that a condition is true. The workflow adds the context needed to decide what to do, then leaves a record for the next person.
 
@@ -150,7 +151,7 @@ An alert tells you that a condition is true. The workflow adds the context neede
 
     The usual decisions are `proceed`, `skip`, and `resolved`. The table shows two kinds of `skip` because “already healthy” and “under maintenance” are different reasons. A rare `stop` result means the workflow could not find the device in Infrahub.
 
-    Every decision is written to Loki as an **audit record**: one log line containing the device, peer, result, and reason. Step 6 counts those records by decision.
+    Every decision is written to Loki as an **audit record**: one log line containing the device, peer, result, and reason. The optional practice at the end counts those records by decision.
 
     | Path | Trigger | Decision | Outcome |
     |------|---------|---------|---------|
@@ -285,7 +286,7 @@ An alert tells you that a condition is true. The workflow adds the context neede
 
 > In a hurry, or returning later? The [cheat-code](#cheat-code) at the end repeats the whole cycle with six commands.
 
-### 1. Alert — see it fire
+### Live 1 · Alert — see it fire
 
 ![You are here — Alert: confirm that the alert and its labels arrived](../../../docs-packt/assets/diagrams/part-3-focus-alert-light.svg#only-light){ .screenshot loading=lazy }
 ![You are here — Alert: confirm that the alert and its labels arrived](../../../docs-packt/assets/diagrams/part-3-focus-alert-dark.svg#only-dark){ .screenshot loading=lazy }
@@ -296,25 +297,54 @@ The workflow can't do anything until an alert exists. Start here: confirm the la
 nobs packt alerts
 ```
 
-You need the two `BgpSessionNotUp` rows shown below. The two interface rows may also be present by now, but they are not used in this part:
+You need the two `BgpSessionNotUp` rows shown below. Interface alerts may also be present by now, but they are not used in this part:
 
 ```
-| Alertname                | Severity | Device / target  |   State |  Age |
-| BgpSessionNotUp          | warning  | srl1 → 10.1.99.2 |  firing |  ... |
-| BgpSessionNotUp          | warning  | srl2 → 10.1.11.1 |  firing |  ... |
-| InterfaceAdminUpOperDown | warning  | srl1             |  firing |  ... |
-| InterfaceAdminUpOperDown | warning  | srl2             |  firing |  ... |
+| Alertname       | Severity | Device / target   | State  | Age |
+| BgpSessionNotUp | warning  | srl1 → 10.1.99.2 | firing | ... |
+| BgpSessionNotUp | warning  | srl2 → 10.1.11.1 | firing | ... |
 ```
 
 Three things to notice:
 
 - **The `device` label** — the router the alert is about (`srl1`, `srl2`). The workflow uses this to look up the device in Infrahub.
 - **The `target` label** — the peer IP the session is with. In the alert it's called `target`; the workflow maps it to `peer_address` when querying Infrahub and Prometheus.
-- **The State column.** All four should read `firing`. `suppressed` is also fine; it means a silence is temporarily muting notifications. Step 4 explains it.
+- **The State column.** Both rows should read `firing`. `suppressed` is also fine; it means a silence is temporarily muting notifications. Live 4 explains it.
 
-Prefer the browser? Open Alertmanager at <http://localhost:9093/#/alerts>. Same four rows, with click-to-expand details. (If you skipped Part 2's "From panel to alert" section, the alert lifecycle — `pending → firing → suppressed → resolved` — is walked in detail there.)
+If either BGP row is missing, give the alert rule another 60 seconds to evaluate and run the command again.
+
+??? info "Optional — see the YAML that triggered `BgpSessionNotUp`"
+
+    Prometheus created the alert from this rule in [`alerting_rules.yml`](https://github.com/network-observability/workshops/blob/main/workshops/packt/prometheus/rules/alerting_rules.yml):
+
+    ```yaml
+    - alert: BgpSessionNotUp
+      expr: |
+        (
+          bgp_admin_state{afi_safi_name="ipv4-unicast", name="default"} == 1
+        )
+        and on (device, peer_address, afi_safi_name, name)
+        (
+          bgp_oper_state{afi_safi_name="ipv4-unicast", name="default"} != 1
+        )
+      for: 30s
+      labels:
+        severity: warning
+        workshop: "mno"
+      annotations:
+        summary: "BGP session not UP ({{ $labels.device }} ↔ {{ $labels.peer_address }})"
+        description: |
+          admin_state=enable (1) but oper_state is not up (1).
+          afi_safi_name={{ $labels.afi_safi_name }}, instance={{ $labels.name }}.
+    ```
+
+    In plain language: the BGP session is configured to be enabled (`admin_state == 1`), but it is not operationally up (`oper_state != 1`). `and on (...)` makes sure both measurements describe the same device and peer. If that mismatch lasts for 30 seconds, the alert moves from `pending` to `firing`.
 
 The same alert + suppressed state + silencing ID also shows in the **Alert panel** of `nobs packt cycle srl1 10.1.99.2` — useful if you'll be re-observing this step later.
+
+??? info "Optional UI check — Alertmanager"
+
+    Open Alertmanager at <http://localhost:9093/#/alerts> to see the same rows with click-to-expand details. Part 2's [alert lifecycle](../../../docs-packt/part-2.md#walk-the-alert-lifecycle) covers the `pending → firing → suppressed → resolved` states.
 
 ??? info "Curious? See how the alert reaches Prefect"
 
@@ -345,7 +375,7 @@ The same alert + suppressed state + silencing ID also shows in the **Alert panel
 
 For Part 3, we focus on what happens *after* the alert is `firing`: the workflow picks it up and decides what to do. That starts with gathering facts.
 
-### 2. Evidence — what the workflow collected
+### Live 2 · Evidence — what the workflow collected
 
 ![You are here — Evidence: gather intended state, current metrics, and recent logs](../../../docs-packt/assets/diagrams/part-3-focus-evidence-light.svg#only-light){ .screenshot loading=lazy }
 ![You are here — Evidence: gather intended state, current metrics, and recent logs](../../../docs-packt/assets/diagrams/part-3-focus-evidence-dark.svg#only-dark){ .screenshot loading=lazy }
@@ -512,14 +542,16 @@ The first two panels are the key pair:
 
 The gap between those two is the reason the alert is firing.
 
-You can also see the intended state in Infrahub. Open <http://localhost:8000>, click **Log in** at the bottom left, and use `admin` / `infrahub`. Then open **Network Device** → **srl1** → **Bgp Sessions**. Peer `10.1.99.2` should show `Expected State: Established` and `Reason: ip-mismatch-demo`.
+??? info "Optional UI check — intended state in Infrahub"
 
-![Infrahub WorkshopBgpSession detail for the broken peer 10.1.99.2](../../../docs-packt/assets/screenshots/infrahub-bgp-session-broken.png#only-light){ .screenshot loading=lazy }
-![Infrahub WorkshopBgpSession detail for the broken peer 10.1.99.2](../../../docs-packt/assets/screenshots/infrahub-bgp-session-broken.png#only-dark){ .screenshot loading=lazy }
+    Open <http://localhost:8000>, click **Log in** at the bottom left, and use `admin` / `infrahub`. Then open **Network Device** → **srl1** → **Bgp Sessions**. Peer `10.1.99.2` should show `Expected State: Established` and `Reason: ip-mismatch-demo`.
+
+    ![Infrahub WorkshopBgpSession detail for the broken peer 10.1.99.2](../../../docs-packt/assets/screenshots/infrahub-bgp-session-broken.png#only-light){ .screenshot loading=lazy }
+    ![Infrahub WorkshopBgpSession detail for the broken peer 10.1.99.2](../../../docs-packt/assets/screenshots/infrahub-bgp-session-broken.png#only-dark){ .screenshot loading=lazy }
 
 > `BgpSessionNotUp` says only that a session is down. The intended state, maintenance flag, current metrics, and recent logs determine whether that needs action.
 
-### 3. Decision rules — what was decided and why
+### Live 3 · Decision rules — what was decided and why
 
 ![You are here — Decision: apply the same fixed rules to the gathered facts](../../../docs-packt/assets/diagrams/part-3-focus-decision-light.svg#only-light){ .screenshot loading=lazy }
 ![You are here — Decision: apply the same fixed rules to the gathered facts](../../../docs-packt/assets/diagrams/part-3-focus-decision-dark.svg#only-dark){ .screenshot loading=lazy }
@@ -530,6 +562,19 @@ Prefect calls this step **policy**. In plain language, it is a short list of dec
 2. If normal checks should continue, do the current metrics match the intended state?
 
 For `srl1 → 10.1.99.2`, Infrahub says the peer should be established, while Prometheus says it is still trying to connect. The result is `proceed`, with the reason `SoT expects peer up, but metrics show mismatch`.
+
+Start a fresh workflow run so everyone is looking at the same result:
+
+```bash
+nobs packt cycle srl1 10.1.99.2 --trigger
+```
+
+In the **Most recent decision** panel, confirm:
+
+```text
+decision  proceed
+message   SoT expects peer up, but metrics show mismatch
+```
 
 ??? info "Curious? See the policy code and task output"
 
@@ -565,34 +610,26 @@ For `srl1 → 10.1.99.2`, Infrahub says the peer should be established, while Pr
 
 The workflow writes every decision to Loki. This **decision record** — also called an audit record — is a log line containing the device, peer, decision, and reason. It remains available after the alert disappears.
 
-Open Grafana, switch to the **Loki** datasource in Explore, and paste:
+??? info "Optional UI check — inspect the decision in Grafana"
 
-```logql
-{source="prefect", workflow="packt_quarantine_bgp", device="srl1", decision=~"proceed|skip|resolved"} | json
-```
+    Open Grafana, switch to the **Loki** datasource in Explore, and paste:
 
-The `decision=~"proceed|skip|resolved"` filter shows only decisions. Other records in the same Loki stream describe actions and AI summaries.
+    ```logql
+    {source="prefect", workflow="packt_quarantine_bgp", device="srl1", decision=~"proceed|skip|resolved"} | json
+    ```
 
-`| json` asks Grafana to display the fields inside each JSON log line.
+    The filter shows only decisions; `| json` displays the fields inside each record. You should see one line per recent decision for `srl1`.
 
-!!! tip "No records yet?"
+    | Field | Value (for the broken peer) | What it means |
+    |---|---|---|
+    | `decision` (label) | `proceed` | The workflow decided to take action |
+    | `peer_address` (label) | `10.1.99.2` | Which peer this decision was about |
+    | `message` (field) | `SoT expects peer up, but metrics show mismatch` | Plain-English reason |
+    | `timestamp` | `2026-…` | When the workflow ran |
 
-    If the query returns *"No data"*, wait 30–60 seconds and run it again. You can also start a fresh run with `nobs packt cycle srl1 10.1.99.2 --trigger`.
+    If the query returns *"No data"*, wait 30–60 seconds and run it again.
 
-You should see one line per recent decision for `srl1`. The newest line also appears in the **Most recent decision** panel from `nobs packt cycle srl1 10.1.99.2`.
-
-The fields that matter on the *decision* record:
-
-| Field | Value (for the broken peer) | What it means |
-|---|---|---|
-| `decision` (label) | `proceed` | The workflow decided to take action |
-| `peer_address` (label) | `10.1.99.2` | Which peer this decision was about |
-| `message` (field) | `SoT expects peer up, but metrics show mismatch` | Plain-English reason |
-| `timestamp` | `2026-…` | When the workflow ran |
-
-The `message` matches the earlier **Policy hint**. The difference is that this copy remains in Loki for later review.
-
-??? info "What does an audit record actually look like in Loki?"
+??? info "Optional reference — what an audit record looks like in Loki"
 
     The workflow writes one JSON log line per decision. These examples show a normal `proceed` result and a `stop` result when Infrahub has no matching device:
 
@@ -644,7 +681,7 @@ All three decisions use the same record format. Step 5 changes one maintenance f
 
 > Why record the decision? A silence says that an alert was muted. The audit record also says why, which is what the next on-call needs.
 
-### 4. Action — what `proceed` actually does
+### Live 4 · Action — what `proceed` actually does
 
 ![You are here — Action: carry out and record the decision](../../../docs-packt/assets/diagrams/part-3-focus-action-light.svg#only-light){ .screenshot loading=lazy }
 ![You are here — Action: carry out and record the decision](../../../docs-packt/assets/diagrams/part-3-focus-action-dark.svg#only-dark){ .screenshot loading=lazy }
@@ -688,9 +725,9 @@ The last step acts only when the decision is `proceed`. It creates a temporary s
     action         → none
     ```
 
-Here are the three visible results of `proceed`.
+The `proceed` run creates three results: a temporary silence, an action record, and an RCA summary. The live path checks the silence and summary in the terminal; the full records remain available in the optional UI checks.
 
-#### A · The silence — stop repeat notifications
+#### Confirm the silence
 
 The workflow asks Alertmanager to **silence** the alert for 20 minutes. Same kind of silence you created by hand in Part 2's "Create a silence by hand" section — only this one was created automatically, scoped to the specific peer.
 
@@ -702,7 +739,7 @@ nobs packt cycle srl1 10.1.99.2
 
 The **Silences** panel should show a new 20-minute silence for this peer.
 
-!!! info "Why a silence sometimes reads shorter than 20 minutes in the UI"
+??? info "Optional troubleshooting — why a silence may look shorter than 20 minutes"
 
     The silence is **created** with a 20-minute `endsAt`, but a few things can shorten the visible duration:
 
@@ -711,15 +748,17 @@ The **Silences** panel should show a new 20-minute silence for this peer.
 
     If the silence you're looking at reads ~3 minutes instead of 20, you most likely just ran `reset` — the workflow wrote a 20-minute silence and `reset` immediately truncated its `endsAt`.
 
-Run `nobs packt alerts` — the `BgpSessionNotUp` row for `srl1 → 10.1.99.2` should now show `suppressed` in the State column. Let's look at that silence in Alertmanager.
+Run `nobs packt alerts` — the `BgpSessionNotUp` row for `srl1 → 10.1.99.2` should now show `suppressed` in the State column.
 
-Open Alertmanager at <http://localhost:9093/#/alerts> and enable the **Silenced** filter. Find `BgpSessionNotUp` for `srl1 → 10.1.99.2`, expand it, and open its silence. Check three fields:
+??? info "Optional UI check — inspect the silence in Alertmanager"
 
-- **Matchers** — `alertname=BgpSessionNotUp`, `device=srl1`, `peer_address=10.1.99.2`. These limit the silence to this alert and peer.
-- **Comment** — `QUARANTINE: SoT expects peer up, but metrics show mismatch`. This repeats the decision reason from Step 3.
-- **Created by** — the workflow itself, not a human.
+    Open Alertmanager at <http://localhost:9093/#/alerts> and enable the **Silenced** filter. Find `BgpSessionNotUp` for `srl1 → 10.1.99.2`, expand it, and open its silence. Check three fields:
 
-!!! tip "Don't see `suppressed`?"
+    - **Matchers** — `alertname=BgpSessionNotUp`, `device=srl1`, `peer_address=10.1.99.2`. These limit the silence to this alert and peer.
+    - **Comment** — `QUARANTINE: SoT expects peer up, but metrics show mismatch`. This repeats the decision reason from Live 3.
+    - **Created by** — the workflow itself, not a human.
+
+??? warning "Troubleshooting — don't see `suppressed`?"
 
     If the row shows `firing` instead, the previous silence has expired. Alertmanager may wait up to 30 minutes before sending the same alert again, so start a fresh cycle yourself:
 
@@ -731,27 +770,27 @@ Open Alertmanager at <http://localhost:9093/#/alerts> and enable the **Silenced*
 
 > Why silence rather than fix? This workflow is allowed to reduce repeated notifications, not change a network device. The peer remains broken and still needs investigation.
 
-#### B · The action record — saved in Loki and shown in Grafana
+??? info "Optional UI check — inspect the action record in Grafana"
 
-The workflow writes a second Loki record describing the action:
+    The workflow writes a second Loki record describing the action:
 
-```text
-QUARANTINE applied (silence_id=<uuid>)
-```
+    ```text
+    QUARANTINE applied (silence_id=<uuid>)
+    ```
 
-The decision record says *why the workflow chose to act*. This action record says *what it did* and includes the silence ID. Query it with:
+    The decision record says *why the workflow chose to act*. This action record says *what it did* and includes the silence ID. Query it with:
 
-```logql
-{source="prefect", workflow="packt_quarantine_bgp", device="srl1"} |~ "QUARANTINE applied"
-```
+    ```logql
+    {source="prefect", workflow="packt_quarantine_bgp", device="srl1"} |~ "QUARANTINE applied"
+    ```
 
-You should see one row for each `proceed` run, with the time the silence was created.
+    You should see one row for each `proceed` run, with the time the silence was created.
 
-You can draw these records as vertical markers on a Grafana dashboard: **Edit → Dashboard options → Annotations → New annotation**, choose Loki, and use the query above. The marker answers a useful timeline question: *when did the workflow act?*
+    You can draw these records as vertical markers on a Grafana dashboard: **Edit → Dashboard options → Annotations → New annotation**, choose Loki, and use the query above. The marker answers a useful timeline question: *when did the workflow act?*
 
 <a id="c-the-ai-narrative-same-evidence-different-voice"></a>
 
-#### C · The root-cause summary — same evidence, different voice
+#### Read the root-cause summary
 
 The workflow also writes an **RCA summary** in plain language. What it writes depends on the decision:
 
@@ -761,19 +800,21 @@ The workflow also writes an **RCA summary** in plain language. What it writes de
 | `skip` | Brief annotation: *"AI RCA not run — policy decided skip (reason)"* |
 | `ENABLE_AI_RCA=false` | Brief annotation: *"AI RCA disabled"* |
 
-RCA records use `ai_rca="true"` instead of a `decision` label. Remove the decision filter to see both record types:
-
-```logql
-{source="prefect", workflow="packt_quarantine_bgp", device="srl1"} | json
-```
-
-You should see the fixed-rule decision and the RCA summary for the same alert. Both use the evidence gathered in Step 2.
-
-Or render the latest narrative as Markdown directly in the terminal:
+Render the latest narrative as Markdown directly in the terminal:
 
 ```bash
 nobs packt rca srl1 10.1.99.2
 ```
+
+??? info "Optional UI check — compare the decision and RCA in Grafana"
+
+    RCA records use `ai_rca="true"` instead of a `decision` label. Remove the decision filter to see both record types:
+
+    ```logql
+    {source="prefect", workflow="packt_quarantine_bgp", device="srl1"} | json
+    ```
+
+    You should see the fixed-rule decision and the RCA summary for the same alert. Both use the evidence gathered in Live 2.
 
 > **The big idea.** Fixed rules choose the action. AI explains the evidence in readable form. Keeping those jobs separate makes the action predictable without giving up a useful summary.
 
@@ -789,7 +830,7 @@ Worth saying out loud, so it doesn't trip you up:
 
 `proceed` mutes repeat notifications, records when that happened, and writes a summary. It does not repair the network.
 
-### 5. Maintenance branch — same drill, opposite decision
+### Live 5 · Maintenance branch — same drill, opposite decision
 
 ![Back at the Decision step: change one fact, then run the same rules again](../../../docs-packt/assets/diagrams/part-3-focus-decision-light.svg#only-light){ .screenshot loading=lazy }
 ![Back at the Decision step: change one fact, then run the same rules again](../../../docs-packt/assets/diagrams/part-3-focus-decision-dark.svg#only-dark){ .screenshot loading=lazy }
@@ -822,13 +863,13 @@ The command does two things:
 
 The workflow reads the flag each time it runs, so the next decision uses the new value.
 
-#### Step 2 · See the flag in Infrahub
+??? info "Optional UI check — see the flag in Infrahub"
 
-Open Infrahub at <http://localhost:8000>. If you haven't logged in yet, click **Log in** in the bottom-left, enter `admin` / `infrahub`, and submit. Then click **Network Device** in the left nav, then click **srl1**. The `maintenance` field now reads `true`.
+    Open Infrahub at <http://localhost:8000>. If you haven't logged in yet, click **Log in** in the bottom-left, enter `admin` / `infrahub`, and submit. Then click **Network Device** in the left nav, then click **srl1**. The `maintenance` field now reads `true`.
 
-This is the same field shown in Step 2's evidence panel. It has changed from `false` to `true`.
+    This is the same field shown in Live 2's evidence panel. It has changed from `false` to `true`.
 
-#### Step 3 · Re-trigger the workflow
+#### Step 2 · Re-trigger the workflow
 
 Alertmanager may take up to 30 minutes to send this alert again. Start the workflow directly so the new decision arrives within seconds:
 
@@ -852,38 +893,48 @@ This starts the same workflow directly instead of waiting for Alertmanager's 30-
 
     `cycle --trigger` builds the alert details, sends them, waits for the new Prefect run, and displays the result. Use the wrapper in the workshop; the raw command is available for scripts outside the lab.
 
-#### Step 4 · Read the new decision in Loki
+#### Step 3 · Compare the new decision
 
-When the command finishes, re-run the Step 3 LogQL query in Grafana:
+When the command finishes, read the **Most recent decision** panel in the terminal:
 
-```logql
-{source="prefect", workflow="packt_quarantine_bgp", device="srl1", decision=~"proceed|skip|resolved"} | json
+```text
+decision  skip
+message   device under maintenance
 ```
-
-The **most recent line** now reads:
-
-| Field | Value |
-|---|---|
-| `decision` (label) | `skip` |
-| `message` (field) | `device under maintenance` |
 
 The peer is still broken, but the result is now `skip` because Infrahub says the device is under maintenance.
 
 The alert may still show as `suppressed`: the earlier 20-minute silence keeps running until it expires. The proof of `skip` is that this run creates no **new** silence.
 
-The RCA step also skips because the workflow is not taking action. Confirm with:
+The RCA step also skips because the workflow is not taking action. Read the latest RCA record:
 
-```logql
-{source="prefect", ai_rca="true", device="srl1"} | json
+```bash
+nobs packt rca srl1 10.1.99.2
 ```
 
 The newest line explains that the RCA was not run because the device is under maintenance. A real provider would therefore make no paid API call.
 
-!!! warning "Don't clear maintenance until you've seen the `skip` audit record"
+??? info "Optional UI check — compare `proceed` and `skip` in Grafana"
 
-    Step 5 below clears the maintenance flag. If you race ahead and clear it before the workflow has actually re-evaluated, it'll re-read `maintenance=false` and return `proceed` instead of `skip`. Confirm the `skip` log line has landed in Loki first, then continue.
+    Open Grafana, select the **Loki** datasource in Explore, and run:
 
-#### Step 5 · Clear the maintenance flag
+    ```logql
+    {source="prefect", workflow="packt_quarantine_bgp", device="srl1", decision=~"proceed|skip|resolved"} | json
+    ```
+
+    The newest line should show `decision=skip` and `message="device under maintenance"`. The earlier `proceed` record remains beside it, so you can compare both outcomes.
+
+    To inspect the skipped RCA record, run:
+
+    ```logql
+    {source="prefect", ai_rca="true", device="srl1"} | json
+    ```
+
+!!! warning "Don't clear maintenance until you've seen `skip`"
+
+    The next step clears the maintenance flag. If you race ahead and clear it before the workflow has actually re-evaluated, it'll re-read `maintenance=false` and return `proceed` instead of `skip`. Confirm the terminal shows `skip`, then continue.
+
+#### Step 4 · Clear the maintenance flag
 
 ```bash
 nobs packt maintenance --device srl1 --clear
@@ -893,54 +944,18 @@ nobs packt maintenance --device srl1 --clear
 
 > **The big idea.** Maintenance is context stored in Infrahub, not a special rule hidden in the workflow. One flag changes the decision because the workflow checks that context every time.
 
-### 6. Your turn — find what the workflow actually did
-
-![Finish at the Action step by reading and counting the records it created](../../../docs-packt/assets/diagrams/part-3-focus-action-light.svg#only-light){ .screenshot loading=lazy }
-![Finish at the Action step by reading and counting the records it created](../../../docs-packt/assets/diagrams/part-3-focus-action-dark.svg#only-dark){ .screenshot loading=lazy }
-
-You've walked every step of the cycle. Now use what you've seen.
-
-> *Without scrolling any dashboard, how many alerts has the workflow handled in the time range you're looking at, broken down by decision?*
-
-Every decision lands in Loki with `source="prefect"`, `workflow="packt_quarantine_bgp"`, and a `decision` label. Build a query that counts those records and groups them by `decision`.
-
-**Two hints if you get stuck:**
-
-- `count_over_time({...}[$__range])` counts matching records across the time range selected in Grafana.
-- `sum by (decision) (...)` produces one total for each decision.
-
-Count both devices, but keep a decision filter so action and RCA records are excluded.
-
-??? success "Solution and what your query should return"
-
-    ```logql
-    sum by (decision) (count_over_time({source="prefect", workflow="packt_quarantine_bgp", decision=~"proceed|skip|resolved|stop"}[$__range]))
-    ```
-
-    With Explore set to a range that covers your walk (say "Last 30 minutes"), you should land on something like:
-
-    | Decision | Count |
-    |---|---|
-    | `proceed` | a few |
-    | `skip` | a few |
-    | `resolved` | maybe a few |
-
-    Exact counts depend on how many cycles you ran. If you get one combined total, check that the query includes `sum by (decision)`.
-
-> **The big idea.** The audit trail is not only a list to read. You can count it to answer questions such as, “How many alerts did the workflow act on this morning?”
-
-## Reflection
+## Close the live path
 
 > Your senior leans back. *"Last one's a thinking exercise. Pick any of the paths you just ran and answer this for yourself."*
 
 > Which path would I trust the AI's narrative on without a second look? Which would I always double-check by hand? Why?
 
-Some hints to guide the discussion:
+??? info "Optional discussion prompts"
 
-- The mismatch-proceed path reflects a real fault. What could happen if its summary is wrong?
-- The healthy-skip path is a no-op. Does the AI narrative add anything for an on-call?
-- The maintenance-skip path depends on the source of truth being right. What if Infrahub's wrong?
-- The resolved path describes something that already happened. Is that safer than asking AI what to do next?
+    - The mismatch-proceed path reflects a real fault. What could happen if its summary is wrong?
+    - The healthy-skip path is a no-op. Does the AI narrative add anything for an on-call?
+    - The maintenance-skip path depends on the source of truth being right. What if Infrahub's wrong?
+    - The resolved path describes something that already happened. Is that safer than asking AI what to do next?
 
 There's no single right answer. The point is that the same tool isn't equally valuable for all four paths, and you should know which is which *before* you trust the narrative in the heat of an incident.
 
@@ -954,6 +969,40 @@ There's no single right answer. The point is that the same tool isn't equally va
 - A maintenance flag changes the decision. A silence only mutes notifications after a decision.
 - AI writes a summary from the same evidence but does not choose the action.
 - Every decision and action is recorded for later review and counting.
+
+??? example "Optional practice — count the workflow decisions"
+
+    ![Finish at the Action step by reading and counting the records it created](../../../docs-packt/assets/diagrams/part-3-focus-action-light.svg#only-light){ .screenshot loading=lazy }
+    ![Finish at the Action step by reading and counting the records it created](../../../docs-packt/assets/diagrams/part-3-focus-action-dark.svg#only-dark){ .screenshot loading=lazy }
+
+    Without scrolling any dashboard, how many alerts has the workflow handled in the time range you're looking at, broken down by decision?
+
+    Every decision lands in Loki with `source="prefect"`, `workflow="packt_quarantine_bgp"`, and a `decision` label. Build a query that counts those records and groups them by `decision`.
+
+    Two hints if you get stuck:
+
+    - `count_over_time({...}[$__range])` counts matching records across the time range selected in Grafana.
+    - `sum by (decision) (...)` produces one total for each decision.
+
+    Count both devices, but keep a decision filter so action and RCA records are excluded.
+
+    ??? success "Solution and what your query should return"
+
+        ```logql
+        sum by (decision) (count_over_time({source="prefect", workflow="packt_quarantine_bgp", decision=~"proceed|skip|resolved|stop"}[$__range]))
+        ```
+
+        With Explore set to a range that covers your walk (say "Last 30 minutes"), you should land on something like:
+
+        | Decision | Count |
+        |---|---|
+        | `proceed` | a few |
+        | `skip` | a few |
+        | `resolved` | maybe a few |
+
+        Exact counts depend on how many cycles you ran. If you get one combined total, check that the query includes `sum by (decision)`.
+
+    The audit trail is not only a list to read. You can count it to answer questions such as, “How many alerts did the workflow act on this morning?”
 
 <a id="cheat-code"></a>
 
@@ -972,4 +1021,4 @@ There's no single right answer. The point is that the same tool isn't equally va
 
     The punchline lives in the last `cycle` output. The **Flow runs panel** shows both runs with the same three child rows — `evidence`, `policy`, `action` — because the same three blocks ran either way. What changed is the **Most recent decision** panel: `proceed` after the third command, `skip` after the fifth. The **Silences panel** grows by one row only on the proceed run — the absence of a silence on the skip run is the visible proof that *the policy decided not to act*. A third side-effect lives in Loki: querying `{source="prefect", ai_rca="true"} | json` shows the proceed run produced a multi-section narrative, while the skip run wrote *"AI RCA not run — policy decided skip…"*. **Same alert, same evidence, opposite decisions, the entire workflow behavior (silence + LLM call + audit trail) flipped by one field in the source of truth.**
 
-    Steps 1–6 explain why each panel changes and show the same run in Alertmanager, Loki, and Prefect.
+    Live 1–5 explain why each panel changes. The optional UI checks show the same run in Alertmanager, Loki, Infrahub, and Prefect.
